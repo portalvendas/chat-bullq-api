@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Chat BullQ — API (NestJS + Prisma)
+# Blueprint Render: provisiona a API (Docker) + PostgreSQL gerenciado + Key Value
+# (Redis). Conecte ESTE repositório no Render via "New > Blueprint".
+# Docs: https://render.com/docs/blueprint-spec
+# ─────────────────────────────────────────────────────────────────────────────
+
+databases:
+  - name: chat-bullq-db
+    databaseName: chat_bullq
+    user: chat_bullq
+    plan: basic-256mb          # troque p/ free (expira em 30 dias) ou basic-1gb+
+    region: oregon
+    postgresMajorVersion: "16"
+    ipAllowList: []            # vazio = somente conexões internas (rede privada)
+
+services:
+  # ── Redis / Key Value (filas BullMQ, presença, idempotência, sessões) ──
+  - type: keyvalue
+    name: chat-bullq-redis
+    plan: starter              # free = 25MB (ok p/ testes). starter+ p/ produção
+    region: oregon
+    ipAllowList: []            # somente acesso interno
+    maxmemoryPolicy: noeviction  # OBRIGATÓRIO p/ BullMQ não descartar jobs
+
+  # ── API NestJS (Docker) ──
+  - type: web
+    name: chat-bullq-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /docs     # Swagger; mesmo path do HEALTHCHECK do Dockerfile
+    autoDeployTrigger: commit  # deploy automático a cada push (deploy via GitHub)
+    disk:
+      name: uploads            # mídias re-hospedadas (WhatsApp/áudios) persistem
+      mountPath: /app/uploads
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Banco — string de conexão do Postgres gerenciado acima
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chat-bullq-db
+          property: connectionString
+      # Redis — host/porta internos do Key Value acima
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: chat-bullq-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: chat-bullq-redis
+          property: port
+      # JWT — gerados automaticamente (256-bit base64) na 1ª criação
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: 15m
+      - key: JWT_REFRESH_EXPIRATION
+        value: 7d
+      - key: UPLOADS_DIR
+        value: /app/uploads
+      # Preencha no painel (Dashboard pede na criação) — depende do domínio do front
+      - key: CORS_ORIGIN
+        sync: false            # ex.: https://chat-bullq-web.onrender.com
+      - key: APP_URL
+        sync: false            # URL pública desta API
+      # Chaves de IA / Push — opcionais, preencha conforme habilita features
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false

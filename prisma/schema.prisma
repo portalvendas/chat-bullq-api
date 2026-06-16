@@ -1,0 +1,1560 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  AGENT
+}
+
+enum AgentStatus {
+  ONLINE
+  AWAY
+  OFFLINE
+}
+
+enum ChannelType {
+  WHATSAPP_OFFICIAL
+  WHATSAPP_ZAPPFY
+  INSTAGRAM
+}
+
+// ORG    = todos os membros da org enxergam (default — preserva o comportamento legado)
+// PRIVATE = só membros com grant explícito em ChannelAgent enxergam, mesmo OWNER/ADMIN
+enum ChannelVisibility {
+  ORG
+  PRIVATE
+}
+
+enum ConversationStatus {
+  PENDING
+  BOT
+  OPEN
+  WAITING
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageContentType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  REACTION
+  TEMPLATE
+  INTERACTIVE
+  SYSTEM
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum DistributionRule {
+  ROUND_ROBIN
+  LEAST_BUSY
+  MANUAL
+}
+
+enum ChatbotNodeType {
+  START
+  MESSAGE
+  MENU
+  CONDITION
+  WAIT
+  ACTION
+  TRANSFER
+  END_FLOW
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  CONVERSATION_ASSIGNED
+  CONVERSATION_TRANSFERRED
+  SLA_WARNING
+  SLA_BREACH
+  MENTION
+  SYSTEM
+  AI_TOOL_FAILURE
+}
+
+// ─── Core: Auth + Multi-tenancy ──────────────────
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  password  String
+  avatarUrl String?   @map("avatar_url")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organizations         UserOrganization[]
+  assignedConversations Conversation[]     @relation("AssignedAgent")
+  sentMessages          Message[]          @relation("MessageSender")
+  revokedMessages       Message[]          @relation("MessageRevoker")
+  notifications         Notification[]
+  pushSubscriptions     PushSubscription[]
+  sentInvitations       Invitation[]
+  apiKeys               ApiKey[]
+  inboxViews            InboxView[]
+  conversationReads     ConversationRead[]
+  assignedCards         Card[]             @relation("CardAssignee")
+
+  @@map("users")
+}
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  logoUrl   String?   @map("logo_url")
+  plan      String    @default("free")
+  settings  Json      @default("{}")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // ─── AI settings ────────────────────────────────
+  aiEnabled            Boolean @default(true) @map("ai_enabled")
+  aiTimezone           String  @default("America/Sao_Paulo") @map("ai_timezone")
+  aiBusinessHours      Json?   @map("ai_business_hours")
+  aiOutOfHoursMessage  String? @map("ai_out_of_hours_message")
+  aiAutoDisableOnHuman Boolean @default(true) @map("ai_auto_disable_on_human")
+  aiMonthlyTokenCap    Int?    @map("ai_monthly_token_cap")
+  /// Notas livres do negócio injetadas no system prompt de TODOS os
+  /// agentes da org. Use pra info que muda com frequência e que vale
+  /// pra qualquer fluxo (vendas/suporte/CS): regras de entrega, horários
+  /// de live, política de reembolso, talking points atuais, etc.
+  aiBusinessNotes      String? @map("ai_business_notes") @db.Text
+  /// Regras de segurança (imutáveis) injetadas na Layer 1 do prompt composer.
+  /// Shape: { noPriceCommitment, noDeadlineCommitment, noResultPromise,
+  /// noCrossClientDataLeak, forbiddenEmojis: string[], language: 'pt-BR'|'en-US',
+  /// customRules: string[] }. NULL = usa defaults do código.
+  aiSecurityRules      Json?   @map("ai_security_rules")
+  /// Threshold de confiança do IntentClassifier pra pular o orchestrator.
+  /// Default 0.85. Abaixo disso cai no Augusto.
+  aiClassifierThreshold Decimal? @default(0.85) @map("ai_classifier_threshold") @db.Decimal(3, 2)
+
+  /// Lista de domínios permitidos em links que a IA pode mandar pro
+  /// cliente. Quando preenchido (array com strings tipo "bravy.co",
+  /// "trivapp.com.br"), o runtime guard rejeita qualquer URL fora da
+  /// lista — IA tem que reescrever sem o link inventado. NULL ou
+  /// array vazio = permissivo (só loga warning, não bloqueia).
+  allowedUrlDomains    Json?   @map("allowed_url_domains")
+
+  // ─── Watchdog (conversas presas) ────────────────
+  /// Liga/desliga o watchdog que detecta conversas onde a IA travou ou
+  /// o humano abandonou. Default: true.
+  watchdogEnabled       Boolean @default(true) @map("watchdog_enabled")
+  /// Horário em que o watchdog atua (mesmo formato de `aiBusinessHours`:
+  /// `{monday: {enabled, windows: [["09:00","18:00"]]}, ...}`). null = 24/7.
+  /// Reusa `aiTimezone` pra resolução de fuso.
+  watchdogBusinessHours Json?   @map("watchdog_business_hours")
+  /// Parâmetros do watchdog. Shape:
+  /// `{ delayBotMin, delayPendingMin, delayHumanIdleMin, maxAttempts }`.
+  /// null = usa defaults do código (15, 15, 60, 3).
+  watchdogConfig        Json?   @map("watchdog_config")
+
+  members       UserOrganization[]
+  channels      Channel[]
+  contacts      Contact[]
+  conversations Conversation[]
+  departments   Department[]
+  chatbotFlows  ChatbotFlow[]
+  quickReplies  QuickReply[]
+  tags          Tag[]
+  notifications Notification[]
+  invitations   Invitation[]
+  apiKeys       ApiKey[]
+  aiAgents      AiAgent[]
+  aiTools       AiTool[]
+  aiSkills      AiSkill[]
+  inboxViews    InboxView[]
+  pipelines     Pipeline[]
+  cards         Card[]
+  products      Product[]
+
+  @@map("organizations")
+}
+
+model UserOrganization {
+  id             String      @id @default(cuid())
+  userId         String      @map("user_id")
+  organizationId String      @map("organization_id")
+  role           OrgRole     @default(AGENT)
+  agentStatus    AgentStatus @default(OFFLINE) @map("agent_status")
+  maxConcurrent  Int         @default(5) @map("max_concurrent")
+  preferences    Json        @default("{}")
+  joinedAt       DateTime    @default(now()) @map("joined_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  departmentAgents DepartmentAgent[]
+  channelAgents    ChannelAgent[]
+
+  @@unique([userId, organizationId])
+  @@map("user_organizations")
+}
+
+// ─── Invitations ────────────────────────────────
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model Invitation {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  email          String
+  role           OrgRole          @default(AGENT)
+  token          String           @unique
+  status         InvitationStatus @default(PENDING)
+  invitedById    String           @map("invited_by_id")
+  expiresAt      DateTime         @map("expires_at")
+  acceptedAt     DateTime?        @map("accepted_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email, status], name: "idx_invitation_email_status")
+  @@index([organizationId], name: "idx_invitation_org")
+  @@map("invitations")
+}
+
+// ─── Channel Hub ─────────────────────────────────
+
+model Channel {
+  id             String      @id @default(cuid())
+  organizationId String      @map("organization_id")
+  type           ChannelType
+  name           String
+  config         Json
+  webhookSecret  String?     @map("webhook_secret")
+  isActive       Boolean     @default(true) @map("is_active")
+  visibility     ChannelVisibility @default(ORG)
+  // Tri-state override: NULL=segue org.aiEnabled, true=força ON, false=força OFF.
+  // Permite o operador desligar a IA num canal específico (ex: 1581 produção)
+  // sem precisar mexer no toggle global da org.
+  aiEnabled      Boolean?    @map("ai_enabled")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  deletedAt      DateTime?   @map("deleted_at")
+
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactChannels ContactChannel[]
+  conversations   Conversation[]
+  chatbotFlows    ChatbotFlowChannel[]
+  syncJobs        ChannelSyncJob[]
+  channelAgents   ChannelAgent[]
+  aiAgentChannels AiAgentChannel[]
+
+  @@index([organizationId, type], name: "idx_channel_org_type")
+  @@map("channels")
+}
+
+model ChannelAgent {
+  id                 String   @id @default(cuid())
+  channelId          String   @map("channel_id")
+  userOrganizationId String   @map("user_organization_id")
+  grantedAt          DateTime @default(now()) @map("granted_at")
+  grantedById        String?  @map("granted_by_id")
+
+  channel          Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userOrganization UserOrganization @relation(fields: [userOrganizationId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userOrganizationId])
+  @@index([userOrganizationId], name: "idx_channel_agent_userorg")
+  @@map("channel_agents")
+}
+
+// ─── Webhook Events (append-only audit + replay) ──
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  UNROUTED
+}
+
+model WebhookEvent {
+  id           String             @id @default(cuid())
+  channelId    String?            @map("channel_id")
+  channelType  ChannelType        @map("channel_type")
+  status       WebhookEventStatus @default(RECEIVED)
+  rawPayload   Json               @map("raw_payload")
+  headers      Json               @default("{}")
+  errorMessage String?            @map("error_message")
+  receivedAt   DateTime           @default(now()) @map("received_at")
+  processedAt  DateTime?          @map("processed_at")
+
+  @@index([channelId, receivedAt(sort: Desc)], name: "idx_webhook_channel_time")
+  @@index([channelType, status, receivedAt(sort: Desc)], name: "idx_webhook_type_status")
+  @@map("webhook_events")
+}
+
+// ─── Channel Sync Jobs ───────────────────────────
+
+enum ChannelSyncStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ChannelSyncMode {
+  INITIAL
+  MANUAL
+  DELTA
+}
+
+model ChannelSyncJob {
+  id                    String            @id @default(cuid())
+  channelId             String            @map("channel_id")
+  status                ChannelSyncStatus @default(PENDING)
+  mode                  ChannelSyncMode   @default(INITIAL)
+  lookbackDays          Int               @default(90) @map("lookback_days")
+  startedAt             DateTime?         @map("started_at")
+  finishedAt            DateTime?         @map("finished_at")
+  conversationsTotal    Int               @default(0) @map("conversations_total")
+  conversationsImported Int               @default(0) @map("conversations_imported")
+  messagesImported      Int               @default(0) @map("messages_imported")
+  contactsImported      Int               @default(0) @map("contacts_imported")
+  errorMessage          String?           @map("error_message")
+  lastCursor            String?           @map("last_cursor")
+  metadata              Json              @default("{}")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt(sort: Desc)], name: "idx_sync_channel_time")
+  @@index([status], name: "idx_sync_status")
+  @@map("channel_sync_jobs")
+}
+
+// ─── Contacts ────────────────────────────────────
+
+model Contact {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String?
+  phone          String?
+  email          String?
+  avatarUrl      String?   @map("avatar_url")
+  notes          String?
+  metadata       Json      @default("{}")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channels      ContactChannel[]
+  conversations Conversation[]
+  tags          ContactTag[]
+  aiMemories    AiAgentMemory[]
+  cards         Card[]           @relation("CardContact")
+
+  @@index([organizationId, phone], name: "idx_contact_org_phone")
+  @@index([organizationId, email], name: "idx_contact_org_email")
+  @@map("contacts")
+}
+
+model ContactChannel {
+  id               String   @id @default(cuid())
+  contactId        String   @map("contact_id")
+  channelId        String   @map("channel_id")
+  externalId       String   @map("external_id")
+  profileName      String?  @map("profile_name")
+  profileAvatarUrl String?  @map("profile_avatar_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, externalId], name: "uq_contact_channel_external")
+  @@map("contact_channels")
+}
+
+// ─── Conversations ───────────────────────────────
+
+model Conversation {
+  id              String             @id @default(cuid())
+  organizationId  String             @map("organization_id")
+  channelId       String             @map("channel_id")
+  contactId       String             @map("contact_id")
+  assignedToId    String?            @map("assigned_to_id")
+  departmentId    String?            @map("department_id")
+  status          ConversationStatus @default(PENDING)
+  subject         String?
+  protocol        String?
+  isGroup         Boolean            @default(false) @map("is_group")
+  lastMessageAt   DateTime?          @map("last_message_at")
+  firstResponseAt DateTime?          @map("first_response_at")
+  closedAt        DateTime?          @map("closed_at")
+  reopenedAt      DateTime?          @map("reopened_at")
+  reopenedCount   Int                @default(0) @map("reopened_count")
+  deletedAt       DateTime?          @map("deleted_at")
+
+  // ─── Archive state ──────────────────────────────
+  // Orthogonal to `status` — archived conversations are hidden from the
+  // main inbox but their status (OPEN/PENDING/etc.) is preserved so they
+  // re-appear in the right place when unarchived.
+  isArchived     Boolean   @default(false) @map("is_archived")
+  archivedAt     DateTime? @map("archived_at")
+  archivedById   String?   @map("archived_by_id")
+  metadata        Json               @default("{}")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  // ─── AI state (tri-state override) ──────────────
+  // null  = segue regras globais (org.aiEnabled, business hours, agent)
+  // true  = força ON (sobrepõe global — IA roda mesmo com kill switch off)
+  // false = força OFF (sobrepõe global — IA não roda mesmo com kill switch on)
+  aiEnabled     Boolean?  @map("ai_enabled")
+  aiDisabledBy  String?   @map("ai_disabled_by")
+  aiDisabledAt  DateTime? @map("ai_disabled_at")
+  activeAgentId String?   @map("active_agent_id")
+
+  // ─── Watchdog state ─────────────────────────────
+  /// Tentativas de reativação. Cada vez que o watchdog reaciona a IA na
+  /// conversa, +1. Resetado pra 0 quando IA/humano responde com sucesso.
+  /// Quando atinge `maxAttempts`, a conversa é marcada `isStuck=true`.
+  stuckAttempts        Int       @default(0) @map("stuck_attempts")
+  /// Última vez que o watchdog avaliou a conversa.
+  lastWatchdogCheckAt  DateTime? @map("last_watchdog_check_at")
+  /// ID do job reativo (BullMQ) atualmente agendado pra essa conversa.
+  /// Permite cancelar/substituir o job quando algo muda na conversa.
+  watchdogJobId        String?   @map("watchdog_job_id")
+  /// Bandeira "presa pra valer". Setada quando `stuckAttempts >= maxAttempts`.
+  /// Frontend filtra por isso na inbox e no dashboard.
+  isStuck              Boolean   @default(false) @map("is_stuck")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel      Channel      @relation(fields: [channelId], references: [id])
+  contact      Contact      @relation(fields: [contactId], references: [id])
+  assignedTo   User?        @relation("AssignedAgent", fields: [assignedToId], references: [id], onDelete: SetNull)
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  activeAgent  AiAgent?     @relation("ActiveAgent", fields: [activeAgentId], references: [id], onDelete: SetNull)
+
+  messages      Message[]
+  tags          ConversationTag[]
+  internalNotes InternalNote[]
+  auditLogs     ConversationAuditLog[]
+  rating        ConversationRating?
+  aiRuns           AiAgentRun[]
+  aiHandoffs       AiAgentHandoff[]
+  aiPendingActions AiPendingAction[]
+  reads         ConversationRead[]
+  cards         Card[]                 @relation("CardConversation")
+
+  @@index([organizationId, status], name: "idx_conv_org_status")
+  @@index([organizationId, assignedToId], name: "idx_conv_org_agent")
+  @@index([organizationId, channelId], name: "idx_conv_org_channel")
+  @@index([organizationId, isArchived], name: "idx_conv_org_archived")
+  @@index([contactId], name: "idx_conv_contact")
+  @@index([lastMessageAt], name: "idx_conv_last_msg")
+  @@map("conversations")
+}
+
+model ConversationRating {
+  id             String    @id @default(cuid())
+  conversationId String    @unique @map("conversation_id")
+  organizationId String    @map("organization_id")
+  agentId        String?   @map("agent_id")
+  score          Int
+  comment        String?
+  token          String    @unique
+  requestedAt    DateTime  @default(now()) @map("requested_at")
+  respondedAt    DateTime? @map("responded_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, respondedAt], name: "idx_rating_org_responded")
+  @@index([organizationId, agentId], name: "idx_rating_org_agent")
+  @@map("conversation_ratings")
+}
+
+model ConversationAuditLog {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  actorId        String?  @map("actor_id")
+  action         String
+  fromValue      String?  @map("from_value")
+  toValue        String?  @map("to_value")
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt], name: "idx_audit_conv_time")
+  @@map("conversation_audit_logs")
+}
+
+model InternalNote {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  authorId       String   @map("author_id")
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("internal_notes")
+}
+
+// ─── Messages ────────────────────────────────────
+
+model Message {
+  id             String             @id @default(cuid())
+  conversationId String             @map("conversation_id")
+  direction      MessageDirection
+  type           MessageContentType
+  content        Json
+  externalId     String?            @map("external_id")
+  status         MessageStatus      @default(QUEUED)
+  senderName     String?            @map("sender_name")
+  senderId       String?            @map("sender_id")
+  sentAt         DateTime?          @map("sent_at")
+  deliveredAt    DateTime?          @map("delivered_at")
+  readAt         DateTime?          @map("read_at")
+  failedReason   String?            @map("failed_reason")
+  metadata       Json               @default("{}")
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  // ─── Revoke state (delete for everyone) ─────────
+  /// Quando setado, a mensagem foi marcada como deletada. UI renderiza
+  /// placeholder em vez do conteúdo. Não removemos a row pra preservar
+  /// auditoria + histórico (audit-log mantém o conteúdo original).
+  revokedAt              DateTime? @map("revoked_at")
+  revokedBy              String?   @map("revoked_by")
+  /// Se conseguimos propagar o delete pro provider (Zappfy/Meta).
+  /// - true  = chamada na API do provider funcionou (some no app do cliente)
+  /// - false = provider não suportou ou erro (mensagem ficou no app do cliente,
+  ///           só sumiu no nosso inbox)
+  /// - null  = ainda não foi revogada
+  revokeSucceededRemote  Boolean?  @map("revoke_succeeded_remote")
+  revoker                User?     @relation("MessageRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?        @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, externalId], name: "uq_msg_conv_external")
+  @@index([conversationId, createdAt], name: "idx_msg_conv_time")
+  @@index([externalId], name: "idx_msg_external_id")
+  @@map("messages")
+}
+
+// ─── Departments / Routing ───────────────────────
+
+model Department {
+  id               String           @id @default(cuid())
+  organizationId   String           @map("organization_id")
+  name             String
+  description      String?
+  distributionRule DistributionRule @default(ROUND_ROBIN) @map("distribution_rule")
+  isDefault        Boolean          @default(false) @map("is_default")
+  slaFirstResponse Int?             @map("sla_first_response")
+  slaResolution    Int?             @map("sla_resolution")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agents        DepartmentAgent[]
+  conversations Conversation[]
+
+  @@map("departments")
+}
+
+model DepartmentAgent {
+  id                 String  @id @default(cuid())
+  departmentId       String  @map("department_id")
+  userOrganizationId String  @map("user_organization_id")
+  isActive           Boolean @default(true) @map("is_active")
+
+  department       Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userOrganization UserOrganization @relation(fields: [userOrganizationId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userOrganizationId])
+  @@map("department_agents")
+}
+
+// ─── Chatbot ─────────────────────────────────────
+
+model ChatbotFlow {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  name           String
+  description    String?
+  isActive       Boolean   @default(false) @map("is_active")
+  triggerType    String    @default("KEYWORD") @map("trigger_type")
+  triggerConfig  Json      @default("{}") @map("trigger_config")
+  variables      Json      @default("[]")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  nodes        ChatbotNode[]
+  channels     ChatbotFlowChannel[]
+
+  @@map("chatbot_flows")
+}
+
+model ChatbotNode {
+  id        String          @id @default(cuid())
+  flowId    String          @map("flow_id")
+  type      ChatbotNodeType
+  name      String?
+  positionX Float           @default(0) @map("position_x")
+  positionY Float           @default(0) @map("position_y")
+  data      Json            @default("{}")
+  edges     Json            @default("[]")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  flow ChatbotFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@map("chatbot_nodes")
+}
+
+model ChatbotFlowChannel {
+  flowId    String @map("flow_id")
+  channelId String @map("channel_id")
+
+  flow    ChatbotFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  channel Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([flowId, channelId])
+  @@map("chatbot_flow_channels")
+}
+
+// ─── Quick Replies ───────────────────────────────
+
+model QuickReply {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  shortcut       String
+  title          String
+  content        String
+  attachments    Json      @default("[]")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, shortcut])
+  @@map("quick_replies")
+}
+
+// ─── Tags ────────────────────────────────────────
+
+model Tag {
+  id             String @id @default(cuid())
+  organizationId String @map("organization_id")
+  name           String
+  color          String @default("#6B7280")
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversations ConversationTag[]
+  contacts      ContactTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model ConversationTag {
+  conversationId String @map("conversation_id")
+  tagId          String @map("tag_id")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, tagId])
+  @@map("conversation_tags")
+}
+
+model ContactTag {
+  contactId String @map("contact_id")
+  tagId     String @map("tag_id")
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+// ─── Notifications ───────────────────────────────
+
+model Notification {
+  id             String           @id @default(cuid())
+  recipientId    String           @map("recipient_id")
+  organizationId String           @map("organization_id")
+  type           NotificationType
+  title          String
+  body           String
+  data           Json             @default("{}")
+  isRead         Boolean          @default(false) @map("is_read")
+  readAt         DateTime?        @map("read_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  recipient    User         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, isRead, createdAt], name: "idx_notif_user_unread")
+  @@map("notifications")
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dhKey String   @map("p256dh_key")
+  authKey   String   @map("auth_key")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "idx_push_sub_user")
+  @@map("push_subscriptions")
+}
+
+model NotificationPreference {
+  id             String           @id @default(cuid())
+  userId         String           @map("user_id")
+  organizationId String           @map("organization_id")
+  type           NotificationType
+  inApp          Boolean          @default(true) @map("in_app")
+  browserPush    Boolean          @default(true) @map("browser_push")
+  sound          Boolean          @default(true)
+  dndStart       String?          @map("dnd_start")
+  dndEnd         String?          @map("dnd_end")
+
+  @@unique([userId, organizationId, type])
+  @@map("notification_preferences")
+}
+
+// ─── API Keys (pk_token) ─────────────────────────
+
+model ApiKey {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  userId         String    @map("user_id")
+  name           String
+  prefix         String    @db.VarChar(12)
+  hashedKey      String    @unique @map("hashed_key")
+  lastUsedAt     DateTime? @map("last_used_at")
+  expiresAt      DateTime? @map("expires_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId], name: "idx_apikey_org")
+  @@index([userId], name: "idx_apikey_user")
+  @@index([hashedKey], name: "idx_apikey_hash")
+  @@map("api_keys")
+}
+
+// ═══════════════════════════════════════════════════
+// AI AGENTS
+// ═══════════════════════════════════════════════════
+
+enum AiAgentKind {
+  ORCHESTRATOR
+  WORKER
+}
+
+enum AiAgentMode {
+  AUTONOMOUS
+  COPILOT
+  DISABLED
+}
+
+enum AiAgentTrigger {
+  ALWAYS
+  OFF_HOURS
+  NO_HUMAN_ASSIGNED
+}
+
+enum AiRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum AiFinalAction {
+  REPLIED
+  DELEGATED
+  HANDED_BACK
+  TRANSFERRED_TO_HUMAN
+  CLOSED_CONVERSATION
+  NO_ACTION
+}
+
+model AiAgent {
+  id             String  @id @default(cuid())
+  organizationId String  @map("organization_id")
+  name           String
+  description    String?
+  avatarUrl      String? @map("avatar_url")
+
+  kind         AiAgentKind @default(WORKER)
+  category     String?
+  capabilities String[]    @default([])
+
+  // ─── Organograma matricial ágil ────────────────────────────
+  // parentAgentId: chefia direta — quem este agent reporta. Null = raiz (CEO/diretoria).
+  // department: setor (VENDAS, SUPORTE, CS, CONTABIL, JURIDICO, FINANCEIRO, OPERACOES, ...).
+  // squad: time multi-funcional ortogonal ao departamento (ex: "Squad Inbound B2C").
+  parentAgentId String?   @map("parent_agent_id")
+  parent        AiAgent?  @relation("AgentHierarchy", fields: [parentAgentId], references: [id], onDelete: SetNull)
+  subordinates  AiAgent[] @relation("AgentHierarchy")
+  department    String?
+  squad         String?
+
+  modelId      String @map("model_id")
+  modelParams  Json?  @map("model_params")
+  systemPrompt String @map("system_prompt")
+  // Contexto vivo da operação — atualizado quase diariamente pelo
+  // operador. Ex: "Hoje teve aula sobre Skills. Ofereça Dominando
+  // Claude Code R$ 1.497 (link X) pra quem responder feedback positivo."
+  // Injetado no system prompt em todo run, marcado como cache_control
+  // ephemeral pra não inflar token cost — quando o JP edita, o cache
+  // é invalidado naturalmente pela mudança de hash.
+  operationalContext String?   @map("operational_context")
+  operationalContextUpdatedAt DateTime? @map("operational_context_updated_at")
+  temperature  Float  @default(0.7)
+  maxTokens    Int    @default(2048) @map("max_tokens")
+
+  canRespondDirectly Boolean @default(true) @map("can_respond_directly")
+  isActive           Boolean @default(true) @map("is_active")
+
+  // ─── Follow-up automation ──────────────────────────────────
+  // Quando este agent envia uma mensagem e o cliente não responde, o
+  // sistema agenda follow-ups automáticos seguindo essa cadência (em horas).
+  // Default: ORCHESTRATOR/sales = persistente; WORKER suporte = curto.
+  // Ajustável por agent no Jarvis.
+  followUpEnabled      Boolean @default(true) @map("follow_up_enabled")
+  followUpCadenceHours Int[]   @default([4, 24, 72, 168, 336]) @map("follow_up_cadence_hours")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  channels     AiAgentChannel[]
+  memories       AiAgentMemory[]
+  runs           AiAgentRun[]
+  handoffsFrom   AiAgentHandoff[]  @relation("HandoffFrom")
+  handoffsTo     AiAgentHandoff[]  @relation("HandoffTo")
+  pendingActions AiPendingAction[]
+  activeOn     Conversation[]   @relation("ActiveAgent")
+  skills       AiAgentSkill[]
+
+  @@index([organizationId], name: "idx_ai_agent_org")
+  @@index([organizationId, kind], name: "idx_ai_agent_org_kind")
+  @@index([parentAgentId], name: "idx_ai_agent_parent")
+  @@index([organizationId, department], name: "idx_ai_agent_org_dept")
+  @@map("ai_agents")
+}
+
+// ─── Tools (built-in registry + custom HTTP) ─────────────────
+
+enum AiToolSource {
+  CUSTOM_HTTP
+  CUSTOM_SQL
+}
+
+enum AiSkillSource {
+  BUILTIN // implementada em código (replyToConversation, transferToHuman, ...)
+  HTTP // invoca um AiTool de HTTP em path/method específico
+  SQL // invoca um AiTool de SQL com query específica
+}
+
+// ─── Tools (PROVIDERS de conexão — não são funções LLM-callable) ──
+
+model AiTool {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  name           String // human-readable, ex: "Trivapp", "Hotwebinar"
+  description    String       @db.Text
+  source         AiToolSource
+
+  // HTTP provider
+  httpBaseUrl String? @map("http_base_url") // ex: https://api.trivapp.com.br/api/v1
+  httpHeaders Json?   @map("http_headers") // headers padrão (auth, content-type, etc) com {{env.X}}
+
+  // SQL provider
+  sqlConnectionRef String? @map("sql_connection_ref") // nome da env var
+
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  skills AiSkill[]
+
+  @@unique([organizationId, name], name: "uq_tool_org_name")
+  @@index([organizationId], name: "idx_tool_org")
+  @@map("ai_tools")
+}
+
+// ─── Skills (FUNÇÕES LLM-callable) ────────────────────────────
+
+model AiSkill {
+  id                 String  @id @default(cuid())
+  organizationId     String  @map("organization_id")
+  name               String // function name, ex: "resetPassword". Único por org.
+  description        String  @db.Text // visto pelo LLM
+  category           String?
+  promptInstructions String? @map("prompt_instructions") @db.Text // injetado no system prompt quando ativa
+
+  source     AiSkillSource @default(HTTP)
+  parameters Json          @default("{}") // JSON Schema do input
+
+  // Pra source=HTTP|SQL: aponta pro provider
+  toolId String? @map("tool_id")
+
+  // Invocação HTTP (quando source=HTTP). Templates {{input.x}} {{ctx.x}} {{env.X}}.
+  httpMethod       String? @map("http_method")
+  httpPath         String? @map("http_path") // path relativo ao baseUrl da tool
+  httpHeadersExtra Json?   @map("http_headers_extra") // headers EXTRAS além do que vem da tool
+  httpBodyTemplate String? @map("http_body_template") @db.Text
+  responseMap      Json?   @map("response_map")
+
+  // Invocação SQL (quando source=SQL).
+  sqlQuery    String? @map("sql_query") @db.Text
+  sqlParamMap Json?   @map("sql_param_map")
+  sqlReadOnly Boolean @default(true) @map("sql_read_only")
+  sqlMaxRows  Int     @default(50) @map("sql_max_rows")
+
+  timeoutMs Int @default(15000) @map("timeout_ms")
+
+  currentVersion Int @default(1) @map("current_version")
+
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tool         AiTool?      @relation(fields: [toolId], references: [id], onDelete: SetNull)
+
+  agents   AiAgentSkill[]
+  versions AiSkillVersion[]
+
+  @@unique([organizationId, name], name: "uq_skill_org_name")
+  @@index([organizationId], name: "idx_skill_org")
+  @@index([toolId], name: "idx_skill_tool")
+  @@map("ai_skills")
+}
+
+// Snapshot de cada versão da skill — histórico de edição.
+model AiSkillVersion {
+  id      String @id @default(cuid())
+  skillId String @map("skill_id")
+  version Int
+
+  // snapshot completo da skill nessa versão
+  name               String
+  description        String        @db.Text
+  category           String?
+  promptInstructions String?       @map("prompt_instructions") @db.Text
+  source             AiSkillSource
+  parameters         Json          @default("{}")
+  toolId             String?       @map("tool_id")
+  httpMethod         String?       @map("http_method")
+  httpPath           String?       @map("http_path")
+  httpHeadersExtra   Json?         @map("http_headers_extra")
+  httpBodyTemplate   String?       @map("http_body_template") @db.Text
+  responseMap        Json?         @map("response_map")
+  sqlQuery           String?       @map("sql_query") @db.Text
+  sqlParamMap        Json?         @map("sql_param_map")
+  sqlReadOnly        Boolean       @default(true) @map("sql_read_only")
+  sqlMaxRows         Int           @default(50) @map("sql_max_rows")
+  timeoutMs          Int           @default(15000) @map("timeout_ms")
+
+  changedById String?  @map("changed_by_id")
+  changeNote  String?  @map("change_note")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  skill AiSkill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, version], name: "uq_skill_version")
+  @@index([skillId], name: "idx_skill_version_skill")
+  @@map("ai_skill_versions")
+}
+
+// N:N agent ↔ skill (única forma do agent ganhar capacidades)
+model AiAgentSkill {
+  agentId String @map("agent_id")
+  skillId String @map("skill_id")
+
+  /// Se true, esta skill quando chamada por este agent NÃO executa direto:
+  /// cria um AiPendingAction e aguarda aprovação humana via inbox.
+  /// Default false — agent decide autonomamente se chama ou não.
+  /// Configurável por (agent, skill) na UI Jarvis → Agentes → Skills.
+  requiresApproval Boolean @default(false) @map("requires_approval")
+
+  agent AiAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  skill AiSkill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, skillId])
+  @@map("ai_agent_skills")
+}
+
+model AiAgentChannel {
+  id        String         @id @default(cuid())
+  agentId   String         @map("agent_id")
+  channelId String         @map("channel_id")
+  mode      AiAgentMode    @default(AUTONOMOUS)
+  trigger   AiAgentTrigger @default(ALWAYS)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agent   AiAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, channelId])
+  @@index([channelId], name: "idx_ai_agent_channel_channel")
+  @@map("ai_agent_channels")
+}
+
+model AiAgentMemory {
+  id                String    @id @default(cuid())
+  agentId           String    @map("agent_id")
+  contactId         String    @map("contact_id")
+  summary           String?
+  facts             Json      @default("{}")
+  totalInteractions Int       @default(0) @map("total_interactions")
+  lastInteractionAt DateTime? @map("last_interaction_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  agent   AiAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, contactId])
+  @@index([agentId], name: "idx_ai_memory_agent")
+  @@index([contactId], name: "idx_ai_memory_contact")
+  @@map("ai_agent_memories")
+}
+
+model AiAgentRun {
+  id               String  @id @default(cuid())
+  organizationId   String  @map("organization_id")
+  conversationId   String  @map("conversation_id")
+  agentId          String  @map("agent_id")
+  triggerMessageId String? @map("trigger_message_id")
+
+  status       AiRunStatus    @default(RUNNING)
+  finalAction  AiFinalAction? @map("final_action")
+  errorMessage String?        @map("error_message")
+
+  modelId          String  @map("model_id")
+  inputTokens      Int     @default(0) @map("input_tokens")
+  outputTokens     Int     @default(0) @map("output_tokens")
+  cacheReadTokens  Int     @default(0) @map("cache_read_tokens")
+  cacheWriteTokens Int     @default(0) @map("cache_write_tokens")
+  costUsd          Decimal @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  durationMs       Int?    @map("duration_ms")
+
+  /// Intent classificado pelo IntentClassifier (Haiku). NULL = não passou pelo classifier.
+  classifiedIntent     String?  @map("classified_intent")
+  classifierConfidence Decimal? @map("classifier_confidence") @db.Decimal(4, 3)
+  /// True se o classifier teve confidence alta o bastante pra pular o orchestrator (Augusto).
+  skippedOrchestrator  Boolean  @default(false) @map("skipped_orchestrator")
+
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  conversation    Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent           AiAgent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolCalls       AiToolCall[]
+  pendingActions  AiPendingAction[]
+
+  @@index([organizationId, startedAt], name: "idx_ai_run_org_time")
+  @@index([conversationId], name: "idx_ai_run_conv")
+  @@index([agentId], name: "idx_ai_run_agent")
+  @@map("ai_agent_runs")
+}
+
+model AiToolCall {
+  id         String   @id @default(cuid())
+  runId      String   @map("run_id")
+  toolName   String   @map("tool_name")
+  input      Json
+  output     Json?
+  error      String?
+  durationMs Int?     @map("duration_ms")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  run AiAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId], name: "idx_ai_tool_call_run")
+  @@map("ai_tool_calls")
+}
+
+model AiAgentHandoff {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  fromAgentId    String?  @map("from_agent_id")
+  toAgentId      String   @map("to_agent_id")
+  reason         String?
+  briefing       String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  fromAgent    AiAgent?     @relation("HandoffFrom", fields: [fromAgentId], references: [id], onDelete: SetNull)
+  toAgent      AiAgent      @relation("HandoffTo", fields: [toAgentId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId], name: "idx_ai_handoff_conv")
+  @@map("ai_agent_handoffs")
+}
+
+// ─── Pending actions (confirmação de ações destrutivas) ──────────
+//
+// Tools destrutivas (grantAccess, resetPassword, transferToHuman) NÃO executam
+// direto — criam um PendingAction que precisa ser aprovado por um operador
+// humano antes da execução real. Substitui o storage Redis interim que o
+// agent-6 criou em `confirmations/pending-action.storage.ts`.
+enum AiPendingActionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+enum AiPendingActionImpact {
+  low
+  medium
+  high
+  critical
+}
+
+model AiPendingAction {
+  id             String                @id @default(cuid())
+  agentRunId     String                @map("agent_run_id")
+  conversationId String                @map("conversation_id")
+  agentId        String                @map("agent_id")
+  toolName       String                @map("tool_name")
+  args           Json
+  /// preview = { action, impact, rollback?, affectedEntity? }
+  preview        Json
+  status         AiPendingActionStatus @default(PENDING)
+  expiresAt      DateTime              @map("expires_at")
+
+  approvedBy      String?   @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  rejectedBy      String?   @map("rejected_by")
+  rejectedAt      DateTime? @map("rejected_at")
+  rejectedReason  String?   @map("rejected_reason")
+  executionResult Json?     @map("execution_result")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  run          AiAgentRun   @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent        AiAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status], name: "idx_ai_pending_conv_status")
+  @@index([status, expiresAt], name: "idx_ai_pending_status_exp")
+  @@index([agentRunId], name: "idx_ai_pending_run")
+  @@map("ai_pending_actions")
+}
+
+// ─── Inbox views (saved filtered inboxes per user) ──────────
+//
+// Each user can create personal "inbox views" with custom filters
+// (channel, status, assignee, tags). The default "Geral" inbox is
+// hard-coded in the UI and shows everything; custom views live in this
+// table and are scoped to the creator.
+model InboxView {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  name           String
+  icon           String? // lucide-react icon name (Inbox, MessageSquare, ...)
+  color          String? // tailwind color hint: "green", "pink", "violet", ...
+  filters        Json     @default("{}") // { channelIds, statuses, assignedTo, tagIds, hasUnread }
+  metadata       Json     @default("{}") // { builtin: true } — locks view from rename/delete in UI
+  order          Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, order])
+  @@index([organizationId, userId])
+  @@map("inbox_views")
+}
+
+// ─── Conversation reads (unread counter per user) ──────────
+//
+// Per-user "last seen" pointer for a conversation. Reading the inbox
+// or opening a thread upserts this row with lastReadAt = now and the
+// id of the latest message at that moment. The unread count for a
+// (user, conversation) pair = COUNT(messages WHERE direction=INBOUND
+// AND createdAt > lastReadAt). When no row exists, the user has never
+// opened the conversation — every inbound message counts as unread.
+model ConversationRead {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  conversationId    String   @map("conversation_id")
+  lastReadMessageId String?  @map("last_read_message_id")
+  lastReadAt        DateTime @default(now()) @map("last_read_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationId])
+  @@index([userId])
+  @@index([conversationId])
+  @@map("conversation_reads")
+}
+
+// ─── CRM Pipelines (Kanban) ──────────────────────
+//
+// Org-level pipelines (vendas, suporte, onboarding, etc). Each pipeline
+// has ordered stages (columns) and cards live on a single stage at a
+// time. Cards can be linked to a contact/conversation but exist
+// independently — the kanban is a CRM layer, not a conversation view.
+
+enum PipelineStageType {
+  NORMAL
+  WON
+  LOST
+}
+
+enum CardStatus {
+  OPEN // ainda em movimento entre stages
+  WON // fechou ganho
+  LOST // fechou perdido
+}
+
+model Pipeline {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  description    String?
+  icon           String? // lucide-react icon name
+  color          String? // tailwind color hint
+  isDefault      Boolean  @default(false) @map("is_default")
+  archived       Boolean  @default(false)
+  order          Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages       PipelineStage[]
+  cards        Card[]
+
+  @@index([organizationId, archived])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id         String            @id @default(cuid())
+  pipelineId String            @map("pipeline_id")
+  name       String
+  color      String?
+  type       PipelineStageType @default(NORMAL)
+  order      Int               @default(0)
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  cards    Card[]
+
+  @@index([pipelineId, order])
+  @@map("pipeline_stages")
+}
+
+model Card {
+  id             String     @id @default(cuid())
+  organizationId String     @map("organization_id")
+  pipelineId     String     @map("pipeline_id")
+  stageId        String     @map("stage_id")
+  title          String
+  description    String?
+  value          Decimal?   @db.Decimal(14, 2)
+  currency       String     @default("BRL")
+  status         CardStatus @default(OPEN)
+  order          Int        @default(0)
+
+  contactId      String? @map("contact_id")
+  conversationId String? @map("conversation_id")
+  assignedToId   String? @map("assigned_to_id")
+
+  metadata     Json      @default("{}")
+  closedAt     DateTime? @map("closed_at")
+  closedReason String?   @map("closed_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline     Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage        PipelineStage @relation(fields: [stageId], references: [id])
+  contact      Contact?      @relation("CardContact", fields: [contactId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation("CardConversation", fields: [conversationId], references: [id], onDelete: SetNull)
+  assignedTo   User?         @relation("CardAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineId, stageId, order])
+  @@index([organizationId, status])
+  @@index([contactId])
+  @@index([conversationId])
+  @@map("cards")
+}
+
+// ─── Product Catalog ─────────────────────────────
+//
+// Org-level product/service catalog. Sales agents see a compact list of
+// every product (name + 1-line) in their system prompt as a stable,
+// cacheable block — and can call the `getProductPitch` skill with a
+// product slug to fetch full pitch + price + checkout link when actually
+// recommending. Hybrid approach scales beyond 10-15 products without
+// blowing up the prompt budget.
+model Product {
+  id              String   @id @default(cuid())
+  organizationId  String   @map("organization_id")
+  slug            String // "maestria", "plantao-mensal"
+  name            String // "Maestr.IA — Mentoria de Claude Code"
+  category        String? // "Mentoria", "Curso", "Plantão"
+  shortLine       String // 1 frase pra lista inline no prompt
+  pitch           String   @db.Text // texto completo entregue pela skill
+  price           String? // texto livre: "R$ 4.500 ou 6x R$ 750"
+  paymentLink     String?  @map("payment_link")
+  targetAudience  String?  @map("target_audience")
+  differentiators String[] @default([])
+  isActive        Boolean  @default(true) @map("is_active")
+  order           Int      @default(0)
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive, order])
+  @@map("products")
+}
+
+// ═══════════════════════════════════════════════════
+// AUTOMATIONS — internal rule engine (WHEN → THEN)
+// ═══════════════════════════════════════════════════
+//
+// Architecture (read this before touching anything):
+//
+// 1. Domain services (TagsService, MessagesService, ConversationFsmService)
+//    write `OutboxEvent` rows in the SAME transaction as the domain mutation.
+//    This is the outbox pattern: if the TX rolls back, the event is gone too,
+//    so we never publish events for state that doesn't exist.
+//
+// 2. `OutboxPoller` (cron, 1s) reads `status=PENDING` rows, marks them
+//    PROCESSING with a worker lease, and pushes to the BullMQ queue
+//    `automation-events` with a `dedupKey` so re-deliveries collapse.
+//
+// 3. `AutomationEventProcessor` (BullMQ worker) acquires a Redis lock on
+//    `contact:<id>` to serialize executions on the same lead, finds matching
+//    `Automation` rows for (orgId, trigger, conditions match), and runs each
+//    in sequence respecting `cascadeDepth <= 4` and the trace-level loop
+//    detector (a Set of (automationId, contactId) already visited in the
+//    current event chain).
+//
+// 4. Each run produces one `AutomationRun` row with structured logs of
+//    every action attempted, even when skipped. This is the audit trail
+//    surfaced on the UI.
+//
+// Kill switch: env `AUTOMATIONS_ENABLED=false` makes the worker drop every
+// job without executing. Set this BEFORE any incident response.
+
+enum AutomationTrigger {
+  TAG_ADDED
+  TAG_REMOVED
+  MESSAGE_RECEIVED
+  CONVERSATION_STATUS_CHANGED
+  CONVERSATION_ASSIGNED
+}
+
+enum AutomationRunStatus {
+  SUCCESS // todas as actions executaram
+  PARTIAL // uma ou mais actions falharam mas o run continuou (continueOnError)
+  FAILED // run abortado (action critica falhou ou erro de infra)
+  SKIPPED // condições não casaram, ou rate limit, ou kill switch
+}
+
+enum OutboxEventStatus {
+  PENDING // aguardando poller
+  PROCESSING // poller pegou, em fila do worker
+  PROCESSED // worker confirmou
+  FAILED // worker falhou após retries
+  DLQ // jogado pro dead letter queue
+}
+
+// Append-only log de eventos de domínio. Escrito na MESMA transação que a
+// mutação que originou o evento, garantindo "exactly published once or
+// never". O poller é o único que muta `status`/`processedAt`. Nunca delete
+// linhas aqui sem garantia de retenção (90d default).
+model OutboxEvent {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  trigger        AutomationTrigger
+  payload        Json // { contactId?, conversationId?, channelId?, tagId?, fromStatus?, toStatus?, ... }
+  // dedupKey: idempotência. Webhooks reentregues geram outbox events com
+  // mesma dedupKey → @@unique evita duplicação. Format livre por trigger,
+  // mas tipicamente "<trigger>:<entityId>:<contextId>".
+  dedupKey       String?           @unique @map("dedup_key")
+  // traceId: identifica uma cadeia causal de eventos. Quando uma action de
+  // automation produz outro evento (cascade), o traceId é propagado. Loop
+  // detection vive aqui.
+  traceId        String            @map("trace_id")
+  // cascadeDepth: 0 = evento original (de UI/webhook). N = N actions de
+  // automation atrás. Worker recusa execução quando depth > 4.
+  cascadeDepth   Int               @default(0) @map("cascade_depth")
+  // Snapshot opcional de quem causou (user que clicou ou system).
+  actorId        String?           @map("actor_id")
+  status         OutboxEventStatus @default(PENDING)
+  attemptCount   Int               @default(0) @map("attempt_count")
+  lastError      String?           @map("last_error") @db.Text
+  // Lease pro poller (worker que pegou + quando expira). Evita dois pollers
+  // pegarem o mesmo evento. Reset quando expira.
+  leasedBy       String?           @map("leased_by")
+  leasedUntil    DateTime?         @map("leased_until")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  processedAt    DateTime?         @map("processed_at")
+
+  @@index([status, createdAt], name: "idx_outbox_status_time")
+  @@index([organizationId, trigger, createdAt(sort: Desc)], name: "idx_outbox_org_trigger")
+  @@index([traceId], name: "idx_outbox_trace")
+  @@map("outbox_events")
+}
+
+model Automation {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  name           String
+  description    String?
+  trigger        AutomationTrigger
+  // conditions: 2-level group structure validated at save time.
+  //   { match: "OR", groups: [
+  //       { match: "AND", rules: [{ field, op, value }, ...] },
+  //       ...
+  //   ]}
+  // Empty conditions = always match (regra dispara em todo evento do trigger).
+  conditions     Json              @default("{}")
+  // actions: ordered array of { type, params, continueOnError }.
+  actions        Json              @default("[]")
+
+  // schemaVersion: bumped when conditions/actions JSON shape changes.
+  // Workers refuse to run automations with unknown schemaVersion.
+  schemaVersion  Int               @default(1) @map("schema_version")
+
+  // Estado operacional
+  enabled        Boolean           @default(false)
+  // actorId: snapshot do criador. Se este user perder permissão / sair do
+  // workspace, o run é bloqueado e a automation pausada.
+  actorId        String            @map("actor_id")
+  priority       Int               @default(0)
+
+  // Auto-disable em falhas consecutivas
+  consecutiveFailures Int     @default(0) @map("consecutive_failures")
+  autoPausedAt        DateTime? @map("auto_paused_at")
+  autoPausedReason    String?   @map("auto_paused_reason")
+
+  // Rate limit por (automation, conversation): max execuções em 60s
+  rateLimitPerMinute Int @default(10) @map("rate_limit_per_minute")
+
+  // Telemetria
+  lastRunAt   DateTime? @map("last_run_at")
+  runCount    Int       @default(0) @map("run_count")
+  successCount Int      @default(0) @map("success_count")
+  failureCount Int      @default(0) @map("failure_count")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  runs AutomationRun[]
+
+  @@index([organizationId, enabled, trigger], name: "idx_automation_org_enabled")
+  @@index([organizationId, deletedAt], name: "idx_automation_org_deleted")
+  @@map("automations")
+}
+
+model AutomationRun {
+  id             String              @id @default(cuid())
+  automationId   String              @map("automation_id")
+  organizationId String              @map("organization_id")
+  // outboxEventId: liga o run ao evento que disparou (debug + tracing)
+  outboxEventId  String              @map("outbox_event_id")
+  traceId        String              @map("trace_id")
+
+  status         AutomationRunStatus
+  // errorCode: enum-ish curto pra UI agrupar. Ex:
+  //   condition_not_matched | rate_limited | invalid_ref | external_api_error
+  //   timeout | actor_unauthorized | kill_switch | cascade_max_depth | loop_detected
+  errorCode      String?             @map("error_code")
+  errorMessage   String?             @map("error_message") @db.Text
+
+  // Snapshot do payload do evento (debug)
+  triggerPayload Json                @map("trigger_payload")
+  // actionsLog: array de { index, type, status, durationMs, error?, output? }
+  actionsLog     Json                @default("[]") @map("actions_log")
+
+  durationMs     Int?                @map("duration_ms")
+  startedAt      DateTime            @default(now()) @map("started_at")
+  finishedAt     DateTime?           @map("finished_at")
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId, startedAt(sort: Desc)], name: "idx_run_automation_time")
+  @@index([organizationId, startedAt(sort: Desc)], name: "idx_run_org_time")
+  @@index([traceId], name: "idx_run_trace")
+  @@index([status, startedAt(sort: Desc)], name: "idx_run_status_time")
+  @@map("automation_runs")
+}

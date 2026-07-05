@@ -16,6 +16,9 @@ import { InstagramModule } from './adapters/instagram/instagram.module';
 import { InstagramInboundAdapter } from './adapters/instagram/instagram.inbound-adapter';
 import { InstagramOutboundAdapter } from './adapters/instagram/instagram.outbound-adapter';
 import { InstagramSyncAdapter } from './adapters/instagram/instagram.sync-adapter';
+import { ZApiModule } from './adapters/z-api/zapi.module';
+import { ZApiInboundAdapter } from './adapters/z-api/zapi.inbound-adapter';
+import { ZApiOutboundAdapter } from './adapters/z-api/zapi.outbound-adapter';
 import { ChannelSyncOrchestrator } from './sync/channel-sync.orchestrator';
 import { ChannelSyncProcessor } from './sync/channel-sync.processor';
 import { CHANNEL_SYNC_QUEUE } from './sync/channel-sync.constants';
@@ -38,6 +41,7 @@ import { WebhookThrottleGuard } from './webhook-throttle.guard';
     ZappfyModule,
     WhatsAppOfficialModule,
     InstagramModule,
+    ZApiModule,
     forwardRef(() => MessagingModule),
   ],
   controllers: [WebhookGatewayController, ChannelsController],
@@ -70,12 +74,15 @@ export class ChannelHubModule implements OnModuleInit {
     private readonly instagramInbound: InstagramInboundAdapter,
     private readonly instagramOutbound: InstagramOutboundAdapter,
     private readonly instagramSync: InstagramSyncAdapter,
+    private readonly zapiInbound: ZApiInboundAdapter,
+    private readonly zapiOutbound: ZApiOutboundAdapter,
   ) {}
 
   onModuleInit() {
     this.registry.register(this.zappfyInbound, this.zappfyOutbound);
     this.registry.register(this.waOfficialInbound, this.waOfficialOutbound);
     this.registry.register(this.instagramInbound, this.instagramOutbound);
+    this.registry.register(this.zapiInbound, this.zapiOutbound);
     this.registry.registerHistorySync(this.zappfySync);
     this.registry.registerHistorySync(this.instagramSync);
   }

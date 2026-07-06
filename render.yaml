@@ -1,28 +1,24 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Chat BullQ — API (NestJS + Prisma)  ·  Blueprint Render — TIER FREE
-# Provisiona API (Docker) + PostgreSQL gerenciado + Key Value (Redis).
-# Conecte ESTE repositório no Render via "New > Blueprint".
+# Chat BullQ — API (NestJS + Prisma)
+# Blueprint Render: provisiona a API (Docker) + PostgreSQL gerenciado + Key Value
+# (Redis). Conecte ESTE repositório no Render via "New > Blueprint".
 # Docs: https://render.com/docs/blueprint-spec
-#
-# ⚠️ FREE: Postgres expira em ~30 dias · web hiberna após 15min sem tráfego ·
-#    web free NÃO suporta disco → uploads ficam efêmeros (somem a cada deploy).
-#    Para produção, troque os planos (ver comentários) e re-adicione o disco.
 # ─────────────────────────────────────────────────────────────────────────────
 
 databases:
   - name: chat-bullq-db
     databaseName: chat_bullq
     user: chat_bullq
-    plan: free                 # produção: basic-256mb / basic-1gb+
+    plan: basic-256mb          # troque p/ free (expira em 30 dias) ou basic-1gb+
     region: oregon
     postgresMajorVersion: "16"
-    ipAllowList: []            # somente conexões internas
+    ipAllowList: []            # vazio = somente conexões internas (rede privada)
 
 services:
   # ── Redis / Key Value (filas BullMQ, presença, idempotência, sessões) ──
   - type: keyvalue
     name: chat-bullq-redis
-    plan: free                 # free = 25MB. produção: starter+
+    plan: starter              # free = 25MB (ok p/ testes). starter+ p/ produção
     region: oregon
     ipAllowList: []            # somente acesso interno
     maxmemoryPolicy: noeviction  # OBRIGATÓRIO p/ BullMQ não descartar jobs
@@ -31,23 +27,24 @@ services:
   - type: web
     name: chat-bullq-api
     runtime: docker
-    plan: free                 # produção: starter (sem hibernação + disco)
+    plan: starter
     region: oregon
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /docs
-    autoDeployTrigger: commit  # deploy automático a cada push
-    # NOTA: no plano free não é permitido 'disk:'. Em produção, re-adicione:
-    #   disk:
-    #     name: uploads
-    #     mountPath: /app/uploads
-    #     sizeGB: 1
+    healthCheckPath: /docs     # Swagger; mesmo path do HEALTHCHECK do Dockerfile
+    autoDeployTrigger: commit  # deploy automático a cada push (deploy via GitHub)
+    disk:
+      name: uploads            # mídias re-hospedadas (WhatsApp/áudios) persistem
+      mountPath: /app/uploads
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      # Banco — string de conexão do Postgres gerenciado acima
       - key: DATABASE_URL
         fromDatabase:
           name: chat-bullq-db
           property: connectionString
+      # Redis — host/porta internos do Key Value acima
       - key: REDIS_HOST
         fromService:
           type: keyvalue
@@ -58,6 +55,7 @@ services:
           type: keyvalue
           name: chat-bullq-redis
           property: port
+      # JWT — gerados automaticamente (256-bit base64) na 1ª criação
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -68,10 +66,12 @@ services:
         value: 7d
       - key: UPLOADS_DIR
         value: /app/uploads
+      # Preencha no painel (Dashboard pede na criação) — depende do domínio do front
       - key: CORS_ORIGIN
         sync: false            # ex.: https://chat-bullq-web.onrender.com
       - key: APP_URL
         sync: false            # URL pública desta API
+      # Chaves de IA / Push — opcionais, preencha conforme habilita features
       - key: OPENAI_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY

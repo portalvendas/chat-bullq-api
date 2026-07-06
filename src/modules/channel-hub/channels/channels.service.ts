@@ -14,6 +14,7 @@ import { ChannelAdapterRegistry } from '../channel-adapter.registry';
 import { ZappfyHttpClient } from '../adapters/zappfy/zappfy.http-client';
 import { WhatsAppOfficialHttpClient } from '../adapters/whatsapp-official/whatsapp-official.http-client';
 import { InstagramHttpClient } from '../adapters/instagram/instagram.http-client';
+import { ZApiHttpClient } from '../adapters/z-api/zapi.http-client';
 import { ChannelSyncOrchestrator } from '../sync/channel-sync.orchestrator';
 import {
   ChannelAccessService,
@@ -30,6 +31,7 @@ export class ChannelsService {
     private readonly zappfyHttpClient: ZappfyHttpClient,
     private readonly waOfficialHttpClient: WhatsAppOfficialHttpClient,
     private readonly instagramHttpClient: InstagramHttpClient,
+    private readonly zapiHttpClient: ZApiHttpClient,
     private readonly syncOrchestrator: ChannelSyncOrchestrator,
     private readonly prisma: PrismaService,
     private readonly channelAccess: ChannelAccessService,
@@ -346,6 +348,16 @@ export class ChannelsService {
               accountType: info.account_type,
               name: info.name,
             },
+          };
+        }
+
+        case ChannelType.WHATSAPP_ZAPI: {
+          const status = await this.zapiHttpClient.getInstanceStatus(channel);
+          const connected = status?.connected === true;
+          return {
+            success: true,
+            status: connected ? 'connected' : String(status?.error || 'disconnected'),
+            data: status,
           };
         }
 

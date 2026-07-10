@@ -25,6 +25,6 @@ import { MercadoLivreOAuthController } from './mercadolivre-oauth.controller';
     MercadoLivreOutboundAdapter,
     MercadoLivreQuestionsProcessor,
   ],
-  exports: [MercadoLivreInboundAdapter, MercadoLivreOutboundAdapter],
+  exports: [MercadoLivreInboundAdapter, MercadoLivreOutboundAdapter, MercadoLivreHttpClient],
 })
 export class MercadoLivreModule {}

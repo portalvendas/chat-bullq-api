@@ -15,6 +15,7 @@ import { ZappfyHttpClient } from '../adapters/zappfy/zappfy.http-client';
 import { WhatsAppOfficialHttpClient } from '../adapters/whatsapp-official/whatsapp-official.http-client';
 import { InstagramHttpClient } from '../adapters/instagram/instagram.http-client';
 import { ZApiHttpClient } from '../adapters/z-api/zapi.http-client';
+import { MercadoLivreHttpClient } from '../adapters/mercado-livre/mercadolivre.http-client';
 import { ChannelSyncOrchestrator } from '../sync/channel-sync.orchestrator';
 import {
   ChannelAccessService,
@@ -32,6 +33,7 @@ export class ChannelsService {
     private readonly waOfficialHttpClient: WhatsAppOfficialHttpClient,
     private readonly instagramHttpClient: InstagramHttpClient,
     private readonly zapiHttpClient: ZApiHttpClient,
+    private readonly mlHttpClient: MercadoLivreHttpClient,
     private readonly syncOrchestrator: ChannelSyncOrchestrator,
     private readonly prisma: PrismaService,
     private readonly channelAccess: ChannelAccessService,
@@ -358,6 +360,15 @@ export class ChannelsService {
             success: true,
             status: connected ? 'connected' : String(status?.error || 'disconnected'),
             data: status,
+          };
+        }
+
+        case ChannelType.MERCADO_LIVRE: {
+          const me = await this.mlHttpClient.get(channel, '/users/me');
+          return {
+            success: true,
+            status: 'connected',
+            data: { sellerId: me?.id, nickname: me?.nickname },
           };
         }
 

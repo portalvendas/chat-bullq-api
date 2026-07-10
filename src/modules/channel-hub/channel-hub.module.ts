@@ -19,6 +19,9 @@ import { InstagramSyncAdapter } from './adapters/instagram/instagram.sync-adapte
 import { ZApiModule } from './adapters/z-api/zapi.module';
 import { ZApiInboundAdapter } from './adapters/z-api/zapi.inbound-adapter';
 import { ZApiOutboundAdapter } from './adapters/z-api/zapi.outbound-adapter';
+import { MercadoLivreModule } from './adapters/mercado-livre/mercadolivre.module';
+import { MercadoLivreInboundAdapter } from './adapters/mercado-livre/mercadolivre.inbound-adapter';
+import { MercadoLivreOutboundAdapter } from './adapters/mercado-livre/mercadolivre.outbound-adapter';
 import { ChannelSyncOrchestrator } from './sync/channel-sync.orchestrator';
 import { ChannelSyncProcessor } from './sync/channel-sync.processor';
 import { CHANNEL_SYNC_QUEUE } from './sync/channel-sync.constants';
@@ -42,6 +45,7 @@ import { WebhookThrottleGuard } from './webhook-throttle.guard';
     WhatsAppOfficialModule,
     InstagramModule,
     ZApiModule,
+    MercadoLivreModule,
     forwardRef(() => MessagingModule),
   ],
   controllers: [WebhookGatewayController, ChannelsController],
@@ -76,6 +80,8 @@ export class ChannelHubModule implements OnModuleInit {
     private readonly instagramSync: InstagramSyncAdapter,
     private readonly zapiInbound: ZApiInboundAdapter,
     private readonly zapiOutbound: ZApiOutboundAdapter,
+    private readonly mlInbound: MercadoLivreInboundAdapter,
+    private readonly mlOutbound: MercadoLivreOutboundAdapter,
   ) {}
 
   onModuleInit() {
@@ -83,6 +89,7 @@ export class ChannelHubModule implements OnModuleInit {
     this.registry.register(this.waOfficialInbound, this.waOfficialOutbound);
     this.registry.register(this.instagramInbound, this.instagramOutbound);
     this.registry.register(this.zapiInbound, this.zapiOutbound);
+    this.registry.register(this.mlInbound, this.mlOutbound);
     this.registry.registerHistorySync(this.zappfySync);
     this.registry.registerHistorySync(this.instagramSync);
   }

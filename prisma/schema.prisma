@@ -26,6 +26,7 @@ enum ChannelType {
   WHATSAPP_ZAPPFY
   WHATSAPP_ZAPI
   INSTAGRAM
+  MERCADO_LIVRE
 }
 
 // ORG    = todos os membros da org enxergam (default — preserva o comportamento legado)

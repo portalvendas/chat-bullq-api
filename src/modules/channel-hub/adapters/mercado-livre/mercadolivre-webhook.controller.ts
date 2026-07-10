@@ -18,7 +18,7 @@ import { PrismaService } from '../../../../database/prisma.service';
  * Roteia o canal por `user_id` (== config.sellerId).
  */
 @ApiTags('Webhooks')
-@Controller('webhooks/mercado-livre')
+@Controller('integrations/mercado-livre')
 export class MercadoLivreWebhookController {
   private readonly logger = new Logger(MercadoLivreWebhookController.name);
 
@@ -27,7 +27,7 @@ export class MercadoLivreWebhookController {
     @InjectQueue('mercadolivre-inbound') private readonly queue: Queue,
   ) {}
 
-  @Post()
+  @Post('webhook')
   @Public()
   @HttpCode(200)
   @ApiOperation({ summary: 'Recebe notificações do Mercado Livre' })

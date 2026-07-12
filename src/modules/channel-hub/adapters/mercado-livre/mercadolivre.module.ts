@@ -6,6 +6,7 @@ import { MercadoLivreMessageMapper } from './mercadolivre.message-mapper';
 import { MercadoLivreInboundAdapter } from './mercadolivre.inbound-adapter';
 import { MercadoLivreOutboundAdapter } from './mercadolivre.outbound-adapter';
 import { MercadoLivreQuestionsProcessor } from './mercadolivre.questions.processor';
+import { MercadoLivreProductsService } from './mercadolivre.products.service';
 import { MercadoLivreWebhookController } from './mercadolivre-webhook.controller';
 import { MercadoLivreOAuthController } from './mercadolivre-oauth.controller';
 
@@ -24,7 +25,13 @@ import { MercadoLivreOAuthController } from './mercadolivre-oauth.controller';
     MercadoLivreInboundAdapter,
     MercadoLivreOutboundAdapter,
     MercadoLivreQuestionsProcessor,
+    MercadoLivreProductsService,
   ],
-  exports: [MercadoLivreInboundAdapter, MercadoLivreOutboundAdapter, MercadoLivreHttpClient],
+  exports: [
+    MercadoLivreInboundAdapter,
+    MercadoLivreOutboundAdapter,
+    MercadoLivreHttpClient,
+    MercadoLivreProductsService,
+  ],
 })
 export class MercadoLivreModule {}

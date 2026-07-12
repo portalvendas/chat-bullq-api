@@ -6,6 +6,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   BadRequestException,
+  Param,
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ApiKeyAuthGuard } from '../../../common/guards';
@@ -38,5 +39,13 @@ export class PublicMercadoLivreController {
       throw new BadRequestException('Parâmetro "q" é obrigatório');
     }
     return this.service.search(orgId, q.trim(), limit);
+  }
+
+  @Get('products/:id')
+  @ApiOperation({
+    summary: 'Detalhe de um anúncio (descrição longa + perguntas/respostas do anúncio)',
+  })
+  async detail(@CurrentOrg('id') orgId: string, @Param('id') id: string) {
+    return this.service.getDetail(orgId, id);
   }
 }

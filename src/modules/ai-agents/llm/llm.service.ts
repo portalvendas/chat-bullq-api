@@ -229,7 +229,10 @@ export class LlmService {
       if (!part.text || part.text.length === 0) continue;
       const block: Anthropic.TextBlockParam = { type: 'text', text: part.text };
       if ('cache' in part && part.cache) {
-        block.cache_control = { type: 'ephemeral' };
+        // TTL 1h no prefixo estável do system: mantém quente entre turns
+        // espaçados da mesma conversa (atendimento tem gaps > 5min). Vem
+        // depois das tools (também 1h) no prefixo — ordem 1h→1h é válida.
+        block.cache_control = { type: 'ephemeral', ttl: '1h' };
       }
       blocks.push(block);
     }
@@ -330,6 +333,14 @@ export class LlmService {
    * tool como "cache toda a array de tools até aqui" — então marcar
    * o último basta pra cachear todas (95%+ economia em tools que
    * não mudam entre turns).
+   *
+   * TTL de 1h (não os 5min padrão): as tools são IDÊNTICAS entre todas as
+   * conversas e runs (vêm antes do system no prefixo), então o cache delas é
+   * reaproveitado globalmente. Com 1h o bloco fica quente ao longo da hora
+   * inteira de tráfego → quase todo call LÊ as tools (0.1x) em vez de
+   * REESCREVER (1.25x). A escrita 1h custa 2x uma vez, mas é amortizada por
+   * dezenas de leituras. Ordem do prefixo (tools→system): TTL maior (1h) vem
+   * antes do menor (system 5min), como a API exige.
    */
   private toAnthropicTools(tools: LlmToolDefinition[]): Anthropic.ToolUnion[] {
     const result: Anthropic.Tool[] = tools.map((t) => ({
@@ -338,7 +349,7 @@ export class LlmService {
       input_schema: t.parameters as Anthropic.Tool.InputSchema,
     }));
     if (result.length > 0) {
-      result[result.length - 1].cache_control = { type: 'ephemeral' };
+      result[result.length - 1].cache_control = { type: 'ephemeral', ttl: '1h' };
     }
     return result;
   }

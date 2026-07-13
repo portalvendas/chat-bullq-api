@@ -65,6 +65,17 @@ interface RunInput {
 
 const MAX_CHAIN_DEPTH = 3;
 
+// ─── Roteamento por complexidade (economia) ──────────────────────────
+// Quando o classificador (Haiku) tem confiança alta e o intent é claro
+// (`skippedOrchestrator` = true), o caso é simples o bastante pro modelo
+// barato responder. Casos que caem no orchestrator (ambíguo/escalação) ou
+// sub-agentes em auto-chain mantêm o modelo do agente (tipicamente Sonnet).
+// Flag pra desligar sem redeploy (AI_COMPLEXITY_ROUTING=false) e modelo
+// barato configurável (AI_CHEAP_MODEL).
+const COMPLEXITY_ROUTING_ENABLED =
+  process.env.AI_COMPLEXITY_ROUTING !== 'false';
+const CHEAP_MODEL_ID = process.env.AI_CHEAP_MODEL ?? 'claude-haiku-4-5';
+
 @Injectable()
 export class AiAgentRunnerService {
   private readonly logger = new Logger(AiAgentRunnerService.name);
@@ -119,6 +130,19 @@ export class AiAgentRunnerService {
       return;
     }
 
+    // Modelo efetivo do run: barato pra casos simples/confiantes, o do
+    // agente pro resto. Usado no registro do run, no realtime e na chamada
+    // ao LLM — tudo reflete o modelo REAL usado (custo/auditoria corretos).
+    const effectiveModelId =
+      COMPLEXITY_ROUTING_ENABLED && selection?.skippedOrchestrator === true
+        ? CHEAP_MODEL_ID
+        : agent.modelId;
+    if (effectiveModelId !== agent.modelId) {
+      this.logger.log(
+        `[complexity-routing] conv=${conversation.id} intent=${selection?.classifiedIntent ?? '?'} conf=${selection?.classifierConfidence ?? '?'} → modelo barato ${effectiveModelId} (agente usaria ${agent.modelId})`,
+      );
+    }
+
     const [organization, channel, contact, recentMessages, memory, catalog] =
       await Promise.all([
         this.prisma.organization.findUniqueOrThrow({
@@ -155,7 +179,7 @@ export class AiAgentRunnerService {
         conversationId: conversation.id,
         agentId: agent.id,
         triggerMessageId: triggerMessage.id,
-        modelId: agent.modelId,
+        modelId: effectiveModelId,
         status: AiRunStatus.RUNNING,
         classifiedIntent: selection?.classifiedIntent ?? null,
         classifierConfidence: selection?.classifierConfidence ?? null,
@@ -170,7 +194,7 @@ export class AiAgentRunnerService {
       conversationId: conversation.id,
       runId: run.id,
       agent: { id: agent.id, name: agent.name, kind: agent.kind },
-      modelId: agent.modelId,
+      modelId: effectiveModelId,
       startedAt: run.startedAt,
       classifiedIntent: selection?.classifiedIntent ?? null,
       classifierConfidence: selection?.classifierConfidence
@@ -270,7 +294,7 @@ export class AiAgentRunnerService {
         iterationCount++;
 
         const response = await this.llm.complete({
-          modelId: agent.modelId,
+          modelId: effectiveModelId,
           messages,
           tools,
           temperature: agent.temperature,

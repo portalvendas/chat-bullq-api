@@ -30,6 +30,14 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   aiEnabled?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'Modo revisão global: toda resposta da IA fica pendente de aprovação humana no inbox antes de ir pro cliente.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  aiReviewMode?: boolean;
+
   @ApiPropertyOptional({ example: 'America/Sao_Paulo' })
   @IsOptional()
   @IsString()

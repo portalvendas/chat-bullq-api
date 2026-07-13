@@ -1,4 +1,11 @@
-import { IsOptional, IsString, IsEnum, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsBoolean,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ConversationStatus } from '@prisma/client';
 
@@ -24,4 +31,16 @@ export class UpdateConversationDto {
   @IsString()
   @MaxLength(120)
   subject?: string;
+
+  /**
+   * Override do modo revisão nesta conversa:
+   *   null  = segue org.aiReviewMode
+   *   true  = força revisão (respostas ficam pendentes de aprovação)
+   *   false = envia direto sem revisão
+   */
+  @ApiPropertyOptional({ type: Boolean, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsBoolean()
+  aiReviewMode?: boolean | null;
 }

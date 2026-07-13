@@ -5,6 +5,7 @@ import type { Job } from 'bullmq';
 
 import { PrismaService } from '../../../database/prisma.service';
 import { HttpToolExecutorService } from '../tools/http-tool-executor.service';
+import { ReplyToConversationTool } from '../tools/builtin/reply-to-conversation.tool';
 import type { ToolContext } from '../tools/tool.types';
 import { PendingActionStorage } from './pending-action.storage';
 import {
@@ -42,6 +43,7 @@ export class PendingActionExecutorProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly httpExecutor: HttpToolExecutorService,
     private readonly storage: PendingActionStorage,
+    private readonly replyTool: ReplyToConversationTool,
   ) {
     super();
   }
@@ -70,6 +72,8 @@ export class PendingActionExecutorProcessor extends WorkerHost {
     try {
       if (action.toolName === 'transferToHuman') {
         result = await this.executeTransferToHuman(action);
+      } else if (action.toolName === 'replyToConversation') {
+        result = await this.executeReply(action);
       } else {
         result = await this.executeHttpSkill(action);
       }
@@ -137,6 +141,45 @@ export class PendingActionExecutorProcessor extends WorkerHost {
       transferredAt: new Date().toISOString(),
       reason: action.args?.reason ?? null,
     };
+  }
+
+  /**
+   * Modo revisão: operador aprovou a resposta retida. Envia de fato,
+   * chamando o ReplyToConversationTool com bypassReviewGate=true (senão
+   * ele criaria outro pending action e entraria em loop).
+   */
+  private async executeReply(action: {
+    agentRunId: string;
+    conversationId: string;
+    agentId: string;
+    args: Record<string, unknown>;
+  }): Promise<unknown> {
+    const run = await this.prisma.aiAgentRun.findUnique({
+      where: { id: action.agentRunId },
+      select: { organizationId: true, triggerMessageId: true },
+    });
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: action.conversationId },
+      select: { contactId: true, channelId: true },
+    });
+    if (!run || !conversation) {
+      throw new Error('Run or conversation no longer exists');
+    }
+
+    const ctx: ToolContext = {
+      organizationId: run.organizationId,
+      conversationId: action.conversationId,
+      contactId: conversation.contactId,
+      channelId: conversation.channelId,
+      agentId: action.agentId,
+      runId: action.agentRunId,
+      triggerMessageId: run.triggerMessageId ?? '',
+    };
+
+    const result = await this.replyTool.execute(action.args, ctx, {
+      bypassReviewGate: true,
+    });
+    return result.output;
   }
 
   private async executeHttpSkill(action: {

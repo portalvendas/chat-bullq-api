@@ -39,6 +39,12 @@ export interface ActionPreview {
   rollback?: string;
   /** Affected entity, so the UI can link to it. */
   affectedEntity?: AffectedEntity;
+  /**
+   * Modo revisão de resposta: quais skills geraram a resposta que está
+   * pendente de aprovação (ex: "detalhar_produto_ml"). Exibido no card do
+   * inbox pra o operador saber a origem antes de aprovar/rejeitar.
+   */
+  generatedBy?: string;
 }
 
 export interface PendingAction {

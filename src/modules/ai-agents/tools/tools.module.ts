@@ -63,6 +63,13 @@ import { ConfirmationsModule } from '../confirmations/confirmations.module';
     HttpToolExecutorService,
     SqlToolExecutorService,
   ],
-  exports: [ToolRegistry, HttpToolExecutorService, SqlToolExecutorService],
+  exports: [
+    ToolRegistry,
+    HttpToolExecutorService,
+    SqlToolExecutorService,
+    // Exportado pro PendingActionExecutorProcessor enviar a resposta de
+    // fato quando o operador aprova uma resposta retida no modo revisão.
+    ReplyToConversationTool,
+  ],
 })
 export class ToolsModule {}

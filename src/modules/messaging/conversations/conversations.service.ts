@@ -147,6 +147,11 @@ export class ConversationsService {
       });
     }
 
+    // Override do modo revisão por conversa (null=segue org, true/false=força).
+    if (dto.aiReviewMode !== undefined) {
+      await this.repository.update(id, { aiReviewMode: dto.aiReviewMode });
+    }
+
     const updated = await this.repository.findById(id);
     this.broadcastUpdate(updated as Conversation | null);
     return updated;

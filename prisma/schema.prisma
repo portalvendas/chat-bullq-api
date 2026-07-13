@@ -140,6 +140,10 @@ model Organization {
 
   // ─── AI settings ────────────────────────────────
   aiEnabled            Boolean @default(true) @map("ai_enabled")
+  // Modo revisão global: quando true, TODA resposta da IA fica pendente de
+  // aprovação humana (Aprovar/Rejeitar) no inbox antes de ir pro cliente.
+  // Pode ser sobrescrito por conversa (Conversation.aiReviewMode).
+  aiReviewMode         Boolean @default(false) @map("ai_review_mode")
   aiTimezone           String  @default("America/Sao_Paulo") @map("ai_timezone")
   aiBusinessHours      Json?   @map("ai_business_hours")
   aiOutOfHoursMessage  String? @map("ai_out_of_hours_message")
@@ -450,6 +454,9 @@ model Conversation {
   aiEnabled     Boolean?  @map("ai_enabled")
   aiDisabledBy  String?   @map("ai_disabled_by")
   aiDisabledAt  DateTime? @map("ai_disabled_at")
+  // Override do modo revisão por conversa: NULL=segue org.aiReviewMode,
+  // true=força revisão nesta conversa, false=envia direto sem revisão.
+  aiReviewMode  Boolean?  @map("ai_review_mode")
   activeAgentId String?   @map("active_agent_id")
 
   // ─── Watchdog state ─────────────────────────────

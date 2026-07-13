@@ -10,6 +10,7 @@ import { PrismaService } from '../../../../database/prisma.service';
 import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { AiTool, ToolContext, ToolResult } from '../tool.types';
 import { containsMetaTalk, findForbiddenUrlHosts } from '../../runner/text-guards';
+import { PendingActionService } from '../../confirmations/pending-action.service';
 
 /**
  * Sends a TEXT message to the contact on behalf of the agent. The message
@@ -42,11 +43,13 @@ export class ReplyToConversationTool implements AiTool {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     @InjectQueue('outbound-messages') private readonly outboundQueue: Queue,
+    private readonly pendingActions: PendingActionService,
   ) {}
 
   async execute(
     input: Record<string, unknown>,
     ctx: ToolContext,
+    opts?: { bypassReviewGate?: boolean },
   ): Promise<ToolResult> {
     const text = String(input.text ?? '').trim();
     if (!text) {
@@ -85,7 +88,10 @@ export class ReplyToConversationTool implements AiTool {
       this.prisma.conversation.findUnique({
         where: { id: ctx.conversationId },
         select: {
-          organization: { select: { allowedUrlDomains: true } },
+          aiReviewMode: true,
+          organization: {
+            select: { allowedUrlDomains: true, aiReviewMode: true },
+          },
         },
       }),
     ]);
@@ -123,6 +129,71 @@ export class ReplyToConversationTool implements AiTool {
           ok: false,
           error: 'Contact has no external id on this channel',
         },
+      };
+    }
+
+    // ─── MODO REVISÃO ────────────────────────────────────────────────
+    // Resolve: override da conversa tem prioridade; senão segue a org.
+    // Quando ligado (e não estamos no bypass do executor pós-aprovação),
+    // a resposta NÃO vai pro cliente — vira um AiPendingAction que o
+    // operador aprova/rejeita no inbox. O envio de fato acontece no
+    // PendingActionExecutorProcessor (que chama este tool com bypass).
+    const reviewOn =
+      conversation?.aiReviewMode ??
+      conversation?.organization?.aiReviewMode ??
+      false;
+
+    if (reviewOn && !opts?.bypassReviewGate) {
+      // Descobre quais SKILLS (não built-ins) geraram essa resposta neste
+      // run — mostrado no card pro operador saber a origem.
+      let generatedBy: string | undefined;
+      try {
+        const calls = await this.prisma.aiToolCall.findMany({
+          where: { runId: ctx.runId },
+          select: { toolName: true },
+        });
+        const names = [...new Set(calls.map((c) => c.toolName))];
+        if (names.length) {
+          const skills = await this.prisma.aiSkill.findMany({
+            where: { name: { in: names } },
+            select: { name: true },
+          });
+          if (skills.length) {
+            generatedBy = skills.map((s) => s.name).join(', ');
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `Falha ao resolver skills geradoras (conv=${ctx.conversationId}): ${err?.message ?? err}`,
+        );
+      }
+
+      const pending = await this.pendingActions.create({
+        agentRunId: ctx.runId,
+        conversationId: ctx.conversationId,
+        agentId: ctx.agentId,
+        toolName: 'replyToConversation',
+        args: { text },
+        preview: {
+          action: text,
+          impact: 'low',
+          generatedBy,
+        },
+      });
+
+      this.logger.log(
+        `Resposta retida p/ revisão conv=${ctx.conversationId} pending=${pending.id} skills=${generatedBy ?? 'agente'}`,
+      );
+
+      // finalAction REPLIED encerra o loop do runner (evita nudge por
+      // "não respondeu") e ok:true evita reply duplicado no mesmo run.
+      return {
+        output: {
+          ok: true,
+          pendingReview: true,
+          pendingActionId: pending.id,
+        },
+        finalAction: 'REPLIED',
       };
     }
 

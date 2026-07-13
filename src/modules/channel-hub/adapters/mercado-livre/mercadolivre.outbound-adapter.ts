@@ -113,45 +113,69 @@ export class MercadoLivreOutboundAdapter implements OutboundChannelPort {
     }
 
     const answered: number[] = [];
+    const alreadyAnswered: number[] = [];
     for (const m of pending) {
       const qid = parseInt(String(m.externalId), 10);
       if (Number.isNaN(qid)) continue;
-      try {
-        await this.httpClient.post(channel, '/answers/', {
-          question_id: qid,
-          text,
-        });
-        answered.push(qid);
-        await this.prisma.message.update({
+
+      const markResolved = (extra: Record<string, unknown> = {}) =>
+        this.prisma.message.update({
           where: { id: m.id },
           data: {
             metadata: {
               ...((m.metadata as Record<string, unknown> | null) ?? {}),
               mlAnswered: true,
               mlAnsweredAt: new Date().toISOString(),
+              ...extra,
             },
           },
         });
+
+      try {
+        await this.httpClient.post(channel, '/answers/', {
+          question_id: qid,
+          text,
+        });
+        answered.push(qid);
+        await markResolved();
       } catch (err: any) {
-        // ML devolve erro se a pergunta já foi respondida — não fatal.
-        this.logger.error(
-          `ML outbound: falha ao responder question ${qid} (conv ${conversation.id}): ${err?.message ?? err}`,
-        );
+        // "not_unanswered_question" = a pergunta JÁ foi respondida no ML
+        // (vendedor respondeu manual, ou um attempt anterior). Isso NÃO é
+        // falha: trata como resolvida (idempotente), marca e segue — senão
+        // o envio falha e fica retentando pra sempre em pergunta já fechada.
+        const body = err?.response?.data ?? {};
+        const isAlreadyAnswered =
+          body?.error === 'not_unanswered_question' ||
+          /not[_ ]?unanswered/i.test(JSON.stringify(body)) ||
+          /is not unanswered/i.test(String(err?.message ?? ''));
+        if (isAlreadyAnswered) {
+          this.logger.warn(
+            `ML outbound: question ${qid} já respondida no ML (conv ${conversation.id}) — marcando resolvida`,
+          );
+          alreadyAnswered.push(qid);
+          await markResolved({ mlAlreadyAnswered: true });
+        } else {
+          this.logger.error(
+            `ML outbound: falha ao responder question ${qid} (conv ${conversation.id}): ${err?.message ?? err}`,
+          );
+        }
       }
     }
 
-    if (answered.length === 0) {
+    const handledIds = [...answered, ...alreadyAnswered];
+    if (handledIds.length === 0) {
+      // Nenhuma respondida NEM já-respondida: falha real (ex: token) → retry.
       throw new Error(
         `Nenhuma pergunta respondida no ML (conv ${conversation.id})`,
       );
     }
 
     this.logger.log(
-      `ML outbound: respondidas ${answered.length} pergunta(s) [${answered.join(', ')}] na conversa ${conversation.id}`,
+      `ML outbound conv ${conversation.id}: ${answered.length} respondida(s) [${answered.join(', ')}], ${alreadyAnswered.length} já-respondida(s) [${alreadyAnswered.join(', ')}]`,
     );
     return {
-      externalId: `mla-${answered.join('-')}`,
-      providerResponse: { answered },
+      externalId: `mla-${handledIds.join('-')}`,
+      providerResponse: { answered, alreadyAnswered },
     };
   }
 

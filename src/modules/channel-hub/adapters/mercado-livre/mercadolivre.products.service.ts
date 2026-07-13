@@ -193,13 +193,17 @@ export class MercadoLivreProductsService {
       );
     }
 
-    const open = await this.prisma.message.findMany({
+    // NÃO filtrar mlAnswered no Prisma: com JSON path, quando a chave não
+    // existe a comparação vira NULL e `NOT ... = true` DESCARTA a linha —
+    // justamente as perguntas ainda sem marca (o caso comum). Fetch amplo e
+    // filtra no código (mesmo padrão do backfill/outbound).
+    const cap = Math.min(Math.max(limit, 1), 500);
+    const rows = await this.prisma.message.findMany({
       where: {
         direction: MessageDirection.INBOUND,
         type: MessageContentType.TEXT,
         conversation: { channelId: channel.id },
         externalId: { not: null },
-        NOT: { metadata: { path: ['mlAnswered'], equals: true } },
       },
       select: {
         id: true,
@@ -207,8 +211,12 @@ export class MercadoLivreProductsService {
         conversationId: true,
         metadata: true,
       },
-      take: Math.min(Math.max(limit, 1), 500),
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
     });
+    const open = rows
+      .filter((m) => !(m.metadata as Record<string, unknown> | null)?.['mlAnswered'])
+      .slice(0, cap);
 
     let checked = 0;
     let markedAnswered = 0;

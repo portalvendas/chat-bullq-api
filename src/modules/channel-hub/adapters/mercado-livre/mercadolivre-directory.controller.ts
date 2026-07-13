@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard, OrgGuard } from '../../../../common/guards';
 import { CurrentOrg } from '../../../../common/decorators';
 import { MercadoLivreProductsService } from './mercadolivre.products.service';
 
@@ -9,6 +10,8 @@ import { MercadoLivreProductsService } from './mercadolivre.products.service';
  * direto — sem curl/JSON. Mesmo parser server-side do endpoint público.
  */
 @ApiTags('Integrations')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, OrgGuard)
 @Controller('integrations/mercado-livre/directory')
 export class MercadoLivreDirectoryController {
   constructor(private readonly products: MercadoLivreProductsService) {}

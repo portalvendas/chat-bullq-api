@@ -74,7 +74,11 @@ export class PendingActionService {
    * Phase 2 TODO: enqueue the actual execution of `action.toolName`
    * with `action.args` and persist `executionResult` once it runs.
    */
-  async approve(id: string, userId: string): Promise<PendingAction> {
+  async approve(
+    id: string,
+    userId: string,
+    editedText?: string,
+  ): Promise<PendingAction> {
     const action = await this.storage.get(id);
     if (!action) throw new NotFoundException('Pending action not found');
 
@@ -89,6 +93,26 @@ export class PendingActionService {
       action.status = 'EXPIRED';
       await this.storage.save(action, previous);
       throw new BadRequestException('Action expired');
+    }
+
+    // Edição humana antes de aprovar (só resposta ao cliente). Guarda o
+    // texto ORIGINAL da IA em `originalText` — o par (original → editado)
+    // é sinal de aprendizado. O executor envia `args.text` (já editado).
+    if (
+      editedText != null &&
+      action.toolName === 'replyToConversation'
+    ) {
+      const trimmed = editedText.trim();
+      const current = String((action.args as any)?.text ?? '');
+      if (trimmed && trimmed !== current) {
+        action.args = {
+          ...action.args,
+          text: trimmed,
+          originalText: current,
+          editedByHuman: true,
+        };
+        (action.preview as any).action = trimmed;
+      }
     }
 
     const previous = action.status;

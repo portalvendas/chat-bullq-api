@@ -58,9 +58,10 @@ export class PendingActionController {
   async approve(
     @Param('id') id: string,
     @Req() req: AuthedRequest,
+    @Body() body: { text?: string },
   ): Promise<PendingAction> {
     const userId = this.requireUserId(req);
-    return this.service.approve(id, userId);
+    return this.service.approve(id, userId, body?.text);
   }
 
   @Post(':id/reject')

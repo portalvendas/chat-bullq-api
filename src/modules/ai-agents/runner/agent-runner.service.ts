@@ -273,6 +273,7 @@ export class AiAgentRunnerService {
     let iterationCount = 0;
     const toolsCalled = new Set<string>();
     let salesNudgeUsed = false;
+    let replyNudgeUsed = false;
     // Hard cap of 1 successful replyToConversation per run. The system
     // prompt encourages "uma ideia por mensagem" + multi-step consultative
     // selling, but the runner used to fire every reply back-to-back in
@@ -382,6 +383,29 @@ export class AiAgentRunnerService {
               role: 'user',
               content:
                 'Você rodou as tools de preparação (lookupOffering / checkPurchase) mas não chamou replyToConversation. O cliente está esperando. Responda agora com replyToConversation: 1 frase de pitch ligada à dor + preço + link do checkout (vindos do lookupOffering). Não termine este turn sem chamar replyToConversation.',
+            });
+            continue;
+          }
+
+          // Nudge GERAL: o agente usou ferramentas (ex: detalhar_produto_ml +
+          // tagConversation) mas encerrou o turno SEM responder o cliente.
+          // Muito comum no Haiku, que "esquece" de responder depois de aplicar
+          // uma tag. Lembra ele de responder — uma única vez (bounded pela
+          // flag + MAX_TOOL_ITERATIONS).
+          if (
+            neverReplied &&
+            stillNoAction &&
+            toolsCalled.size > 0 &&
+            !replyNudgeUsed
+          ) {
+            replyNudgeUsed = true;
+            this.logger.warn(
+              `Run ${run.id}: rodou ${toolsCalled.size} tool(s) mas não chamou replyToConversation — nudge geral p/ responder`,
+            );
+            messages.push({
+              role: 'user',
+              content:
+                'Você usou ferramentas mas NÃO chamou replyToConversation — o cliente está sem resposta. Responda AGORA com replyToConversation, de forma natural e útil, usando as informações que você já coletou. Não termine este turn sem chamar replyToConversation. Se realmente não souber responder, use transferToHuman.',
             });
             continue;
           }

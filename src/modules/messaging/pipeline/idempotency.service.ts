@@ -77,6 +77,22 @@ export class IdempotencyService implements OnModuleDestroy {
     );
   }
 
+  /**
+   * LIBERA o claim (apaga a chave) — usado quando o processamento FALHA e
+   * queremos que o retry re-adquira e reprocesse. Diferente de
+   * `markProcessed` (que REGRAVA a chave): aqui a chave é removida, senão o
+   * `claimProcessing` do próximo attempt veria a chave existente e pularia a
+   * mensagem como "duplicada" — perdendo-a pra sempre. O upsert por
+   * (conversationId, externalId) garante que reprocessar não duplica.
+   */
+  async releaseProcessing(
+    externalMessageId: string,
+    channelId: string,
+  ): Promise<void> {
+    if (!externalMessageId) return;
+    await this.redis.del(this.key(channelId, externalMessageId));
+  }
+
   async isDuplicate(
     externalMessageId: string,
     channelId: string,

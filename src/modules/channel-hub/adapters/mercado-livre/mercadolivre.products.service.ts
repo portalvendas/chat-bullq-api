@@ -8,6 +8,7 @@ import {
   ChannelType,
   MessageDirection,
   MessageContentType,
+  MessageStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { MercadoLivreHttpClient } from './mercadolivre.http-client';
@@ -154,6 +155,130 @@ export class MercadoLivreProductsService {
       `Backfill ML: scanned=${messages.length} candidates=${candidates.length} updated=${updated} (canal ${channel.id})`,
     );
     return { scanned: messages.length, candidates: candidates.length, updated };
+  }
+
+  /**
+   * RECONCILIAÇÃO: mantém as perguntas atualizadas quando são respondidas por
+   * FORA (ex: vendedor respondeu direto no painel do ML). Varre as perguntas
+   * (inbound) ainda NÃO marcadas como respondidas por nós, consulta cada uma
+   * no ML e, se estiver `ANSWERED`, marca como respondida aqui e importa a
+   * resposta como uma mensagem OUTBOUND (pra o operador ver o que foi dito).
+   *
+   * Como só olhamos perguntas não-respondidas por nós, qualquer resposta
+   * encontrada veio de outro canal → seguro importar. Idempotente
+   * (dedup por externalId `mla-ext-{qid}`).
+   */
+  async reconcileAnswers(
+    organizationId: string,
+    channelId?: string,
+    limit = 200,
+  ): Promise<{
+    scanned: number;
+    checked: number;
+    markedAnswered: number;
+    imported: number;
+  }> {
+    const channel = await this.prisma.channel.findFirst({
+      where: {
+        ...(channelId ? { id: channelId } : {}),
+        organizationId,
+        type: ChannelType.MERCADO_LIVRE,
+        isActive: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!channel) {
+      throw new NotFoundException(
+        'Organização sem canal Mercado Livre conectado',
+      );
+    }
+
+    const open = await this.prisma.message.findMany({
+      where: {
+        direction: MessageDirection.INBOUND,
+        type: MessageContentType.TEXT,
+        conversation: { channelId: channel.id },
+        externalId: { not: null },
+        NOT: { metadata: { path: ['mlAnswered'], equals: true } },
+      },
+      select: {
+        id: true,
+        externalId: true,
+        conversationId: true,
+        metadata: true,
+      },
+      take: Math.min(Math.max(limit, 1), 500),
+    });
+
+    let checked = 0;
+    let markedAnswered = 0;
+    let imported = 0;
+
+    for (const m of open) {
+      const qid = String(m.externalId);
+      let q: any;
+      try {
+        q = await this.http.get(channel, `/questions/${qid}?api_version=4`);
+      } catch (err: any) {
+        this.logger.warn(
+          `Reconcile: falha ao consultar question ${qid}: ${err?.message ?? err}`,
+        );
+        continue;
+      }
+      checked++;
+
+      const status = q?.status;
+      const answerText: string | undefined = q?.answer?.text;
+      const isAnswered = status === 'ANSWERED' || !!answerText;
+      if (!isAnswered) continue;
+
+      await this.prisma.message.update({
+        where: { id: m.id },
+        data: {
+          metadata: {
+            ...((m.metadata as Record<string, unknown> | null) ?? {}),
+            mlAnswered: true,
+            mlAnsweredAt: new Date().toISOString(),
+            mlAnsweredExternally: true,
+          },
+        },
+      });
+      markedAnswered++;
+
+      // Importa a resposta externa como OUTBOUND (dedup por externalId).
+      if (answerText) {
+        try {
+          await this.prisma.message.create({
+            data: {
+              conversationId: m.conversationId,
+              direction: MessageDirection.OUTBOUND,
+              type: MessageContentType.TEXT,
+              content: { text: answerText },
+              status: MessageStatus.SENT,
+              senderName: 'Mercado Livre (resposta externa)',
+              externalId: `mla-ext-${qid}`,
+              sentAt: q?.answer?.date_created
+                ? new Date(q.answer.date_created)
+                : new Date(),
+              metadata: { mlExternalAnswer: true, questionId: qid },
+            },
+          });
+          imported++;
+        } catch (err: any) {
+          // P2002 = já importada num run anterior (idempotente).
+          if (err?.code !== 'P2002') {
+            this.logger.warn(
+              `Reconcile: falha ao importar resposta da question ${qid}: ${err?.message ?? err}`,
+            );
+          }
+        }
+      }
+    }
+
+    this.logger.log(
+      `Reconcile ML: scanned=${open.length} checked=${checked} marked=${markedAnswered} imported=${imported} (canal ${channel.id})`,
+    );
+    return { scanned: open.length, checked, markedAnswered, imported };
   }
 
   async search(

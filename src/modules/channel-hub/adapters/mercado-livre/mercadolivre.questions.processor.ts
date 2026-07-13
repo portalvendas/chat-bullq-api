@@ -1,10 +1,13 @@
 import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
+import { ChannelType } from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { MercadoLivreHttpClient } from './mercadolivre.http-client';
 import { MercadoLivreMessageMapper } from './mercadolivre.message-mapper';
+import { MercadoLivreProductsService } from './mercadolivre.products.service';
 import { WebhookEventsService } from '../../webhook-events.service';
+import { ML_RECONCILE_JOB } from './mercadolivre.reconcile-cron.service';
 
 interface MlInboundJob {
   channelId: string;
@@ -30,12 +33,19 @@ export class MercadoLivreQuestionsProcessor extends WorkerHost {
     private readonly httpClient: MercadoLivreHttpClient,
     private readonly mapper: MercadoLivreMessageMapper,
     private readonly webhookEvents: WebhookEventsService,
+    private readonly products: MercadoLivreProductsService,
     @InjectQueue('inbound-messages') private readonly inboundQueue: Queue,
   ) {
     super();
   }
 
   async process(job: Job<MlInboundJob>): Promise<void> {
+    // Cron de reconciliação (respostas dadas por outro canal) — a cada 15min.
+    if (job.name === ML_RECONCILE_JOB) {
+      await this.reconcileAllChannels();
+      return;
+    }
+
     const { channelId, organizationId, resource, topic, webhookEventId } =
       job.data;
     // Marca o evento cru como processado/falho no fim — replay se falhar.
@@ -50,6 +60,28 @@ export class MercadoLivreQuestionsProcessor extends WorkerHost {
         );
       }
       throw err; // deixa o BullMQ re-tentar
+    }
+  }
+
+  /** Roda a reconciliação de respostas em todos os canais ML ativos. */
+  private async reconcileAllChannels(): Promise<void> {
+    const channels = await this.prisma.channel.findMany({
+      where: { type: ChannelType.MERCADO_LIVRE, isActive: true },
+      select: { id: true, organizationId: true },
+    });
+    for (const ch of channels) {
+      try {
+        const r = await this.products.reconcileAnswers(ch.organizationId, ch.id);
+        if (r.markedAnswered > 0 || r.imported > 0) {
+          this.logger.log(
+            `Reconcile canal ${ch.id}: marcadas=${r.markedAnswered} importadas=${r.imported}`,
+          );
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `Reconcile falhou p/ canal ${ch.id}: ${err?.message ?? err}`,
+        );
+      }
     }
   }
 

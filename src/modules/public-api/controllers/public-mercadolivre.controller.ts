@@ -66,4 +66,17 @@ export class PublicMercadoLivreController {
   ) {
     return this.service.backfillMessageItems(orgId, channelId);
   }
+
+  @Post('reconcile-answers')
+  @ApiOperation({
+    summary:
+      'Reconcilia perguntas: marca como respondidas (e importa a resposta) as que foram respondidas por outro canal no ML. Idempotente.',
+  })
+  @ApiQuery({ name: 'channelId', required: false })
+  async reconcileAnswers(
+    @CurrentOrg('id') orgId: string,
+    @Query('channelId') channelId?: string,
+  ) {
+    return this.service.reconcileAnswers(orgId, channelId);
+  }
 }

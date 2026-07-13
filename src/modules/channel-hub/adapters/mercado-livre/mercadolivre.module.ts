@@ -9,6 +9,7 @@ import { MercadoLivreQuestionsProcessor } from './mercadolivre.questions.process
 import { MercadoLivreProductsService } from './mercadolivre.products.service';
 import { MercadoLivreWebhookController } from './mercadolivre-webhook.controller';
 import { MercadoLivreOAuthController } from './mercadolivre-oauth.controller';
+import { MercadoLivreDirectoryController } from './mercadolivre-directory.controller';
 import { MercadoLivreReconcileCronService } from './mercadolivre.reconcile-cron.service';
 import { WebhookEventsService } from '../../webhook-events.service';
 
@@ -19,7 +20,11 @@ import { WebhookEventsService } from '../../webhook-events.service';
       { name: 'inbound-messages' },
     ),
   ],
-  controllers: [MercadoLivreWebhookController, MercadoLivreOAuthController],
+  controllers: [
+    MercadoLivreWebhookController,
+    MercadoLivreOAuthController,
+    MercadoLivreDirectoryController,
+  ],
   providers: [
     MercadoLivreOAuthService,
     MercadoLivreHttpClient,

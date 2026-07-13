@@ -205,6 +205,7 @@ model Organization {
   pipelines     Pipeline[]
   cards         Card[]
   products      Product[]
+  mlDirectory   MlProductDirectory[]
 
   @@map("organizations")
 }
@@ -1224,6 +1225,30 @@ model AiPendingAction {
   @@index([status, expiresAt], name: "idx_ai_pending_status_exp")
   @@index([agentRunId], name: "idx_ai_pending_run")
   @@map("ai_pending_actions")
+}
+
+// ─── Diretório de organizadores (largura → anúncio) ──────────
+//
+// Fonte de dados fornecida pela loja: mapeia categoria + largura da gaveta
+// (cm) para o anúncio (MLB) certo. Alimenta a skill `encontrar_organizador`,
+// que a IA usa pra direcionar o cliente pro produto sob medida correto.
+// Reimportável: substituído por completo a cada import (upload do .txt).
+model MlProductDirectory {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  categoria      String
+  larguraCm      Int      @map("largura_cm")
+  codigo         String?
+  mlb            String
+  url            String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, categoria, larguraCm], name: "uq_mldir_org_cat_width")
+  @@index([organizationId, categoria], name: "idx_mldir_org_cat")
+  @@map("ml_product_directory")
 }
 
 // ─── Inbox views (saved filtered inboxes per user) ──────────

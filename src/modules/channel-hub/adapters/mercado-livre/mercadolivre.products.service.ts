@@ -291,6 +291,212 @@ export class MercadoLivreProductsService {
     return { scanned: open.length, checked, markedAnswered, imported };
   }
 
+  // ─── Diretório largura→anúncio (fonte de dados da loja) ──────────
+
+  private static readonly NOTE_CATEGORY = '__nota__';
+
+  /** Parseia o .txt "Links dos Organizadores" em linhas estruturadas.
+   *  Formato: cabeçalho de categoria, depois pares "codigo | largura" + URL.
+   *  Categorias são detectadas dinamicamente (qualquer linha que não seja
+   *  par nem URL nem vazia); a "nota de altura" é capturada à parte. */
+  parseDirectory(text: string): {
+    rows: { categoria: string; larguraCm: number; codigo: string; mlb: string; url: string }[];
+    note: string | null;
+  } {
+    const rows: { categoria: string; larguraCm: number; codigo: string; mlb: string; url: string }[] = [];
+    let categoria: string | null = null;
+    let pend: { codigo: string; larguraCm: number } | null = null;
+    let note: string | null = null;
+    for (const raw of (text ?? '').split(/\r?\n/)) {
+      const s = raw.trim();
+      if (!s) continue;
+      const pair = s.match(/^(\d+)\s*\|\s*(\d+)\s*$/);
+      if (pair) {
+        pend = { codigo: pair[1], larguraCm: parseInt(pair[2], 10) };
+        continue;
+      }
+      const url = s.match(/(MLB-?\d+)/i);
+      if (url && /https?:\/\//i.test(s)) {
+        if (pend && categoria) {
+          rows.push({
+            categoria,
+            larguraCm: pend.larguraCm,
+            codigo: pend.codigo,
+            mlb: url[1].toUpperCase().replace('-', ''),
+            url: s,
+          });
+        }
+        pend = null;
+        continue;
+      }
+      // Linha de texto: nota de altura ou cabeçalho de categoria.
+      if (/altura/i.test(s) && /cm|%/i.test(s)) {
+        note = s;
+      } else {
+        categoria = s;
+        pend = null;
+      }
+    }
+    return { rows, note };
+  }
+
+  /** Substitui por completo o diretório da org (reimportável). Aceita linhas
+   *  já parseadas OU o texto cru do arquivo. */
+  async importDirectory(
+    organizationId: string,
+    input: {
+      rows?: { categoria: string; larguraCm: number; codigo?: string; mlb: string; url: string }[];
+      text?: string;
+    },
+  ): Promise<{ imported: number; categorias: number; note: string | null }> {
+    let rows = input.rows;
+    let note: string | null = null;
+    if ((!rows || rows.length === 0) && input.text) {
+      const parsed = this.parseDirectory(input.text);
+      rows = parsed.rows;
+      note = parsed.note;
+    }
+    if (!rows || rows.length === 0) {
+      throw new BadGatewayException('Nenhuma linha válida no diretório enviado');
+    }
+
+    const data = rows
+      .filter((r) => r?.categoria && r?.larguraCm && r?.mlb && r?.url)
+      .map((r) => ({
+        organizationId,
+        categoria: String(r.categoria).trim(),
+        larguraCm: Number(r.larguraCm),
+        codigo: r.codigo ? String(r.codigo) : null,
+        mlb: String(r.mlb).toUpperCase().replace('-', ''),
+        url: String(r.url).trim(),
+      }));
+
+    // Nota de altura vira uma linha especial (categoria __nota__) pra ficar
+    // no mesmo diretório reimportável.
+    if (note) {
+      data.push({
+        organizationId,
+        categoria: MercadoLivreProductsService.NOTE_CATEGORY,
+        larguraCm: 0,
+        codigo: null,
+        mlb: '-',
+        url: note,
+      });
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.mlProductDirectory.deleteMany({ where: { organizationId } }),
+      this.prisma.mlProductDirectory.createMany({ data, skipDuplicates: true }),
+    ]);
+
+    const categorias = new Set(
+      data
+        .filter((d) => d.categoria !== MercadoLivreProductsService.NOTE_CATEGORY)
+        .map((d) => d.categoria),
+    ).size;
+    return { imported: data.length, categorias, note };
+  }
+
+  /** Lista o diretório atual da org, agrupado por categoria (pra tela de
+   *  gestão no BullQ). Separa a nota de altura. */
+  async listDirectory(organizationId: string): Promise<{
+    total: number;
+    note: string | null;
+    categorias: {
+      categoria: string;
+      itens: { larguraCm: number; mlb: string; url: string }[];
+    }[];
+  }> {
+    const all = await this.prisma.mlProductDirectory.findMany({
+      where: { organizationId },
+      orderBy: [{ categoria: 'asc' }, { larguraCm: 'asc' }],
+    });
+    const noteRow = all.find(
+      (r) => r.categoria === MercadoLivreProductsService.NOTE_CATEGORY,
+    );
+    const rows = all.filter(
+      (r) => r.categoria !== MercadoLivreProductsService.NOTE_CATEGORY,
+    );
+    const byCat = new Map<
+      string,
+      { larguraCm: number; mlb: string; url: string }[]
+    >();
+    for (const r of rows) {
+      const arr = byCat.get(r.categoria) ?? [];
+      arr.push({ larguraCm: r.larguraCm, mlb: r.mlb, url: r.url });
+      byCat.set(r.categoria, arr);
+    }
+    return {
+      total: rows.length,
+      note: noteRow?.url ?? null,
+      categorias: [...byCat.entries()].map(([categoria, itens]) => ({
+        categoria,
+        itens,
+      })),
+    };
+  }
+
+  /** Dado uma largura de gaveta (cm) e, opcionalmente, uma categoria, devolve
+   *  o(s) anúncio(s) sob medida corretos — a menor faixa que atende a largura
+   *  (arredonda pra cima). Sem categoria = uma opção por categoria. */
+  async findOrganizer(
+    organizationId: string,
+    larguraCm: number,
+    categoria?: string,
+  ): Promise<{
+    larguraSolicitada: number;
+    categoriaFiltro: string | null;
+    opcoes: { categoria: string; larguraCm: number; mlb: string; url: string }[];
+    observacao: string | null;
+  }> {
+    const all = await this.prisma.mlProductDirectory.findMany({
+      where: { organizationId },
+    });
+    const noteRow = all.find(
+      (r) => r.categoria === MercadoLivreProductsService.NOTE_CATEGORY,
+    );
+    let rows = all.filter(
+      (r) => r.categoria !== MercadoLivreProductsService.NOTE_CATEGORY,
+    );
+
+    const norm = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (categoria && categoria.trim()) {
+      const c = norm(categoria);
+      const filtered = rows.filter(
+        (r) => norm(r.categoria).includes(c) || c.includes(norm(r.categoria)),
+      );
+      if (filtered.length) rows = filtered;
+    }
+
+    const w = Number(larguraCm) || 0;
+    const byCat = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const arr = byCat.get(r.categoria) ?? [];
+      arr.push(r);
+      byCat.set(r.categoria, arr);
+    }
+    const opcoes: { categoria: string; larguraCm: number; mlb: string; url: string }[] = [];
+    for (const [cat, rs] of byCat.entries()) {
+      const sorted = rs.sort((a, b) => a.larguraCm - b.larguraCm);
+      const band = sorted.find((r) => r.larguraCm >= w) ?? sorted[sorted.length - 1];
+      if (band) {
+        opcoes.push({
+          categoria: cat,
+          larguraCm: band.larguraCm,
+          mlb: band.mlb,
+          url: band.url,
+        });
+      }
+    }
+    return {
+      larguraSolicitada: w,
+      categoriaFiltro: categoria?.trim() || null,
+      opcoes,
+      observacao: noteRow?.url ?? null,
+    };
+  }
+
   async search(
     organizationId: string,
     q: string,

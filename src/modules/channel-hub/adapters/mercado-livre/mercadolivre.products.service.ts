@@ -23,6 +23,8 @@ export interface MlProduct {
   permalink: string | null;
   thumbnail: string | null;
   attributes: { name: string; value: string }[];
+  /** Bullets "O que você precisa saber sobre este produto" (main_features do ML). */
+  highlights?: string[];
   description?: string;
   qa?: { pergunta: string; resposta: string }[];
 }
@@ -368,9 +370,19 @@ export class MercadoLivreProductsService {
     }
     try {
       const attrs =
-        'id,title,price,currency_id,available_quantity,permalink,thumbnail,status,attributes';
+        'id,title,price,currency_id,available_quantity,permalink,thumbnail,status,attributes,main_features';
       const item = await this.http.get(channel, `/items/${itemId}?attributes=${attrs}`);
       const product = this.normalize(item);
+
+      // Destaques "O que você precisa saber sobre este produto" (main_features).
+      // Prosa gerada pelo ML com specs em linguagem natural (ex: "suporte para
+      // televisores de até 43 polegadas"). Complementa os atributos crus.
+      const mf = Array.isArray(item.main_features) ? item.main_features : [];
+      const highlights = mf
+        .map((f: any) => String(f?.text ?? '').trim())
+        .filter((t: string) => t.length > 0)
+        .slice(0, 20);
+      if (highlights.length) product.highlights = highlights;
 
       // descrição longa (texto puro)
       try {

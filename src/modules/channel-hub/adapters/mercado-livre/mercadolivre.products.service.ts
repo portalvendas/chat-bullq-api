@@ -4,7 +4,11 @@ import {
   NotFoundException,
   BadGatewayException,
 } from '@nestjs/common';
-import { ChannelType } from '@prisma/client';
+import {
+  ChannelType,
+  MessageDirection,
+  MessageContentType,
+} from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { MercadoLivreHttpClient } from './mercadolivre.http-client';
 
@@ -35,6 +39,122 @@ export class MercadoLivreProductsService {
     private readonly prisma: PrismaService,
     private readonly http: MercadoLivreHttpClient,
   ) {}
+
+  /**
+   * BACKFILL (idempotente): re-enriquece perguntas ML antigas que entraram
+   * antes do enriquecimento de anúncio. Para cada mensagem INBOUND sem
+   * `content.mlItem`, pega o `item_id` do payload cru já salvo
+   * (`metadata.rawPayload.item_id`), busca o anúncio em lote e grava
+   * `content.mlItem` + o bloco "Sobre o anúncio" no texto (se ainda não tiver).
+   * Seguro rodar várias vezes: só toca no que falta.
+   */
+  async backfillMessageItems(
+    organizationId: string,
+    channelId?: string,
+  ): Promise<{ scanned: number; candidates: number; updated: number }> {
+    const channel = await this.prisma.channel.findFirst({
+      where: {
+        ...(channelId ? { id: channelId } : {}),
+        organizationId,
+        type: ChannelType.MERCADO_LIVRE,
+        isActive: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!channel) {
+      throw new NotFoundException(
+        'Organização sem canal Mercado Livre conectado',
+      );
+    }
+
+    const messages = await this.prisma.message.findMany({
+      where: {
+        direction: MessageDirection.INBOUND,
+        type: MessageContentType.TEXT,
+        conversation: { channelId: channel.id },
+      },
+      select: { id: true, content: true, metadata: true },
+    });
+
+    // Candidatas: sem mlItem e com item_id no payload cru.
+    const candidates = messages
+      .map((m) => {
+        const content = (m.content ?? {}) as Record<string, any>;
+        if (content?.mlItem) return null;
+        const raw = ((m.metadata as any)?.rawPayload ?? {}) as Record<
+          string,
+          any
+        >;
+        const itemId = raw?.item_id ? String(raw.item_id) : null;
+        if (!itemId) return null;
+        return { id: m.id, content, itemId };
+      })
+      .filter(Boolean) as { id: string; content: any; itemId: string }[];
+
+    if (candidates.length === 0) {
+      return { scanned: messages.length, candidates: 0, updated: 0 };
+    }
+
+    // Busca os anúncios em lote (multiget, dedup, páginas de 20).
+    const uniqueIds = [...new Set(candidates.map((c) => c.itemId))];
+    const itemMap = new Map<
+      string,
+      { title: string; permalink: string; thumbnail: string | null }
+    >();
+    for (let i = 0; i < uniqueIds.length; i += 20) {
+      const batch = uniqueIds.slice(i, i + 20);
+      try {
+        const res = await this.http.get(
+          channel,
+          `/items?ids=${batch.join(',')}&attributes=id,title,permalink,thumbnail`,
+        );
+        for (const x of Array.isArray(res) ? res : []) {
+          if (x?.code === 200 && x?.body?.id) {
+            itemMap.set(String(x.body.id), {
+              title: x.body.title ?? String(x.body.id),
+              permalink: x.body.permalink ?? '',
+              thumbnail: x.body.thumbnail ?? null,
+            });
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `Backfill: falha ao buscar itens [${batch.join(',')}]: ${err?.message ?? err}`,
+        );
+      }
+    }
+
+    let updated = 0;
+    for (const c of candidates) {
+      const item = itemMap.get(c.itemId);
+      if (!item) continue;
+      const text = typeof c.content.text === 'string' ? c.content.text : '';
+      const hasContext = text.includes('Sobre o anúncio desta pergunta');
+      const newContent = {
+        ...c.content,
+        mlItem: {
+          id: c.itemId,
+          title: item.title,
+          permalink: item.permalink,
+          thumbnail: item.thumbnail,
+        },
+        text: hasContext
+          ? text
+          : `${text}\n\n── Sobre o anúncio desta pergunta ──\n${item.title}\nID: ${c.itemId}` +
+            (item.permalink ? `\n${item.permalink}` : ''),
+      };
+      await this.prisma.message.update({
+        where: { id: c.id },
+        data: { content: newContent },
+      });
+      updated++;
+    }
+
+    this.logger.log(
+      `Backfill ML: scanned=${messages.length} candidates=${candidates.length} updated=${updated} (canal ${channel.id})`,
+    );
+    return { scanned: messages.length, candidates: candidates.length, updated };
+  }
 
   async search(
     organizationId: string,

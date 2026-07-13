@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Query,
   UseGuards,
   DefaultValuePipe,
@@ -47,5 +48,22 @@ export class PublicMercadoLivreController {
   })
   async detail(@CurrentOrg('id') orgId: string, @Param('id') id: string) {
     return this.service.getDetail(orgId, id);
+  }
+
+  @Post('backfill-items')
+  @ApiOperation({
+    summary:
+      'Backfill: re-enriquece perguntas ML antigas com o anúncio (item). Idempotente.',
+  })
+  @ApiQuery({
+    name: 'channelId',
+    required: false,
+    description: 'Opcional — default: canal ML ativo mais recente da org',
+  })
+  async backfillItems(
+    @CurrentOrg('id') orgId: string,
+    @Query('channelId') channelId?: string,
+  ) {
+    return this.service.backfillMessageItems(orgId, channelId);
   }
 }

@@ -8,6 +8,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
+  ChannelType,
   MessageDirection,
   MessageContentType,
   MessageStatus,
@@ -365,34 +366,43 @@ export class MessagesService {
       };
     }
 
-    if (!message.externalId) {
-      throw new BadRequestException(
-        'Mensagem ainda não foi entregue ao provider — não tem como deletar pra todos. ' +
-          'Tente de novo em alguns segundos ou apague localmente.',
-      );
-    }
-
     const channel = await this.prisma.channel.findUnique({
       where: { id: message.conversation.channelId },
     });
     if (!channel) throw new NotFoundException('Channel not found');
 
-    const adapter = this.adapterRegistry.getOutbound(channel.type);
     let succeededRemote = false;
     let remoteError: string | null = null;
 
-    if (typeof adapter.deleteMessage === 'function') {
-      try {
-        await adapter.deleteMessage(channel, message.externalId);
-        succeededRemote = true;
-      } catch (err: unknown) {
-        remoteError = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `Provider delete failed (channel=${channel.type} msg=${message.id}): ${remoteError}`,
+    // Marketplace (Mercado Livre) é pergunta→resposta: não existe "deletar
+    // pra todos" — não dá pra retratar uma resposta publicada no ML. Aqui o
+    // excluir é SEMPRE local (esconde no nosso inbox), sem tentar o provider
+    // e sem exigir externalId (mensagem FAILED/QUEUED também pode ser
+    // removida localmente).
+    const isMarketplace = channel.type === ChannelType.MERCADO_LIVRE;
+
+    if (!isMarketplace) {
+      if (!message.externalId) {
+        throw new BadRequestException(
+          'Mensagem ainda não foi entregue ao provider — não tem como deletar pra todos. ' +
+            'Tente de novo em alguns segundos ou apague localmente.',
         );
       }
-    } else {
-      remoteError = `Adapter ${channel.type} não implementa deleteMessage.`;
+
+      const adapter = this.adapterRegistry.getOutbound(channel.type);
+      if (typeof adapter.deleteMessage === 'function') {
+        try {
+          await adapter.deleteMessage(channel, message.externalId);
+          succeededRemote = true;
+        } catch (err: unknown) {
+          remoteError = err instanceof Error ? err.message : String(err);
+          this.logger.warn(
+            `Provider delete failed (channel=${channel.type} msg=${message.id}): ${remoteError}`,
+          );
+        }
+      } else {
+        remoteError = `Adapter ${channel.type} não implementa deleteMessage.`;
+      }
     }
 
     const revokedAt = new Date();

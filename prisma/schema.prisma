@@ -149,6 +149,10 @@ model Organization {
   aiOutOfHoursMessage  String? @map("ai_out_of_hours_message")
   aiAutoDisableOnHuman Boolean @default(true) @map("ai_auto_disable_on_human")
   aiMonthlyTokenCap    Int?    @map("ai_monthly_token_cap")
+  /// Assinatura fixa anexada ao FINAL de toda resposta enviada pela IA
+  /// (determinístico, no envio — não depende do modelo lembrar). NULL/vazio
+  /// = sem assinatura. Ex: "Aguardamos sua compra e ficamos à disposição, Armazém Decora."
+  aiSignature          String? @map("ai_signature") @db.Text
   /// Notas livres do negócio injetadas no system prompt de TODOS os
   /// agentes da org. Use pra info que muda com frequência e que vale
   /// pra qualquer fluxo (vendas/suporte/CS): regras de entrega, horários

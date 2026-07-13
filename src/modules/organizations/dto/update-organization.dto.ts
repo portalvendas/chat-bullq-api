@@ -38,6 +38,14 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   aiReviewMode?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'Assinatura fixa anexada ao final de toda resposta da IA. Vazio = sem assinatura.',
+  })
+  @IsOptional()
+  @IsString()
+  aiSignature?: string;
+
   @ApiPropertyOptional({ example: 'America/Sao_Paulo' })
   @IsOptional()
   @IsString()

@@ -51,7 +51,7 @@ export class ReplyToConversationTool implements AiTool {
     ctx: ToolContext,
     opts?: { bypassReviewGate?: boolean },
   ): Promise<ToolResult> {
-    const text = String(input.text ?? '').trim();
+    let text = String(input.text ?? '').trim();
     if (!text) {
       return { output: { ok: false, error: 'text is empty' } };
     }
@@ -90,11 +90,26 @@ export class ReplyToConversationTool implements AiTool {
         select: {
           aiReviewMode: true,
           organization: {
-            select: { allowedUrlDomains: true, aiReviewMode: true },
+            select: {
+              allowedUrlDomains: true,
+              aiReviewMode: true,
+              aiSignature: true,
+            },
           },
         },
       }),
     ]);
+
+    // Assinatura fixa da org no FINAL de toda resposta (determinístico, não
+    // depende do modelo). Idempotente: só anexa se ainda não terminar com
+    // ela — evita duplicar no fluxo de revisão (o executor re-chama este
+    // tool com o texto do card, que já pode conter a assinatura).
+    const signature = (
+      (conversation?.organization as any)?.aiSignature ?? ''
+    ).trim();
+    if (signature && !text.replace(/\s+$/, '').endsWith(signature)) {
+      text = `${text}\n\n${signature}`;
+    }
 
     // Guard contra URL inventada (hallucination). Org configura
     // `allowedUrlDomains` com lista de hosts permitidos (ex: ["bravy.co",

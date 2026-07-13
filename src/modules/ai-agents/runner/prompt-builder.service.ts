@@ -66,7 +66,6 @@ Atualizado em <%= it.operationalContextLabel %>. Use isso pra orientar suas pró
 - Cliente: <%= it.contact.name || 'Sem nome cadastrado' %><% if (it.contact.phone) { %>
 - Telefone: <%= it.contact.phone %><% } %><% if (it.contact.email) { %>
 - E-mail: <%= it.contact.email %><% } %>
-- Hora atual: <%= it.now %> (<%= it.organization.aiTimezone %>)
 <% if (it.memorySummary) { %>
 ═══ Memória de interações anteriores ═══
 <%= it.memorySummary %>
@@ -443,9 +442,10 @@ export class PromptBuilderService {
    * caching kicks in on repeat turns of the same conversation.
    */
   buildMessages(ctx: PromptContext): LlmMessage[] {
+    const nowStr = this.formatNow(ctx.organization.aiTimezone);
     const systemText = this.eta.renderString(SYSTEM_TEMPLATE, {
       ...ctx,
-      now: this.formatNow(ctx.organization.aiTimezone),
+      now: nowStr,
       operationalContextLabel: this.formatRelativeUpdate(
         (ctx.agent as any).operationalContextUpdatedAt,
         ctx.organization.aiTimezone,
@@ -456,8 +456,18 @@ export class PromptBuilderService {
       {
         role: 'system',
         content: [
-          // The persona + rules block — stable across turns of this conv.
+          // Bloco ESTÁVEL (persona + regras + contexto da conversa) — é onde
+          // fica o cache breakpoint. Precisa ser idêntico entre turns da
+          // mesma conversa pra o prompt caching bater. Por isso o horário
+          // (que muda a cada minuto) NÃO pode viver aqui — senão o hash do
+          // prefixo muda toda chamada e o cache nunca é lido (só escrito).
           { type: 'text', text: systemText, cache: true },
+          // Bloco VOLÁTIL (hora atual) — vem DEPOIS do breakpoint, sem cache.
+          // Fica fora do prefixo cacheado, então não invalida o cache.
+          {
+            type: 'text',
+            text: `Hora atual: ${nowStr} (${ctx.organization.aiTimezone})`,
+          },
         ],
       },
     ];

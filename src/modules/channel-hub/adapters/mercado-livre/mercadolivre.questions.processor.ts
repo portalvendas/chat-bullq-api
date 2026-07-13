@@ -4,12 +4,15 @@ import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../../../../database/prisma.service';
 import { MercadoLivreHttpClient } from './mercadolivre.http-client';
 import { MercadoLivreMessageMapper } from './mercadolivre.message-mapper';
+import { WebhookEventsService } from '../../webhook-events.service';
 
 interface MlInboundJob {
   channelId: string;
   organizationId: string;
   resource: string;
   topic: string;
+  /** Id do WebhookEvent cru gravado no controller — pra marcar processed/failed. */
+  webhookEventId?: string;
 }
 
 /**
@@ -26,13 +29,36 @@ export class MercadoLivreQuestionsProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly httpClient: MercadoLivreHttpClient,
     private readonly mapper: MercadoLivreMessageMapper,
+    private readonly webhookEvents: WebhookEventsService,
     @InjectQueue('inbound-messages') private readonly inboundQueue: Queue,
   ) {
     super();
   }
 
   async process(job: Job<MlInboundJob>): Promise<void> {
-    const { channelId, organizationId, resource, topic } = job.data;
+    const { channelId, organizationId, resource, topic, webhookEventId } =
+      job.data;
+    // Marca o evento cru como processado/falho no fim — replay se falhar.
+    try {
+      await this.handle(channelId, organizationId, resource, topic);
+      if (webhookEventId) await this.webhookEvents.markProcessed(webhookEventId);
+    } catch (err: any) {
+      if (webhookEventId) {
+        await this.webhookEvents.markFailed(
+          webhookEventId,
+          err?.message ?? String(err),
+        );
+      }
+      throw err; // deixa o BullMQ re-tentar
+    }
+  }
+
+  private async handle(
+    channelId: string,
+    organizationId: string,
+    resource: string,
+    topic: string,
+  ): Promise<void> {
     if (topic !== 'questions') return; // messages = Fase 2
 
     const match = /\/questions\/(\d+)/.exec(resource || '');

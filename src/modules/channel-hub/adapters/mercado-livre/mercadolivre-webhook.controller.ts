@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Body,
+  Headers,
   HttpCode,
   Logger,
 } from '@nestjs/common';
@@ -11,6 +12,7 @@ import { Queue } from 'bullmq';
 import { ChannelType } from '@prisma/client';
 import { Public } from '../../../../common/decorators';
 import { PrismaService } from '../../../../database/prisma.service';
+import { WebhookEventsService } from '../../webhook-events.service';
 
 /**
  * Webhook (notifications) do Mercado Livre — modelo 2 passos.
@@ -24,6 +26,7 @@ export class MercadoLivreWebhookController {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly webhookEvents: WebhookEventsService,
     @InjectQueue('mercadolivre-inbound') private readonly queue: Queue,
   ) {}
 
@@ -31,7 +34,10 @@ export class MercadoLivreWebhookController {
   @Public()
   @HttpCode(200)
   @ApiOperation({ summary: 'Recebe notificações do Mercado Livre' })
-  async handle(@Body() body: any): Promise<{ status: string }> {
+  async handle(
+    @Body() body: any,
+    @Headers() headers: Record<string, string>,
+  ): Promise<{ status: string }> {
     try {
       const topic = body?.topic;
       const resource = body?.resource;
@@ -45,6 +51,14 @@ export class MercadoLivreWebhookController {
           },
         });
         if (channel) {
+          // Grava o evento CRU antes de enfileirar — fonte de verdade pra
+          // replay se o processamento falhar (paridade com canais genéricos).
+          const webhookEventId = await this.webhookEvents.record(
+            channel.id,
+            ChannelType.MERCADO_LIVRE,
+            body,
+            headers ?? {},
+          );
           await this.queue.add(
             'ml-notification',
             {
@@ -52,6 +66,7 @@ export class MercadoLivreWebhookController {
               organizationId: channel.organizationId,
               resource,
               topic,
+              webhookEventId,
             },
             {
               attempts: 5,
@@ -61,6 +76,12 @@ export class MercadoLivreWebhookController {
             },
           );
         } else {
+          // Seller desconhecido — registra como UNROUTED pra auditoria/replay.
+          await this.webhookEvents.recordUnrouted(
+            ChannelType.MERCADO_LIVRE,
+            body,
+            headers ?? {},
+          );
           this.logger.warn(`Notificação ML de seller desconhecido: ${userId}`);
         }
       }

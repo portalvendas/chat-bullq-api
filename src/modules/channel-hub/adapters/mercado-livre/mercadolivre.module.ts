@@ -9,6 +9,7 @@ import { MercadoLivreQuestionsProcessor } from './mercadolivre.questions.process
 import { MercadoLivreProductsService } from './mercadolivre.products.service';
 import { MercadoLivreWebhookController } from './mercadolivre-webhook.controller';
 import { MercadoLivreOAuthController } from './mercadolivre-oauth.controller';
+import { WebhookEventsService } from '../../webhook-events.service';
 
 @Module({
   imports: [
@@ -26,6 +27,10 @@ import { MercadoLivreOAuthController } from './mercadolivre-oauth.controller';
     MercadoLivreOutboundAdapter,
     MercadoLivreQuestionsProcessor,
     MercadoLivreProductsService,
+    // Instância local (evita ciclo channel-hub↔ML). Stateless, só usa Prisma
+    // (global). Dá ao webhook/processor do ML o mesmo log de replay dos
+    // canais genéricos.
+    WebhookEventsService,
   ],
   exports: [
     MercadoLivreInboundAdapter,

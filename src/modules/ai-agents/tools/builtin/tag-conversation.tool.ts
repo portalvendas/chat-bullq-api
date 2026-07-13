@@ -40,18 +40,46 @@ export class TagConversationTool implements AiTool {
     private readonly outbox: OutboxService,
   ) {}
 
+  /**
+   * Normaliza `tags` de forma tolerante ao modelo. O ideal é um array de
+   * strings, mas modelos (sobretudo o Haiku) às vezes serializam torto e
+   * mandam uma STRING tipo `mercado-livre-ml", "colmeia-mdf", "x"]` ou um
+   * JSON `["a","b"]`. Aceitamos: array; JSON de array; ou string separada
+   * por vírgula — limpando aspas/colchetes das pontas de cada item.
+   */
+  private coerceTags(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map((v) => String(v));
+    if (typeof value !== 'string') return [];
+
+    let s = value.trim();
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed.map((v) => String(v));
+      if (typeof parsed === 'string') s = parsed;
+    } catch {
+      /* não é JSON válido — cai no split abaixo */
+    }
+    // Remove colchetes das pontas e divide por vírgula, limpando aspas/colchetes.
+    return s
+      .replace(/^\s*\[/, '')
+      .replace(/\]\s*$/, '')
+      .split(',')
+      .map((t) => t.replace(/["'\[\]]/g, '').trim())
+      .filter((t) => t.length > 0);
+  }
+
   async execute(
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<ToolResult> {
-    const raw = Array.isArray(input.tags) ? (input.tags as unknown[]) : [];
+    const raw = this.coerceTags(input.tags);
     const names = Array.from(
       new Set(
         raw
           .map((t) => String(t).trim().toLowerCase())
           .filter((t) => t.length > 0 && t.length <= 40),
       ),
-    );
+    ).slice(0, 5);
 
     if (names.length === 0) {
       return { output: { ok: false, error: 'no valid tag names' } };

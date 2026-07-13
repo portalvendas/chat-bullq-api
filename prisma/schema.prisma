@@ -265,6 +265,13 @@ model Channel {
   // Permite o operador desligar a IA num canal específico (ex: 1581 produção)
   // sem precisar mexer no toggle global da org.
   aiEnabled      Boolean?    @map("ai_enabled")
+  // Janela de debounce (em segundos) entre a chegada de uma mensagem e o
+  // disparo da IA. Durante essa janela, novas mensagens do mesmo cliente na
+  // mesma conversa são agrupadas numa resposta só (cada nova mensagem
+  // reinicia a contagem). NULL = usa o default do sistema (10s). No ML,
+  // configuramos maior (ex: 120s) pra dar tempo do comprador mandar todas
+  // as perguntas do anúncio antes de responder.
+  aiDebounceSeconds Int?     @map("ai_debounce_seconds")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
   deletedAt      DateTime?   @map("deleted_at")

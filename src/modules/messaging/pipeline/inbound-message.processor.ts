@@ -82,6 +82,11 @@ export class InboundMessageProcessor extends WorkerHost {
   private readonly running = new Set<string>();
   private readonly followupNeeded = new Set<string>();
 
+  /** Janela de debounce (ms) por conversa, resolvida a partir do canal
+   *  (channel.aiDebounceSeconds). Cacheada aqui pra o re-arm de followup
+   *  usar o mesmo valor sem re-consultar o banco. */
+  private readonly debounceMsByConv = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly idempotency: IdempotencyService,
@@ -476,6 +481,17 @@ export class InboundMessageProcessor extends WorkerHost {
       return;
     }
 
+    // Resolve a janela de debounce do canal (default do sistema se NULL).
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: conversation.channelId },
+      select: { aiDebounceSeconds: true },
+    });
+    const debounceMs =
+      channel?.aiDebounceSeconds && channel.aiDebounceSeconds > 0
+        ? channel.aiDebounceSeconds * 1000
+        : AGENT_DEBOUNCE_MS;
+    this.debounceMsByConv.set(conversationId, debounceMs);
+
     this.scheduleAgentRun(conversationId, triggerMessageId);
   }
 
@@ -506,10 +522,11 @@ export class InboundMessageProcessor extends WorkerHost {
       );
     }
 
+    const debounceMs = this.debounceMsByConv.get(conversationId) ?? AGENT_DEBOUNCE_MS;
     const timer = setTimeout(() => {
       this.pendingRuns.delete(conversationId);
       this.fireAgentRun(conversationId);
-    }, AGENT_DEBOUNCE_MS);
+    }, debounceMs);
 
     this.pendingRuns.set(conversationId, timer);
   }
@@ -586,6 +603,9 @@ export class InboundMessageProcessor extends WorkerHost {
           `Re-arming debounce for conv ${conversationId} (followup needed)`,
         );
         this.scheduleAgentRun(conversationId, 'followup');
+      } else {
+        // Sem followup pendente — libera o cache de debounce dessa conversa.
+        this.debounceMsByConv.delete(conversationId);
       }
     }
   }

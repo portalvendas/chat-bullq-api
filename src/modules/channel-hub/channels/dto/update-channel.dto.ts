@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsObject, IsBoolean, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsObject,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateChannelDto {
@@ -50,4 +59,22 @@ export class UpdateChannelDto {
   @IsOptional()
   @IsIn(['ORG', 'PRIVATE'])
   visibility?: 'ORG' | 'PRIVATE';
+
+  /**
+   * Janela de debounce (segundos) antes da IA responder. Nessa janela,
+   * novas mensagens do mesmo cliente na conversa são agrupadas numa
+   * resposta só (cada mensagem reinicia a contagem).
+   *   null = usa o default do sistema (10s).
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Debounce por canal em segundos; null=default do sistema (10s)',
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  aiDebounceSeconds?: number | null;
 }

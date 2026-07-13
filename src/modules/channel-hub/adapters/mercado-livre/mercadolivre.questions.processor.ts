@@ -61,6 +61,32 @@ export class MercadoLivreQuestionsProcessor extends WorkerHost {
       return;
     }
 
+    // Enriquece a pergunta com o ANÚNCIO (item_id vem no payload). O operador
+    // vê qual anúncio, e o agente pode detalhar ESSE item direto (sem buscar).
+    const itemId = question?.item_id;
+    if (itemId) {
+      try {
+        const item = await this.httpClient.get(
+          channel,
+          `/items/${itemId}?attributes=id,title,permalink,thumbnail`,
+        );
+        const title = item?.title || String(itemId);
+        const permalink = item?.permalink || '';
+        (message.content as any).mlItem = {
+          id: String(itemId),
+          title,
+          permalink,
+          thumbnail: item?.thumbnail || null,
+        };
+        message.content.text =
+          `${message.content.text}\n\n── Sobre o anúncio desta pergunta ──\n` +
+          `${title}\nID: ${itemId}` +
+          (permalink ? `\n${permalink}` : '');
+      } catch (e: any) {
+        this.logger.warn(`Falha ao enriquecer anúncio ${itemId}: ${e.message}`);
+      }
+    }
+
     await this.inboundQueue.add(
       'process-inbound',
       { channelId, organizationId, message },

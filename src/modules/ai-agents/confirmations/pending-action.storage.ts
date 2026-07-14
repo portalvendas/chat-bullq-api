@@ -46,6 +46,12 @@ export class PendingActionStorage {
           (action.executionResult as Prisma.InputJsonValue) ?? Prisma.JsonNull,
       },
       update: {
+        // args/preview PRECISAM entrar no update: quando o operador edita a
+        // resposta antes de aprovar, o novo texto vive em args.text/preview.
+        // Sem isto, o executor lê o args ORIGINAL e envia a versão da IA, não
+        // a editada.
+        args: action.args as Prisma.InputJsonValue,
+        preview: action.preview as unknown as Prisma.InputJsonValue,
         status: action.status,
         approvedBy: action.approvedBy ?? null,
         approvedAt: action.approvedAt ? new Date(action.approvedAt) : null,

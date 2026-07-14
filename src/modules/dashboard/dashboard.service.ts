@@ -323,6 +323,57 @@ export class DashboardService {
       .sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  /**
+   * Métrica de Marketplaces (Mercado Livre e futuros): total de perguntas e
+   * quantas foram respondidas pela IA vs por usuário (operador via BullQ ou
+   * resposta dada direto no painel do ML). SQL raw pra evitar a fragilidade
+   * de filtro JSON no Prisma quando a chave não existe.
+   */
+  async getMarketplaceStats(organizationId: string): Promise<{
+    totalPerguntas: number;
+    respondidas: number;
+    emAberto: number;
+    porIa: number;
+    porUsuario: number;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      {
+        total_perguntas: number;
+        respondidas: number;
+        por_ia: number;
+        por_usuario: number;
+      }[]
+    >`
+      SELECT
+        count(*) FILTER (WHERE m.direction = 'INBOUND')::int AS total_perguntas,
+        count(*) FILTER (WHERE m.direction = 'INBOUND' AND (m.metadata->>'mlAnswered') = 'true')::int AS respondidas,
+        count(*) FILTER (WHERE m.direction = 'OUTBOUND' AND (m.metadata->>'aiAgentId') IS NOT NULL)::int AS por_ia,
+        count(*) FILTER (WHERE m.direction = 'OUTBOUND' AND (
+          (m.metadata->>'mlExternalAnswer') = 'true'
+          OR (m.sender_id IS NOT NULL AND (m.metadata->>'aiAgentId') IS NULL)
+        ))::int AS por_usuario
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      JOIN channels ch ON ch.id = c.channel_id
+      WHERE ch.organization_id = ${organizationId}
+        AND ch.type = 'MERCADO_LIVRE'
+        AND m.type = 'TEXT'
+    `;
+    const r = rows[0] ?? {
+      total_perguntas: 0,
+      respondidas: 0,
+      por_ia: 0,
+      por_usuario: 0,
+    };
+    return {
+      totalPerguntas: r.total_perguntas,
+      respondidas: r.respondidas,
+      emAberto: Math.max(r.total_perguntas - r.respondidas, 0),
+      porIa: r.por_ia,
+      porUsuario: r.por_usuario,
+    };
+  }
+
   async getVolumeByChannel(organizationId: string, range: DateRange) {
     const result = await this.prisma.conversation.groupBy({
       by: ['channelId'],

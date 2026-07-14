@@ -33,6 +33,11 @@ export class DashboardController {
     return this.service.getVolumeByDay(orgId, this.parseRange(from, to));
   }
 
+  @Get('marketplace-stats')
+  getMarketplaceStats(@CurrentOrg('id') orgId: string) {
+    return this.service.getMarketplaceStats(orgId);
+  }
+
   @Get('volume-by-channel')
   @ApiOperation({ summary: 'Conversations volume by channel' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })

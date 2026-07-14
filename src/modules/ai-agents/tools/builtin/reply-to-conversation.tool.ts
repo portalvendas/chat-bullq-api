@@ -51,7 +51,12 @@ export class ReplyToConversationTool implements AiTool {
     ctx: ToolContext,
     opts?: { bypassReviewGate?: boolean },
   ): Promise<ToolResult> {
-    let text = String(input.text ?? '').trim();
+    // Remove marcadores de negrito markdown (**) — em chat/marketplace o
+    // cliente veria os asteriscos crus. Guard determinístico, além da regra
+    // no prompt.
+    let text = String(input.text ?? '')
+      .replace(/\*\*/g, '')
+      .trim();
     if (!text) {
       return { output: { ok: false, error: 'text is empty' } };
     }

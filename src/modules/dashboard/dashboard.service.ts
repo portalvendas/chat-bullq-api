@@ -335,30 +335,46 @@ export class DashboardService {
     emAberto: number;
     porIa: number;
     porUsuario: number;
+    editadasPorUsuario: number;
   }> {
-    const rows = await this.prisma.$queryRaw<
-      {
-        total_perguntas: number;
-        respondidas: number;
-        por_ia: number;
-        por_usuario: number;
-      }[]
-    >`
-      SELECT
-        count(*) FILTER (WHERE m.direction = 'INBOUND')::int AS total_perguntas,
-        count(*) FILTER (WHERE m.direction = 'INBOUND' AND (m.metadata->>'mlAnswered') = 'true')::int AS respondidas,
-        count(*) FILTER (WHERE m.direction = 'OUTBOUND' AND (m.metadata->>'aiAgentId') IS NOT NULL)::int AS por_ia,
-        count(*) FILTER (WHERE m.direction = 'OUTBOUND' AND (
-          (m.metadata->>'mlExternalAnswer') = 'true'
-          OR (m.sender_id IS NOT NULL AND (m.metadata->>'aiAgentId') IS NULL)
-        ))::int AS por_usuario
-      FROM messages m
-      JOIN conversations c ON c.id = m.conversation_id
-      JOIN channels ch ON ch.id = c.channel_id
-      WHERE ch.organization_id = ${organizationId}
-        AND ch.type = 'MERCADO_LIVRE'
-        AND m.type = 'TEXT'
-    `;
+    const [rows, editRows] = await Promise.all([
+      this.prisma.$queryRaw<
+        {
+          total_perguntas: number;
+          respondidas: number;
+          por_ia: number;
+          por_usuario: number;
+        }[]
+      >`
+        SELECT
+          count(*) FILTER (WHERE m.direction = 'INBOUND')::int AS total_perguntas,
+          count(*) FILTER (WHERE m.direction = 'INBOUND' AND (m.metadata->>'mlAnswered') = 'true')::int AS respondidas,
+          count(*) FILTER (WHERE m.direction = 'OUTBOUND' AND (m.metadata->>'aiAgentId') IS NOT NULL)::int AS por_ia,
+          count(*) FILTER (WHERE m.direction = 'OUTBOUND' AND (
+            (m.metadata->>'mlExternalAnswer') = 'true'
+            OR (m.sender_id IS NOT NULL AND (m.metadata->>'aiAgentId') IS NULL)
+          ))::int AS por_usuario
+        FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        JOIN channels ch ON ch.id = c.channel_id
+        WHERE ch.organization_id = ${organizationId}
+          AND ch.type = 'MERCADO_LIVRE'
+          AND m.type = 'TEXT'
+      `,
+      // Respostas da IA que o operador EDITOU antes de aprovar. Fica na
+      // pending action (args.editedByHuman), não na mensagem enviada.
+      this.prisma.$queryRaw<{ editadas: number }[]>`
+        SELECT count(*)::int AS editadas
+        FROM ai_pending_actions pa
+        JOIN conversations c ON c.id = pa.conversation_id
+        JOIN channels ch ON ch.id = c.channel_id
+        WHERE ch.organization_id = ${organizationId}
+          AND ch.type = 'MERCADO_LIVRE'
+          AND pa.tool_name = 'replyToConversation'
+          AND (pa.args->>'editedByHuman') = 'true'
+          AND pa.status IN ('APPROVED', 'EXECUTED')
+      `,
+    ]);
     const r = rows[0] ?? {
       total_perguntas: 0,
       respondidas: 0,
@@ -371,6 +387,7 @@ export class DashboardService {
       emAberto: Math.max(r.total_perguntas - r.respondidas, 0),
       porIa: r.por_ia,
       porUsuario: r.por_usuario,
+      editadasPorUsuario: editRows[0]?.editadas ?? 0,
     };
   }
 

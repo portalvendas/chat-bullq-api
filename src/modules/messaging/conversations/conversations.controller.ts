@@ -74,6 +74,7 @@ export class ConversationsController {
     @Query('stuck') stuck?: string,
     @Query('groups') groups?: string,
     @Query('tagIds') tagIds?: string,
+    @Query('category') category?: string,
   ) {
     const archivedScope =
       archived === 'only' || archived === 'any' ? archived : 'exclude';
@@ -99,6 +100,10 @@ export class ConversationsController {
         stuckOnly: stuck === 'true' || stuck === '1',
         kind,
         tagIds: parsedTagIds?.length ? parsedTagIds : undefined,
+        category:
+          category === 'marketplace' || category === 'conversation'
+            ? category
+            : undefined,
       },
       parseInt(page || '1', 10),
       parseInt(limit || '20', 10),

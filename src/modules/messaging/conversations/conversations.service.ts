@@ -5,7 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { Conversation, ConversationStatus } from '@prisma/client';
+import { Conversation, ConversationStatus, ChannelType } from '@prisma/client';
 import { ConversationsRepository, InboxFilters } from './conversations.repository';
 import { ConversationFsmService } from './conversation-fsm.service';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
@@ -67,6 +67,9 @@ export class ConversationsService {
       archived?: 'exclude' | 'only' | 'any';
       unreadOnly?: boolean;
       stuckOnly?: boolean;
+      /** Separa inbox de conversa (WhatsApp/Instagram) do marketplace (ML,
+       *  pergunta→resposta). Resolve pra channelIds do tipo correspondente. */
+      category?: 'conversation' | 'marketplace';
     },
     page: number,
     limit: number,
@@ -79,11 +82,36 @@ export class ConversationsService {
       .map((s) => s.trim() as ConversationStatus)
       .filter((s) => validStatuses.has(s));
 
+    // Resolve `category` → conjunto de channelIds. Marketplace = ML (e futuros
+    // marketplaces); conversa = todo o resto. Reusa o filtro channelIds.
+    let channelIds = filters.channelIds;
+    let channelId = filters.channelId;
+    if (filters.category) {
+      const MARKETPLACE_TYPES = [ChannelType.MERCADO_LIVRE];
+      const chans = await this.prisma.channel.findMany({
+        where: {
+          organizationId,
+          deletedAt: null,
+          type:
+            filters.category === 'marketplace'
+              ? { in: MARKETPLACE_TYPES }
+              : { notIn: MARKETPLACE_TYPES },
+        },
+        select: { id: true },
+      });
+      let ids = chans.map((c) => c.id);
+      if (channelId) ids = ids.filter((i) => i === channelId);
+      // Lista vazia = nenhum canal daquela categoria → não retorna nada
+      // (sentinela impossível em vez de "sem filtro").
+      channelIds = ids.length ? ids : ['__none__'];
+      channelId = undefined;
+    }
+
     const inboxFilters: InboxFilters = {
       organizationId,
       status: parsedStatuses?.length ? parsedStatuses : undefined,
-      channelId: filters.channelId,
-      channelIds: filters.channelIds,
+      channelId,
+      channelIds,
       conversationIds: filters.conversationIds,
       kind: filters.kind,
       tagIds: filters.tagIds,

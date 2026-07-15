@@ -36,16 +36,43 @@ const SALES_STAGES: Array<{
 ];
 
 /**
- * Provisiona o Funil de Vendas para uma org. Idempotente: se já existir um
- * pipeline com o mesmo nome, não faz nada (seguro rodar em todo deploy).
+ * Pipeline de Marketplaces (ML/Shopee). Fluxo é Pergunta→Venda. A conversão
+ * é detectada automaticamente pelo MarketplaceConversionService (cron), que
+ * cruza o buyer_id da pergunta com pedidos pagos na API do canal e move o
+ * card pra "Venda" com o valor do pedido.
+ *
+ * IMPORTANTE: os nomes das etapas abaixo são referenciados pelo
+ * MarketplaceConversionService (MARKETPLACE_STAGES). Manter em sincronia.
  */
-async function ensureSalesPipeline(organizationId: string): Promise<void> {
+const MARKETPLACE_PIPELINE_NAME = 'Marketplaces';
+const MARKETPLACE_STAGES: Array<{
+  name: string;
+  color: string;
+  type: PipelineStageType;
+}> = [
+  { name: 'Pergunta recebida', color: 'zinc', type: PipelineStageType.NORMAL },
+  { name: 'Respondida', color: 'blue', type: PipelineStageType.NORMAL },
+  { name: 'Em negociação', color: 'amber', type: PipelineStageType.NORMAL },
+  { name: 'Venda', color: 'green', type: PipelineStageType.WON },
+  { name: 'Sem conversão', color: 'red', type: PipelineStageType.LOST },
+];
+
+/** Provisiona um pipeline (idempotente por nome) com as etapas dadas. */
+async function ensurePipeline(
+  organizationId: string,
+  name: string,
+  description: string,
+  icon: string,
+  color: string,
+  stages: Array<{ name: string; color: string; type: PipelineStageType }>,
+  isDefault: boolean,
+): Promise<void> {
   const existing = await prisma.pipeline.findFirst({
-    where: { organizationId, name: SALES_PIPELINE_NAME },
+    where: { organizationId, name },
     select: { id: true },
   });
   if (existing) {
-    console.log(`✓ Pipeline "${SALES_PIPELINE_NAME}" já existe (${existing.id})`);
+    console.log(`✓ Pipeline "${name}" já existe (${existing.id})`);
     return;
   }
 
@@ -58,14 +85,14 @@ async function ensureSalesPipeline(organizationId: string): Promise<void> {
   const pipeline = await prisma.pipeline.create({
     data: {
       organizationId,
-      name: SALES_PIPELINE_NAME,
-      description: 'Funil comercial B2C (derivado do funil do Kommo).',
-      icon: 'trending-up',
-      color: 'emerald',
-      isDefault: true,
+      name,
+      description,
+      icon,
+      color,
+      isDefault,
       order: (maxOrder?.order ?? -1) + 1,
       stages: {
-        create: SALES_STAGES.map((s, i) => ({
+        create: stages.map((s, i) => ({
           name: s.name,
           color: s.color,
           type: s.type,
@@ -76,16 +103,18 @@ async function ensureSalesPipeline(organizationId: string): Promise<void> {
     include: { stages: true },
   });
 
-  // Garante só um default por org — rebaixa os demais.
-  await prisma.pipeline.updateMany({
-    where: { organizationId, isDefault: true, id: { not: pipeline.id } },
-    data: { isDefault: false },
-  });
+  if (isDefault) {
+    await prisma.pipeline.updateMany({
+      where: { organizationId, isDefault: true, id: { not: pipeline.id } },
+      data: { isDefault: false },
+    });
+  }
 
   console.log(
-    `✓ Pipeline "${SALES_PIPELINE_NAME}" criado (${pipeline.id}) com ${pipeline.stages.length} etapas`,
+    `✓ Pipeline "${name}" criado (${pipeline.id}) com ${pipeline.stages.length} etapas`,
   );
 }
+
 
 /** Cria o admin/org na primeira vez; retorna o organizationId. */
 async function ensureAdminOrg(): Promise<string> {
@@ -166,7 +195,24 @@ async function ensureAdminOrg(): Promise<string> {
 
 async function main() {
   const organizationId = await ensureAdminOrg();
-  await ensureSalesPipeline(organizationId);
+  await ensurePipeline(
+    organizationId,
+    SALES_PIPELINE_NAME,
+    'Funil comercial B2C (derivado do funil do Kommo).',
+    'trending-up',
+    'emerald',
+    SALES_STAGES,
+    true, // default
+  );
+  await ensurePipeline(
+    organizationId,
+    MARKETPLACE_PIPELINE_NAME,
+    'Perguntas de marketplace (ML/Shopee). Conversão detectada via API do canal.',
+    'shopping-cart',
+    'orange',
+    MARKETPLACE_STAGES,
+    false,
+  );
 }
 
 main()

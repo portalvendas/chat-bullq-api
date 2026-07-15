@@ -20,6 +20,7 @@ import { ZApiModule } from './adapters/z-api/zapi.module';
 import { ZApiInboundAdapter } from './adapters/z-api/zapi.inbound-adapter';
 import { ZApiOutboundAdapter } from './adapters/z-api/zapi.outbound-adapter';
 import { MercadoLivreModule } from './adapters/mercado-livre/mercadolivre.module';
+import { ShopeeModule } from './adapters/shopee/shopee.module';
 import { MercadoLivreInboundAdapter } from './adapters/mercado-livre/mercadolivre.inbound-adapter';
 import { MercadoLivreOutboundAdapter } from './adapters/mercado-livre/mercadolivre.outbound-adapter';
 import { ChannelSyncOrchestrator } from './sync/channel-sync.orchestrator';
@@ -46,6 +47,7 @@ import { WebhookThrottleGuard } from './webhook-throttle.guard';
     InstagramModule,
     ZApiModule,
     MercadoLivreModule,
+    ShopeeModule,
     forwardRef(() => MessagingModule),
   ],
   controllers: [WebhookGatewayController, ChannelsController],

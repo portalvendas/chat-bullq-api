@@ -87,7 +87,7 @@ export class ConversationsService {
     let channelIds = filters.channelIds;
     let channelId = filters.channelId;
     if (filters.category) {
-      const MARKETPLACE_TYPES = [ChannelType.MERCADO_LIVRE];
+      const MARKETPLACE_TYPES = [ChannelType.MERCADO_LIVRE, ChannelType.SHOPEE];
       const chans = await this.prisma.channel.findMany({
         where: {
           organizationId,

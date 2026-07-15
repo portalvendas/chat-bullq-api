@@ -44,6 +44,127 @@ export class MercadoLivreProductsService {
   ) {}
 
   /**
+   * Perfil PÚBLICO do comprador (GET /users/{id}). Antes da venda o ML só
+   * libera dado público: nickname, cidade/estado (nível), país, reputação e
+   * link do perfil. Nome/e-mail/telefone/CPF NÃO vêm aqui (privados). Best-
+   * effort: qualquer falha vira null (enriquecimento nunca quebra o fluxo).
+   */
+  async getBuyerProfile(
+    channel: { id: string } & Record<string, any>,
+    buyerId: string,
+  ): Promise<{
+    nickname?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    permalink?: string;
+    registrationDate?: string;
+  } | null> {
+    if (!buyerId) return null;
+    try {
+      const u = await this.http.get(channel as any, `/users/${buyerId}`);
+      if (!u?.id) return null;
+      return {
+        nickname: u?.nickname ?? undefined,
+        city: u?.address?.city ?? undefined,
+        state: u?.address?.state ?? undefined,
+        country: u?.country_id ?? undefined,
+        permalink: u?.permalink ?? undefined,
+        registrationDate: u?.registration_date ?? undefined,
+      };
+    } catch (err: any) {
+      this.logger.warn(
+        `getBuyerProfile ${buyerId} falhou: ${err?.message ?? err}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Dados PESSOAIS do comprador liberados por causa da VENDA. Fonte primária é
+   * o SHIPMENT (nome do destinatário + endereço de entrega); o billing_info
+   * complementa o documento (CPF/CNPJ). Tudo best-effort e isolado em try/catch
+   * — cada pedaço que faltar simplesmente não é preenchido.
+   *
+   * NOTA: `billing_info` no ML novo pode exigir o header `x-format-new: true`;
+   * o http-client atual não envia headers custom, então tratamos como opcional.
+   * O nome/endereço via shipment já é o dado mais confiável pós-venda.
+   */
+  async getOrderBuyerDetails(
+    channel: { id: string } & Record<string, any>,
+    orderId: string,
+  ): Promise<{
+    name?: string;
+    doc?: string;
+    address?: {
+      line?: string;
+      zipCode?: string;
+      city?: string;
+      state?: string;
+    };
+  } | null> {
+    if (!orderId) return null;
+    const out: {
+      name?: string;
+      doc?: string;
+      address?: {
+        line?: string;
+        zipCode?: string;
+        city?: string;
+        state?: string;
+      };
+    } = {};
+
+    // 1) Shipment → nome do destinatário + endereço.
+    try {
+      const order = await this.http.get(channel as any, `/orders/${orderId}`);
+      const shipmentId = order?.shipping?.id;
+      if (shipmentId) {
+        const s = await this.http.get(
+          channel as any,
+          `/shipments/${shipmentId}`,
+        );
+        const r = s?.receiver_address;
+        if (r) {
+          out.name = r?.receiver_name ?? out.name;
+          out.address = {
+            line: r?.address_line ?? undefined,
+            zipCode: r?.zip_code ?? undefined,
+            city: r?.city?.name ?? undefined,
+            state: r?.state?.name ?? undefined,
+          };
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Shipment do pedido ${orderId} indisponível: ${err?.message ?? err}`,
+      );
+    }
+
+    // 2) billing_info → documento (best-effort).
+    try {
+      const b = await this.http.get(
+        channel as any,
+        `/orders/${orderId}/billing_info`,
+      );
+      const info = b?.buyer?.billing_info ?? b?.billing_info ?? b;
+      const first = info?.first_name ?? info?.name;
+      const last = info?.last_name ?? '';
+      const fullName = [first, last].filter(Boolean).join(' ').trim();
+      if (!out.name && fullName) out.name = fullName;
+      out.doc =
+        info?.doc_number ??
+        info?.identification?.number ??
+        info?.document_number ??
+        undefined;
+    } catch {
+      // billing_info costuma exigir header novo/escopo extra — ignorar.
+    }
+
+    return out.name || out.doc || out.address ? out : null;
+  }
+
+  /**
    * BACKFILL (idempotente): re-enriquece perguntas ML antigas que entraram
    * antes do enriquecimento de anúncio. Para cada mensagem INBOUND sem
    * `content.mlItem`, pega o `item_id` do payload cru já salvo

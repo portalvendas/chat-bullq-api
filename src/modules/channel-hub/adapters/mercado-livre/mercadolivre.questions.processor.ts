@@ -119,6 +119,33 @@ export class MercadoLivreQuestionsProcessor extends WorkerHost {
       return;
     }
 
+    // Enriquecimento do COMPRADOR (perfil público): resolve nickname + cidade/
+    // estado via /users/{id} e usa como nome do contato (real-time, o operador
+    // vê "fulano_ml" em vez de "Comprador 123"). Best-effort — não bloqueia.
+    const buyerId = question?.from?.id ? String(question.from.id) : null;
+    if (buyerId) {
+      try {
+        const profile = await this.products.getBuyerProfile(channel, buyerId);
+        if (profile?.nickname) {
+          message.contactName = profile.nickname;
+          message.senderName = profile.nickname;
+        }
+        if (profile) {
+          (message.content as any).mlBuyer = {
+            id: buyerId,
+            nickname: profile.nickname ?? null,
+            city: profile.city ?? null,
+            state: profile.state ?? null,
+            permalink: profile.permalink ?? null,
+          };
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `Falha ao enriquecer comprador ${buyerId}: ${e?.message ?? e}`,
+        );
+      }
+    }
+
     // Enriquece a pergunta com o ANÚNCIO (item_id vem no payload). O operador
     // vê qual anúncio, e o agente pode detalhar ESSE item direto (sem buscar).
     const itemId = question?.item_id;

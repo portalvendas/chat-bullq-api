@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CardStatus, ChannelType, Prisma } from '@prisma/client';
+import { CardStatus, Channel, ChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MercadoLivreProductsService } from '../channel-hub/adapters/mercado-livre/mercadolivre.products.service';
 import {
   MarketplaceOrder,
   MarketplaceOrdersService,
@@ -54,6 +55,7 @@ export class MarketplaceConversionService {
     private readonly prisma: PrismaService,
     private readonly orders: MarketplaceOrdersService,
     private readonly realtime: RealtimeGateway,
+    private readonly mlProducts: MercadoLivreProductsService,
   ) {}
 
   /** Extrai o buyer_id do externalId do ContactChannel conforme o canal. */
@@ -185,11 +187,12 @@ export class MarketplaceConversionService {
       take: 2000,
     });
 
-    const channelTypeById = new Map(channels.map((c) => [c.id, c.type]));
+    const channelById = new Map(channels.map((c) => [c.id, c]));
 
     for (const conv of conversations) {
       summary.conversationsScanned++;
-      const type = channelTypeById.get(conv.channelId)!;
+      const channel = channelById.get(conv.channelId)!;
+      const type = channel.type;
       const cc = conv.contact?.channels.find(
         (x) => x.channelId === conv.channelId,
       );
@@ -217,6 +220,11 @@ export class MarketplaceConversionService {
         this.realtime.emitToOrg(organizationId, 'card:created', {
           card: created,
         });
+        // Enriquece o contato com o perfil público (nickname/cidade/estado) na
+        // 1ª vez que vemos a conversa. Só ML por ora (Shopee: Fase 2).
+        if (type === ChannelType.MERCADO_LIVRE && buyerId) {
+          await this.enrichBuyerProfile(channel, conv.contactId, buyerId);
+        }
       }
 
       // 2) Conversão: buyer_id da pergunta bate com pedido pago?
@@ -224,6 +232,10 @@ export class MarketplaceConversionService {
         const order = ordersByChannel.get(conv.channelId)?.get(buyerId);
         if (order) {
           await this.markAsSale(organizationId, card.id, stSale.id, order, bump);
+          // Venda → libera dados pessoais do pedido (nome/CPF/endereço).
+          if (type === ChannelType.MERCADO_LIVRE) {
+            await this.enrichSaleData(channel, conv.contactId, order.orderId);
+          }
           summary.conversions++;
           continue;
         }
@@ -299,5 +311,97 @@ export class MarketplaceConversionService {
     this.logger.log(
       `Conversão: card ${cardId} → Venda (pedido ${order.orderId}, R$ ${order.total})`,
     );
+  }
+
+  /**
+   * Enriquece o contato com o perfil PÚBLICO do comprador (nickname + cidade/
+   * estado + link). Nome do contato só é sobrescrito se ainda for o default
+   * "Comprador N". Best-effort — nunca lança.
+   */
+  private async enrichBuyerProfile(
+    channel: Channel,
+    contactId: string,
+    buyerId: string,
+  ): Promise<void> {
+    try {
+      const profile = await this.mlProducts.getBuyerProfile(channel, buyerId);
+      if (!profile) return;
+      const contact = await this.prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { name: true, metadata: true },
+      });
+      const meta =
+        (contact?.metadata as Prisma.JsonObject | null) ??
+        ({} as Prisma.JsonObject);
+      const isDefaultName =
+        !contact?.name || /^comprador\s/i.test(contact.name);
+      await this.prisma.contact.update({
+        where: { id: contactId },
+        data: {
+          name:
+            isDefaultName && profile.nickname ? profile.nickname : undefined,
+          metadata: {
+            ...meta,
+            ml: {
+              buyerId,
+              nickname: profile.nickname ?? null,
+              city: profile.city ?? null,
+              state: profile.state ?? null,
+              country: profile.country ?? null,
+              permalink: profile.permalink ?? null,
+            },
+          },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `enrichBuyerProfile contato ${contactId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Após a VENDA, grava os dados pessoais liberados pelo pedido (nome real,
+   * documento, endereço de entrega). O nome real do pedido sobrepõe o nickname.
+   * Best-effort — nunca lança.
+   */
+  private async enrichSaleData(
+    channel: Channel,
+    contactId: string,
+    orderId: string,
+  ): Promise<void> {
+    try {
+      const details = await this.mlProducts.getOrderBuyerDetails(
+        channel,
+        orderId,
+      );
+      if (!details) return;
+      const contact = await this.prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { metadata: true },
+      });
+      const meta =
+        (contact?.metadata as Prisma.JsonObject | null) ??
+        ({} as Prisma.JsonObject);
+      await this.prisma.contact.update({
+        where: { id: contactId },
+        data: {
+          name: details.name || undefined,
+          metadata: {
+            ...meta,
+            mlSale: {
+              orderId,
+              name: details.name ?? null,
+              doc: details.doc ?? null,
+              address: (details.address as Prisma.JsonObject) ?? null,
+            },
+          },
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `enrichSaleData contato ${contactId} pedido ${orderId}: ${err?.message ?? err}`,
+      );
+    }
   }
 }

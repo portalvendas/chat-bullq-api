@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ShopeeOAuthService } from './shopee.oauth.service';
 import { ShopeeHttpClient } from './shopee.http-client';
+import { ShopeeOAuthController } from './shopee-oauth.controller';
 
 /**
  * Adapter Shopee (marketplace, Open Platform API v2). Fase 1: fundação de
@@ -12,6 +13,7 @@ import { ShopeeHttpClient } from './shopee.http-client';
  */
 @Module({
   imports: [ConfigModule],
+  controllers: [ShopeeOAuthController],
   providers: [ShopeeOAuthService, ShopeeHttpClient],
   exports: [ShopeeOAuthService, ShopeeHttpClient],
 })

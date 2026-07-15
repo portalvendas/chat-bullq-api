@@ -86,4 +86,50 @@ export class ShopeeOAuthController {
       return done('shopee=error');
     }
   }
+
+  /**
+   * Desautorização: o Shopee chama esta URL quando a loja REMOVE o app,
+   * enviando `shop_id`. Marcamos o canal correspondente como desconectado
+   * (limpa tokens + desativa) pra não tentar mais usar credenciais mortas.
+   */
+  @Get('deauth')
+  @Public()
+  @ApiOperation({ summary: 'Callback de desautorização do Shopee' })
+  async deauth(
+    @Query('shop_id') shopId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').replace(/\/$/, '');
+    try {
+      if (shopId) {
+        // Filtro JSON no código (Prisma JSON path é frágil quando a chave falta).
+        const channels = await this.prisma.channel.findMany({
+          where: { type: ChannelType.SHOPEE, deletedAt: null },
+        });
+        for (const ch of channels) {
+          const cfg = (ch.config ?? {}) as Record<string, any>;
+          if (String(cfg.shopId ?? '') === String(shopId)) {
+            await this.prisma.channel.update({
+              where: { id: ch.id },
+              data: {
+                isActive: false,
+                config: {
+                  ...cfg,
+                  accessToken: null,
+                  refreshToken: null,
+                  deauthorizedAt: new Date().toISOString(),
+                },
+              },
+            });
+            this.logger.log(
+              `Shopee shop ${shopId} desautorizou — canal ${ch.id} desativado`,
+            );
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Deauth Shopee falhou: ${err.message}`);
+    }
+    res.redirect(`${webUrl}/settings/channels?shopee=deauthorized`);
+  }
 }

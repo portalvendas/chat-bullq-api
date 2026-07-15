@@ -23,6 +23,8 @@ import { MercadoLivreModule } from './adapters/mercado-livre/mercadolivre.module
 import { ShopeeModule } from './adapters/shopee/shopee.module';
 import { MercadoLivreInboundAdapter } from './adapters/mercado-livre/mercadolivre.inbound-adapter';
 import { MercadoLivreOutboundAdapter } from './adapters/mercado-livre/mercadolivre.outbound-adapter';
+import { ShopeeInboundAdapter } from './adapters/shopee/shopee.inbound-adapter';
+import { ShopeeOutboundAdapter } from './adapters/shopee/shopee.outbound-adapter';
 import { ChannelSyncOrchestrator } from './sync/channel-sync.orchestrator';
 import { ChannelSyncProcessor } from './sync/channel-sync.processor';
 import { CHANNEL_SYNC_QUEUE } from './sync/channel-sync.constants';
@@ -84,6 +86,8 @@ export class ChannelHubModule implements OnModuleInit {
     private readonly zapiOutbound: ZApiOutboundAdapter,
     private readonly mlInbound: MercadoLivreInboundAdapter,
     private readonly mlOutbound: MercadoLivreOutboundAdapter,
+    private readonly shopeeInbound: ShopeeInboundAdapter,
+    private readonly shopeeOutbound: ShopeeOutboundAdapter,
   ) {}
 
   onModuleInit() {
@@ -92,6 +96,7 @@ export class ChannelHubModule implements OnModuleInit {
     this.registry.register(this.instagramInbound, this.instagramOutbound);
     this.registry.register(this.zapiInbound, this.zapiOutbound);
     this.registry.register(this.mlInbound, this.mlOutbound);
+    this.registry.register(this.shopeeInbound, this.shopeeOutbound);
     this.registry.registerHistorySync(this.zappfySync);
     this.registry.registerHistorySync(this.instagramSync);
   }

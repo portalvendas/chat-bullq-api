@@ -35,9 +35,16 @@ export class ShopeeOAuthService {
     private readonly prisma: PrismaService,
   ) {}
 
+  /** Remove espaços e aspas acidentais coladas no valor da env. */
+  private clean(v: string | undefined | null): string {
+    return (v ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
+  }
+
   private creds(): { partnerId: number; partnerKey: string } {
-    const partnerId = Number(this.config.get<string>('SHOPEE_PARTNER_ID'));
-    const partnerKey = this.config.get<string>('SHOPEE_PARTNER_KEY') ?? '';
+    // strip + remove aspas acidentais: espaço/aspas/newline na partner_key é a
+    // causa clássica de "Wrong sign" (a HMAC muda com qualquer byte extra).
+    const partnerId = Number(this.clean(this.config.get<string>('SHOPEE_PARTNER_ID')));
+    const partnerKey = this.clean(this.config.get<string>('SHOPEE_PARTNER_KEY'));
     if (!partnerId || !partnerKey) {
       throw new BadGatewayException(
         'Shopee não configurado: defina SHOPEE_PARTNER_ID e SHOPEE_PARTNER_KEY no ambiente.',

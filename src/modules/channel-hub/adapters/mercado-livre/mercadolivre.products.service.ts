@@ -16,7 +16,17 @@ import { MercadoLivreHttpClient } from './mercadolivre.http-client';
 export interface MlProduct {
   id: string;
   title: string;
+  /** Preço EFETIVO de venda (já com desconto, se houver promoção ativa). */
   price: number | null;
+  /** Preço "de" (cheio) quando há promoção; null se não há desconto. */
+  originalPrice?: number | null;
+  /** true quando há promoção ativa (originalPrice > price). */
+  hasPromotion?: boolean;
+  /**
+   * Preço já formatado pra o agente citar direto, evitando erro de cotação:
+   * "R$ 318,52 (de R$ 374,74, 15% OFF)" ou "R$ 318,52".
+   */
+  priceFormatted?: string | null;
   currency: string | null;
   availableQuantity: number | null;
   status: string;
@@ -659,7 +669,7 @@ export class MercadoLivreProductsService {
 
       // 2) detalhes em lote (multiget devolve [{ code, body }])
       const attrs =
-        'id,title,price,currency_id,available_quantity,permalink,thumbnail,status,attributes';
+        'id,title,price,original_price,sale_price,currency_id,available_quantity,permalink,thumbnail,status,attributes';
       const items = await this.http.get(
         channel,
         `/items?ids=${ids.join(',')}&attributes=${attrs}`,
@@ -697,9 +707,27 @@ export class MercadoLivreProductsService {
     }
     try {
       const attrs =
-        'id,title,price,currency_id,available_quantity,permalink,thumbnail,status,attributes,main_features';
+        'id,title,price,original_price,sale_price,currency_id,available_quantity,permalink,thumbnail,status,attributes,main_features';
       const item = await this.http.get(channel, `/items/${itemId}?attributes=${attrs}`);
       const product = this.normalize(item);
+
+      // Preço efetivo do marketplace (deals de loja/campanha) — sobrepõe o base.
+      const mp = await this.fetchMarketplaceSalePrice(channel, itemId);
+      if (mp) {
+        product.price = mp.amount;
+        const original =
+          mp.regularAmount != null && mp.regularAmount > mp.amount
+            ? mp.regularAmount
+            : product.originalPrice ?? null;
+        product.originalPrice =
+          original != null && original > mp.amount ? original : null;
+        product.hasPromotion = product.originalPrice != null;
+        product.priceFormatted = this.formatPrice(
+          product.price,
+          product.originalPrice ?? null,
+          product.currency ?? undefined,
+        );
+      }
 
       // Destaques "O que você precisa saber sobre este produto" (main_features).
       // Prosa gerada pelo ML com specs em linguagem natural (ex: "suporte para
@@ -746,10 +774,33 @@ export class MercadoLivreProductsService {
   }
 
   private normalize(item: any): MlProduct {
-    return {
+    // Preço efetivo: o campo `price` do item é o preço BASE; quando há promoção,
+    // o valor real que o comprador vê vem em `sale_price` (objeto) ou é inferido
+    // por `original_price`. Sempre priorizamos o preço COM desconto.
+    const basePrice: number | null =
+      typeof item.price === 'number' ? item.price : null;
+    let effective = basePrice;
+    let original: number | null =
+      typeof item.original_price === 'number' ? item.original_price : null;
+
+    const sp = item.sale_price;
+    if (sp && typeof sp === 'object' && typeof sp.amount === 'number') {
+      effective = sp.amount;
+      if (typeof sp.regular_amount === 'number') original = sp.regular_amount;
+    } else if (typeof sp === 'number') {
+      effective = sp;
+    }
+
+    const hasPromotion =
+      original != null && effective != null && original > effective;
+
+    const product: MlProduct = {
       id: item.id,
       title: item.title,
-      price: item.price ?? null,
+      price: effective,
+      originalPrice: hasPromotion ? original : null,
+      hasPromotion,
+      priceFormatted: this.formatPrice(effective, hasPromotion ? original : null, item.currency_id),
       currency: item.currency_id ?? null,
       availableQuantity: item.available_quantity ?? null,
       status: item.status,
@@ -759,5 +810,56 @@ export class MercadoLivreProductsService {
         .filter((a: any) => a?.value_name)
         .map((a: any) => ({ name: a.name, value: a.value_name })),
     };
+    return product;
+  }
+
+  /** Formata preço BR pro agente citar sem errar. Inclui o "de" quando há promo. */
+  private formatPrice(
+    amount: number | null,
+    original: number | null,
+    currencyId?: string,
+  ): string | null {
+    if (amount == null) return null;
+    const symbol = (currencyId ?? 'BRL') === 'BRL' ? 'R$' : (currencyId ?? '');
+    const fmt = (v: number) =>
+      `${symbol} ${v.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`.trim();
+    if (original != null && original > amount) {
+      const off = Math.round(((original - amount) / original) * 100);
+      return `${fmt(amount)} (de ${fmt(original)}, ${off}% OFF)`;
+    }
+    return fmt(amount);
+  }
+
+  /**
+   * Preço efetivo do marketplace via endpoint dedicado
+   * GET /items/{id}/sale_price?context=channel_marketplace — é o que mostra o
+   * valor real com promoção de campanha (o objeto `sale_price` no item nem
+   * sempre reflete deals de loja). Best-effort: retorna null se indisponível.
+   */
+  private async fetchMarketplaceSalePrice(
+    channel: any,
+    itemId: string,
+  ): Promise<{ amount: number; regularAmount: number | null } | null> {
+    try {
+      const sp = await this.http.get(
+        channel,
+        `/items/${itemId}/sale_price?context=channel_marketplace`,
+      );
+      if (sp && typeof sp.amount === 'number') {
+        return {
+          amount: sp.amount,
+          regularAmount:
+            typeof sp.regular_amount === 'number' ? sp.regular_amount : null,
+        };
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `sale_price indisponível p/ ${itemId}: ${err?.message ?? err}`,
+      );
+    }
+    return null;
   }
 }

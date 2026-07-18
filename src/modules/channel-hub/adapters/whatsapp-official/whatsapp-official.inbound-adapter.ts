@@ -7,13 +7,19 @@ import {
 } from '../../ports/inbound-channel.port';
 import { WebhookParseResult, VerificationResponse } from '../../ports/types';
 import { WhatsAppOfficialMessageMapper } from './whatsapp-official.message-mapper';
+import { WhatsAppCoexistenceService } from './whatsapp-coexistence.service';
 
 @Injectable()
 export class WhatsAppOfficialInboundAdapter implements InboundChannelPort {
   readonly channelType = ChannelType.WHATSAPP_OFFICIAL;
   private readonly logger = new Logger(WhatsAppOfficialInboundAdapter.name);
+  /** Teto defensivo de mensagens de histórico processadas por webhook. */
+  private static readonly HISTORY_CAP = 500;
 
-  constructor(private readonly mapper: WhatsAppOfficialMessageMapper) {}
+  constructor(
+    private readonly mapper: WhatsAppOfficialMessageMapper,
+    private readonly coexistence: WhatsAppCoexistenceService,
+  ) {}
 
   extractLocators(payload: unknown): ChannelLocator[] {
     const body = (payload ?? {}) as Record<string, any>;
@@ -117,6 +123,62 @@ export class WhatsAppOfficialInboundAdapter implements InboundChannelPort {
           ) {
             continue;
           }
+
+          const field = change?.field;
+
+          // ─── COEXISTENCE ───────────────────────────────────────────────
+          // Mensagens que o lojista mandou pelo APP WhatsApp Business.
+          if (field === 'smb_message_echoes') {
+            for (const echo of value.message_echoes || []) {
+              const n = this.mapper.normalizeEcho(echo);
+              if (n) result.messages.push(n);
+            }
+            continue;
+          }
+
+          // Histórico (até 180 dias). Cap defensivo por webhook.
+          if (field === 'history') {
+            const businessPhone = value.metadata?.display_phone_number;
+            let count = 0;
+            for (const h of value.history || []) {
+              for (const thread of h.threads || []) {
+                for (const m of thread.messages || []) {
+                  if (count >= WhatsAppOfficialInboundAdapter.HISTORY_CAP) break;
+                  const n = this.mapper.normalizeHistoryMessage(
+                    m,
+                    thread.id,
+                    businessPhone,
+                  );
+                  if (n) {
+                    result.messages.push(n);
+                    count++;
+                  }
+                }
+              }
+            }
+            continue;
+          }
+
+          // Mudança de conta: offboard (desconectou pelo app) / reconnect.
+          if (field === 'account_update') {
+            const event = value.event;
+            if (
+              channel &&
+              (event === 'PARTNER_REMOVED' || event === 'ACCOUNT_OFFBOARDED')
+            ) {
+              void this.coexistence.handleOffboard(channel.id);
+            } else if (channel && event === 'ACCOUNT_RECONNECTED') {
+              void this.coexistence.handleReconnect(channel.id);
+            }
+            continue;
+          }
+
+          // Contatos do address book (smb_app_state_sync): v1 ignora — os
+          // contatos materializam das threads de mensagem.
+          if (field === 'smb_app_state_sync') {
+            continue;
+          }
+          // ───────────────────────────────────────────────────────────────
 
           const contacts = value.contacts || [];
           const messages = value.messages || [];

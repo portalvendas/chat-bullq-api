@@ -35,6 +35,53 @@ export class WhatsAppOfficialMessageMapper {
     return result;
   }
 
+  /**
+   * COEXISTENCE — mensagem que o lojista mandou pelo APP WhatsApp Business
+   * (webhook smb_message_echoes). Vira uma mensagem OUTBOUND no inbox: o
+   * contato é o destinatário (`to`), e `isEcho=true` faz o pipeline gravar
+   * como saída (o operador vê no histórico o que foi digitado no app).
+   */
+  normalizeEcho(echo: Record<string, any>): NormalizedInboundMessage | null {
+    if (!echo?.id || !echo?.to) return null;
+    return {
+      externalMessageId: echo.id,
+      externalContactId: String(echo.to),
+      contactPhone: String(echo.to),
+      channelType: ChannelType.WHATSAPP_OFFICIAL,
+      timestamp: new Date(parseInt(echo.timestamp, 10) * 1000),
+      type: this.resolveContentType(echo),
+      content: this.extractContent(echo),
+      isEcho: true,
+      rawPayload: echo,
+    };
+  }
+
+  /**
+   * COEXISTENCE — mensagem do histórico (webhook history). `threadUserPhone` é
+   * o outro lado da conversa (id da thread). Se `from` == telefone do negócio,
+   * é saída (isEcho); senão é entrada do cliente. `media_placeholder` (mídia
+   * sem asset) é ignorado — o conteúdo real vem num webhook separado.
+   */
+  normalizeHistoryMessage(
+    msg: Record<string, any>,
+    threadUserPhone: string,
+    businessPhone: string,
+  ): NormalizedInboundMessage | null {
+    if (!msg?.id || !msg?.from || msg.type === 'media_placeholder') return null;
+    const isEcho = String(msg.from) === String(businessPhone);
+    return {
+      externalMessageId: msg.id,
+      externalContactId: String(threadUserPhone),
+      contactPhone: String(threadUserPhone),
+      channelType: ChannelType.WHATSAPP_OFFICIAL,
+      timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
+      type: this.resolveContentType(msg),
+      content: this.extractContent(msg),
+      isEcho,
+      rawPayload: msg,
+    };
+  }
+
   normalizeStatus(status: Record<string, any>): StatusUpdate | null {
     if (!status?.id) return null;
 

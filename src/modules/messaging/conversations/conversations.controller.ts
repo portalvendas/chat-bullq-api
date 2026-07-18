@@ -112,6 +112,15 @@ export class ConversationsController {
     );
   }
 
+  @Get('unanswered-counts')
+  @ApiOperation({
+    summary:
+      'Contagem de conversas sem resposta (última msg inbound) por canal + geral',
+  })
+  unansweredCounts(@CurrentOrg('id') orgId: string) {
+    return this.service.getUnansweredCounts(orgId);
+  }
+
   @Post(':id/archive')
   @ApiOperation({ summary: 'Archive a conversation' })
   archive(

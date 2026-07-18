@@ -39,6 +39,65 @@ export class ConversationsService {
     private readonly agentRunner: AiAgentRunnerService,
   ) {}
 
+  /**
+   * Contagem de conversas "SEM RESPOSTA" por canal + bucket geral, pro badge
+   * de alerta na árvore da inbox. Definição: a ÚLTIMA mensagem da conversa é
+   * INBOUND (o cliente falou por último e ainda não respondemos) — cobre o
+   * caso do modo revisão (resposta gerada mas ainda não aprovada/enviada).
+   *
+   * Performance: usa o índice (conversation_id, created_at) via LATERAL pra
+   * pegar só a última mensagem de cada conversa aberta. Ignora CLOSED,
+   * arquivadas e deletadas.
+   */
+  async getUnansweredCounts(organizationId: string): Promise<{
+    general: number;
+    byChannelId: Record<string, number>;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ channelId: string; count: number }>
+    >`
+      SELECT c.channel_id AS "channelId", COUNT(*)::int AS count
+      FROM conversations c
+      JOIN LATERAL (
+        SELECT m.direction
+        FROM messages m
+        WHERE m.conversation_id = c.id
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) lm ON true
+      WHERE c.organization_id = ${organizationId}
+        AND c.deleted_at IS NULL
+        AND c.is_archived = false
+        AND c.status <> 'CLOSED'::"ConversationStatus"
+        AND lm.direction = 'INBOUND'::"MessageDirection"
+      GROUP BY c.channel_id
+    `;
+
+    const byChannelId: Record<string, number> = {};
+    for (const r of rows) byChannelId[r.channelId] = Number(r.count);
+
+    // "Geral" = conversas de canais NÃO-marketplace (WhatsApp/Instagram/etc).
+    const ids = Object.keys(byChannelId);
+    let general = 0;
+    if (ids.length) {
+      const MARKETPLACE_TYPES: ChannelType[] = [
+        ChannelType.MERCADO_LIVRE,
+        ChannelType.SHOPEE,
+      ];
+      const channels = await this.prisma.channel.findMany({
+        where: { organizationId, id: { in: ids } },
+        select: { id: true, type: true },
+      });
+      for (const ch of channels) {
+        if (!MARKETPLACE_TYPES.includes(ch.type)) {
+          general += byChannelId[ch.id] ?? 0;
+        }
+      }
+    }
+
+    return { general, byChannelId };
+  }
+
   private broadcastUpdate(conversation: Conversation | null): void {
     if (!conversation) return;
     this.realtimeGateway.emitToChannel(

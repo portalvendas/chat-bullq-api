@@ -366,6 +366,69 @@ export class ConversationsService {
   }
 
   /**
+   * Regenera a resposta pendente com uma INFORMAÇÃO COMPLEMENTAR do operador
+   * (ex: "Material é MDF"). O complemento:
+   *  1. vira uma nota AUTORITATIVA na base de conhecimento (memória p/ futuras
+   *     respostas — inclusive de outros compradores do mesmo anúncio);
+   *  2. expira o(s) pending action(s) atual(is) da conversa (some da tela);
+   *  3. re-roda o agente com a MESMA pergunta — agora com o complemento já no
+   *     prompt — produzindo um novo pending action pra aprovar.
+   */
+  async regenerateAnswer(
+    id: string,
+    organizationId: string,
+    complement: string,
+    actorId: string,
+    access: ChannelAccess = 'ALL',
+  ): Promise<{ ok: boolean }> {
+    const trimmed = (complement ?? '').trim();
+    if (!trimmed) {
+      throw new BadRequestException('Informe a informação complementar');
+    }
+    const conversation = await this.findOne(id, organizationId, access);
+
+    const triggerMessage = await this.prisma.message.findFirst({
+      where: { conversationId: id, direction: 'INBOUND' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!triggerMessage) {
+      throw new BadRequestException('Sem pergunta do cliente para regerar');
+    }
+
+    // Anúncio (marketplace) pra escopar a nota; nulo = fato geral da loja.
+    const content = (triggerMessage.content ?? {}) as Record<string, any>;
+    const itemId = content?.mlItem?.id ? String(content.mlItem.id) : null;
+
+    // 1) Memória: salva o complemento como fato confirmado.
+    await this.prisma.agentKnowledgeNote.create({
+      data: {
+        organizationId,
+        itemId,
+        text: trimmed,
+        sourceQuestion: typeof content.text === 'string' ? content.text : null,
+        createdById: actorId,
+      },
+    });
+
+    // 2) Expira os pending pendentes desta conversa (removem-se da tela).
+    await this.prisma.aiPendingAction.updateMany({
+      where: { conversationId: id, status: 'PENDING' },
+      data: { status: 'EXPIRED' },
+    });
+
+    // 3) Re-roda o agente com a mesma pergunta (complemento já no prompt).
+    this.agentRunner
+      .run({ conversation: conversation as Conversation, triggerMessage })
+      .catch((err) =>
+        this.logger.error(
+          `regenerateAnswer run failed for conv ${id}: ${err?.message ?? err}`,
+        ),
+      );
+
+    return { ok: true };
+  }
+
+  /**
    * Manually pin a specific AI agent to this conversation and immediately
    * engage it. Use case: human says "vou te passar pra Lívia" via manual
    * message — the system can't infer that intent from text, so the operator

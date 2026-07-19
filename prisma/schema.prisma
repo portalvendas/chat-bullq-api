@@ -207,6 +207,7 @@ model Organization {
   cards         Card[]
   products      Product[]
   mlDirectory   MlProductDirectory[]
+  knowledgeNotes AgentKnowledgeNote[]
 
   @@map("organizations")
 }
@@ -1395,6 +1396,28 @@ model Card {
   @@index([contactId])
   @@index([conversationId])
   @@map("cards")
+}
+
+// ─── Base de conhecimento do operador ────────────
+//
+// Complementos que um humano confirmou durante a revisão de uma resposta
+// (ex: "Material do armário MLB4721084373 é MDF"). Viram fatos AUTORITATIVOS
+// injetados no prompt do agente pra respostas futuras — inclusive de outros
+// compradores. `itemId` (MLB) é opcional: quando presente, o fato é específico
+// daquele anúncio; quando nulo, é um fato geral da loja.
+model AgentKnowledgeNote {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  itemId         String?  @map("item_id")
+  text           String
+  sourceQuestion String?  @map("source_question")
+  createdById    String?  @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, itemId], name: "idx_knowledge_org_item")
+  @@map("agent_knowledge_notes")
 }
 
 // ─── Product Catalog ─────────────────────────────

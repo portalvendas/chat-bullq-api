@@ -231,6 +231,32 @@ export class AiAgentRunnerService {
         return new Map<string, { url: string; mimeType?: string }>();
       });
 
+    // Base de conhecimento do operador: fatos confirmados por humano. Pega os
+    // GERAIS (itemId null) + os do ANÚNCIO atual (se a conversa é de marketplace
+    // e alguma mensagem carrega o mlItem.id).
+    let currentItemId: string | undefined;
+    for (let i = chronological.length - 1; i >= 0; i--) {
+      const mi = (chronological[i]?.content as any)?.mlItem?.id;
+      if (mi) {
+        currentItemId = String(mi);
+        break;
+      }
+    }
+    const knowledgeNotes = await this.prisma.agentKnowledgeNote
+      .findMany({
+        where: {
+          organizationId: conversation.organizationId,
+          OR: currentItemId
+            ? [{ itemId: currentItemId }, { itemId: null }]
+            : [{ itemId: null }],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: { text: true },
+      })
+      .then((rows) => rows.map((r) => r.text))
+      .catch(() => [] as string[]);
+
     const messages = this.promptBuilder.buildMessages({
       organization,
       agent,
@@ -244,6 +270,7 @@ export class AiAgentRunnerService {
       triggerMessage,
       skillInstructions,
       catalog,
+      knowledgeNotes,
     });
 
     // Fase 2.5: augmenta o system message com Security Layer (prepend)

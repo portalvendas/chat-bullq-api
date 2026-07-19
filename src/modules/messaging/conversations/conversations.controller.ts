@@ -247,6 +247,27 @@ export class ConversationsController {
     return this.service.engageAi(id, orgId, userId, access);
   }
 
+  @Post(':id/ai/regenerate')
+  @ApiOperation({
+    summary:
+      'Regenera a resposta pendente com uma informação complementar do operador. Salva o complemento na base de conhecimento (memória p/ futuras respostas), expira o pending atual e re-roda o agente.',
+  })
+  regenerateAnswer(
+    @Param('id') id: string,
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentChannelAccess() access: ChannelAccess,
+    @Body() body: { complement?: string },
+  ) {
+    return this.service.regenerateAnswer(
+      id,
+      orgId,
+      body?.complement ?? '',
+      userId,
+      access,
+    );
+  }
+
   @Post(':id/ai/set-agent')
   @ApiOperation({
     summary:

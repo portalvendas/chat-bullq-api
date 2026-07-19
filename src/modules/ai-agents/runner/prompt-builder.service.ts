@@ -22,6 +22,10 @@ export interface PromptContext {
   triggerMessage: Message;
   /** Extra prompt fragments contributed by the agent's active skills. */
   skillInstructions?: string[];
+  /** Complementos do operador (AgentKnowledgeNote) — fatos confirmados por
+   *  humano sobre o negócio/anúncio. Injetados como base de conhecimento
+   *  autoritativa (o operador aprovou → é verdade). */
+  knowledgeNotes?: string[];
   /** Compact product catalog for sales agents — name + slug + 1 line each.
    *  Full pitch is fetched on demand via the getProductPitch skill. */
   catalog?: Array<{
@@ -74,6 +78,16 @@ Atualizado em <%= it.operationalContextLabel %>. Use isso pra orientar suas pró
 ═══ Fatos sobre este cliente ═══
 <% for (const [key, value] of Object.entries(it.memoryFacts)) { %>
 - <%= key %>: <%= JSON.stringify(value) %>
+<% } %>
+<% } %>
+<% if (it.knowledgeNotes && it.knowledgeNotes.length > 0) { %>
+
+═══ BASE DE CONHECIMENTO (complementos confirmados pela operação) ═══
+Estes fatos foram informados/confirmados por um humano da loja — são
+AUTORITATIVOS. Use-os pra responder com segurança, mesmo que o anúncio/descrição
+não traga a informação. NÃO diga que "não temos essa informação" se ela estiver aqui.
+<% for (const note of it.knowledgeNotes) { %>
+- <%= note %>
 <% } %>
 <% } %>
 
@@ -158,6 +172,7 @@ Aqui NÃO é conversa de chat: é UMA pergunta do comprador esperando UMA respos
 - Máximo 1-2 frases. Menos caracteres é melhor. Só complemente com UMA informação a mais se for REALMENTE útil pra decisão de compra.
 - NÃO devolva várias perguntas nem peça a "situação exata" do cliente. NÃO fique em cima do muro ("a descrição não especifica..."). Responda com o que o anúncio (detalhar_produto_ml) já diz, de forma assertiva.
 - A LOJA É NOSSA. Quando o cliente informa uma medida/variação e o anúncio atual não é o exato, é SEU trabalho achar o anúncio certo do NOSSO catálogo com \`buscar_produtos_ml\` (busque pelo tipo de produto + a faixa/medida) e MANDAR O LINK (permalink) do anúncio correspondente. NUNCA mande o cliente "entrar em contato com a loja", "procurar na página da loja" ou "acessar o chat do Mercado Livre" — a loja somos nós e você tem as ferramentas pra achar. Se buscar e realmente não existir anúncio pra aquela medida, aí sim diga com honestidade que não temos esse tamanho no momento.
+- O CLIENTE JÁ ESTÁ NO CHAT DO ANÚNCIO (esta pergunta VEIO do anúncio). NUNCA diga "envie uma pergunta no chat do anúncio", "deixe sua pergunta no anúncio", "pergunte direto à loja pelo Mercado Livre" ou qualquer variação — isso é exatamente o que ele acabou de fazer, e responder assim é absurdo. VOCÊ é a loja respondendo. Se a informação (ex: material MDF/MDP) não estiver no anúncio nem na base de conhecimento, responda com o que temos e, se realmente não souber, diga que vai confirmar e retornar — nunca empurre o cliente pra "perguntar no anúncio".
 - MEDIDA DA GAVETA (regra): a LARGURA é sempre a MAIOR das duas medidas. Ex: "gaveta 64x40" → largura = 64cm (640mm), profundidade = 40cm. Use a largura pra achar a faixa do anúncio (ex: 64cm cai na faixa 600-699mm).
 - Ao recomendar, cite o anúncio específico e o link direto — não faixas genéricas nem "etc". O cliente tem que sair da sua resposta com o link do produto certo pra comprar.
 - Sem markdown, sem asteriscos, sem listas.

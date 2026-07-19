@@ -257,7 +257,7 @@ export class ConversationsController {
     @CurrentOrg('id') orgId: string,
     @CurrentUser('id') userId: string,
     @CurrentChannelAccess() access: ChannelAccess,
-    @Body() body: { complement?: string },
+    @Body() body: { complement?: string; scope?: 'item' | 'store' },
   ) {
     return this.service.regenerateAnswer(
       id,
@@ -265,6 +265,7 @@ export class ConversationsController {
       body?.complement ?? '',
       userId,
       access,
+      body?.scope === 'store' ? 'store' : 'item',
     );
   }
 

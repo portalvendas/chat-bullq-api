@@ -380,6 +380,7 @@ export class ConversationsService {
     complement: string,
     actorId: string,
     access: ChannelAccess = 'ALL',
+    scope: 'item' | 'store' = 'item',
   ): Promise<{ ok: boolean }> {
     const trimmed = (complement ?? '').trim();
     if (!trimmed) {
@@ -395,9 +396,14 @@ export class ConversationsService {
       throw new BadRequestException('Sem pergunta do cliente para regerar');
     }
 
-    // Anúncio (marketplace) pra escopar a nota; nulo = fato geral da loja.
+    // Escopo da nota: 'store' = fato geral da loja (itemId null); 'item' =
+    // específico do anúncio desta pergunta (marketplace). Sem anúncio detectado,
+    // 'item' cai naturalmente em null (vira geral).
     const content = (triggerMessage.content ?? {}) as Record<string, any>;
-    const itemId = content?.mlItem?.id ? String(content.mlItem.id) : null;
+    const detectedItemId = content?.mlItem?.id
+      ? String(content.mlItem.id)
+      : null;
+    const itemId = scope === 'store' ? null : detectedItemId;
 
     // 1) Memória: salva o complemento como fato confirmado.
     await this.prisma.agentKnowledgeNote.create({

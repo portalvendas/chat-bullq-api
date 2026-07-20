@@ -37,6 +37,19 @@ export interface MlProduct {
   highlights?: string[];
   description?: string;
   qa?: { pergunta: string; resposta: string }[];
+  /** Faixa de largura (mm) que ESTE anúncio atende, parseada da descrição
+   *  ("ATENDE AS DIMENSÕES DE: 400 a 499mm (L)"). Só em anúncios sob medida. */
+  servedWidthRangeMm?: { min: number; max: number } | null;
+  /** Variações IRMÃS (mesma família/vendedor) com a faixa de largura de cada
+   *  uma + link. O agente usa pra mandar o anúncio EXATO da medida do cliente,
+   *  em vez de mandar ele procurar. Ordenadas por faixa. */
+  variants?: Array<{
+    itemId: string;
+    title: string;
+    permalink: string | null;
+    rangeMm: { min: number; max: number };
+    current?: boolean;
+  }>;
 }
 
 /**
@@ -766,11 +779,128 @@ export class MercadoLivreProductsService {
         this.logger.warn(`Sem Q&A para ${itemId}: ${e.message}`);
       }
 
+      // Anúncios "sob medida" (organizadores): a família tem 1 anúncio por
+      // FAIXA de largura, com títulos idênticos — só a DESCRIÇÃO distingue.
+      // Descobrimos as variações irmãs e parseamos a faixa de cada uma, pra o
+      // agente mandar o link do anúncio EXATO da medida do cliente.
+      product.servedWidthRangeMm = this.parseServedRange(product.description);
+      const cfg = (channel.config ?? {}) as Record<string, any>;
+      const sellerId = cfg.sellerId;
+      if (
+        sellerId &&
+        (product.servedWidthRangeMm ||
+          /DIMENS[ÕO]ES\s+DISPON[ÍI]VEIS/i.test(product.description ?? ''))
+      ) {
+        try {
+          product.variants = await this.discoverWidthVariants(
+            channel,
+            String(sellerId),
+            product,
+          );
+        } catch (e: any) {
+          this.logger.warn(`Variações de ${itemId} falharam: ${e.message}`);
+        }
+      }
+
       return product;
     } catch (error: any) {
       this.logger.error(`Detalhe ML ${itemId} falhou: ${error.response?.status || ''} ${error.message}`);
       throw new BadGatewayException('Falha ao consultar o Mercado Livre');
     }
+  }
+
+  // "O ORGANIZADOR DESSE ANÚNCIO ATENDE AS DIMENSÕES DE: 400 a 499mm (L)"
+  private static readonly SERVED_WIDTH_RE =
+    /ATENDE\s+AS\s+DIMENS[ÕO]ES\s+DE:?\s*(\d+)\s*a\s*(\d+)\s*mm\s*\(?\s*L/i;
+
+  /** Extrai a faixa de largura (mm) que o anúncio atende, da descrição longa. */
+  private parseServedRange(
+    description?: string,
+  ): { min: number; max: number } | null {
+    if (!description) return null;
+    const m = MercadoLivreProductsService.SERVED_WIDTH_RE.exec(description);
+    if (!m) return null;
+    const min = Number(m[1]);
+    const max = Number(m[2]);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return null;
+    return { min, max };
+  }
+
+  /** Query "família" pra achar as variações: tira cor do título. */
+  private familyQuery(title: string): string {
+    return (title || '')
+      .replace(
+        /\b(marrom|claro|escuro|branco|preto|natural|cru|mel|bege|cinza|nogueira|imbuia|off\s*white)\b/gi,
+        '',
+      )
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .slice(0, 8)
+      .join(' ');
+  }
+
+  /**
+   * Descobre as variações irmãs (mesmo vendedor, mesma família de título) e
+   * parseia a faixa de largura de cada uma pela descrição. Limita a busca e o
+   * número de descrições lidas pra não estourar latência/rate-limit.
+   */
+  private async discoverWidthVariants(
+    channel: any,
+    sellerId: string,
+    ref: MlProduct,
+  ): Promise<MlProduct['variants']> {
+    const variants: NonNullable<MlProduct['variants']> = [];
+    if (ref.servedWidthRangeMm) {
+      variants.push({
+        itemId: ref.id,
+        title: ref.title,
+        permalink: ref.permalink,
+        rangeMm: ref.servedWidthRangeMm,
+        current: true,
+      });
+    }
+
+    const family = this.familyQuery(ref.title);
+    const search = await this.http.get(
+      channel,
+      `/users/${sellerId}/items/search?status=active&q=${encodeURIComponent(
+        family,
+      )}&limit=50`,
+    );
+    const ids: string[] = (Array.isArray(search?.results) ? search.results : [])
+      .filter((id: string) => id !== ref.id)
+      .slice(0, 12);
+
+    for (const id of ids) {
+      try {
+        const [it, desc] = await Promise.all([
+          this.http.get(channel, `/items/${id}?attributes=id,title,permalink`),
+          this.http.get(channel, `/items/${id}/description`),
+        ]);
+        const range = this.parseServedRange(desc?.plain_text || desc?.text);
+        if (!range) continue;
+        // Evita duplicar faixas iguais.
+        if (
+          variants.some(
+            (v) => v.rangeMm.min === range.min && v.rangeMm.max === range.max,
+          )
+        ) {
+          continue;
+        }
+        variants.push({
+          itemId: String(id),
+          title: it?.title ?? '',
+          permalink: it?.permalink ?? null,
+          rangeMm: range,
+        });
+      } catch {
+        // anúncio sem descrição/erro — ignora
+      }
+    }
+
+    variants.sort((a, b) => a.rangeMm.min - b.rangeMm.min);
+    return variants;
   }
 
   private normalize(item: any): MlProduct {

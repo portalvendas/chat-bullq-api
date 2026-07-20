@@ -33,4 +33,18 @@ export class MercadoLivreDirectoryController {
   ) {
     return this.products.importDirectory(orgId, body ?? {});
   }
+
+  @Post('scan-variants')
+  @ApiOperation({
+    summary:
+      'Varre TODOS os anúncios ativos do vendedor, extrai a faixa de largura de cada descrição e grava na Central de Conhecimento (VARIANT_MAP, validado). Roda em background.',
+  })
+  async scanVariants(@CurrentOrg('id') orgId: string) {
+    // Fire-and-forget: a varredura lê muitas descrições (pode levar minutos).
+    // Os itens aparecem em Conhecimento → Validados conforme concluem.
+    this.products
+      .scanVariantsToKnowledge(orgId)
+      .catch(() => undefined);
+    return { started: true };
+  }
 }

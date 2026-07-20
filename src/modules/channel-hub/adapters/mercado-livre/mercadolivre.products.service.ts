@@ -12,6 +12,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { MercadoLivreHttpClient } from './mercadolivre.http-client';
+import {
+  KnowledgeService,
+  CreateKnowledgeInput,
+} from '../../../ai-agents/knowledge/knowledge.service';
 
 export interface MlProduct {
   id: string;
@@ -64,7 +68,111 @@ export class MercadoLivreProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly http: MercadoLivreHttpClient,
+    private readonly knowledge: KnowledgeService,
   ) {}
+
+  /**
+   * VARREDURA DE ANÚNCIOS → Central de Conhecimento. Lista TODOS os anúncios
+   * ativos do vendedor (paginado, sem depender de busca por título casar),
+   * parseia a faixa de largura da descrição de cada um e grava um item
+   * VARIANT_MAP (global, VALIDADO, fonte AD_SCAN) com faixa→link. Reimportável:
+   * cada rodada substitui o mapa anterior. Só entram anúncios cuja descrição
+   * traz "ATENDE AS DIMENSÕES DE: X a Y mm (L)".
+   */
+  async scanVariantsToKnowledge(
+    organizationId: string,
+  ): Promise<{ scanned: number; mapped: number }> {
+    const channel = await this.prisma.channel.findFirst({
+      where: { organizationId, type: ChannelType.MERCADO_LIVRE, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!channel) {
+      throw new NotFoundException('Organização sem canal Mercado Livre conectado');
+    }
+    const cfg = (channel.config ?? {}) as Record<string, any>;
+    const sellerId = cfg.sellerId;
+    if (!sellerId) {
+      throw new BadGatewayException('Canal ML sem sellerId — refazer OAuth');
+    }
+
+    const MAX_ITEMS = 300;
+    const PAGE = 100;
+
+    // 1) Coleta os ids ativos (paginado).
+    const ids: string[] = [];
+    let offset = 0;
+    while (ids.length < MAX_ITEMS) {
+      const res = await this.http.get(
+        channel,
+        `/users/${sellerId}/items/search?status=active&limit=${PAGE}&offset=${offset}`,
+      );
+      const page: string[] = Array.isArray(res?.results) ? res.results : [];
+      ids.push(...page);
+      const total = res?.paging?.total ?? ids.length;
+      offset += PAGE;
+      if (page.length < PAGE || offset >= total) break;
+    }
+    const capped = ids.slice(0, MAX_ITEMS);
+
+    // 2) title/permalink em lote (multiget de 20).
+    const meta = new Map<string, { title: string; permalink: string | null }>();
+    for (let i = 0; i < capped.length; i += 20) {
+      const batch = capped.slice(i, i + 20);
+      try {
+        const items = await this.http.get(
+          channel,
+          `/items?ids=${batch.join(',')}&attributes=id,title,permalink`,
+        );
+        for (const x of Array.isArray(items) ? items : []) {
+          if (x?.code === 200 && x?.body?.id) {
+            meta.set(String(x.body.id), {
+              title: x.body.title,
+              permalink: x.body.permalink ?? null,
+            });
+          }
+        }
+      } catch {
+        /* lote falhou — segue */
+      }
+    }
+
+    // 3) descrição + parse da faixa de largura.
+    const mapped: CreateKnowledgeInput[] = [];
+    for (const id of capped) {
+      try {
+        const d = await this.http.get(channel, `/items/${id}/description`);
+        const range = this.parseServedRange(d?.plain_text || d?.text);
+        if (!range) continue;
+        const m = meta.get(id);
+        const title = m?.title ?? id;
+        const permalink = m?.permalink ?? null;
+        mapped.push({
+          type: 'VARIANT_MAP',
+          status: 'VALIDATED',
+          itemId: null,
+          text:
+            `Organizador sob medida "${title}": atende gaveta de largura ` +
+            `${range.min} a ${range.max}mm (L). Link do anúncio: ${permalink ?? '—'}`,
+          payload: {
+            itemId: id,
+            minMm: range.min,
+            maxMm: range.max,
+            permalink,
+            title,
+          },
+          sourceRef: id,
+        });
+      } catch {
+        /* sem descrição — ignora */
+      }
+    }
+
+    await this.knowledge.replaceBySource(organizationId, 'AD_SCAN', mapped);
+    this.logger.log(
+      `Varredura ML org ${organizationId}: ${capped.length} anúncios, ${mapped.length} mapeados`,
+    );
+    return { scanned: capped.length, mapped: mapped.length };
+  }
 
   /**
    * Perfil PÚBLICO do comprador (GET /users/{id}). Antes da venda o ML só

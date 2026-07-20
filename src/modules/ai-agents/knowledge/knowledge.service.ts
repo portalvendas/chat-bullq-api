@@ -161,6 +161,38 @@ export class KnowledgeService {
       .map((r) => r.text);
   }
 
+  /**
+   * Substitui TODOS os itens de uma fonte (ex: AD_SCAN) por um novo conjunto —
+   * reimport idempotente. Usado pela varredura de anúncios: cada rodada apaga o
+   * mapa anterior e regrava o atual, evitando duplicatas/anúncios extintos.
+   */
+  async replaceBySource(
+    organizationId: string,
+    source: KnowledgeSource,
+    items: CreateKnowledgeInput[],
+  ): Promise<{ removed: number; created: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      const del = await tx.knowledgeItem.deleteMany({
+        where: { organizationId, source },
+      });
+      if (items.length === 0) return { removed: del.count, created: 0 };
+      const created = await tx.knowledgeItem.createMany({
+        data: items.map((i) => ({
+          organizationId,
+          type: i.type ?? KnowledgeType.VARIANT_MAP,
+          status: i.status ?? KnowledgeStatus.VALIDATED,
+          source,
+          itemId: i.itemId ?? null,
+          title: i.title ?? null,
+          text: i.text,
+          payload: (i.payload ?? {}) as Prisma.InputJsonValue,
+          sourceRef: i.sourceRef ?? null,
+        })),
+      });
+      return { removed: del.count, created: created.count };
+    });
+  }
+
   private async assertOwned(id: string, organizationId: string) {
     const row = await this.prisma.knowledgeItem.findUnique({ where: { id } });
     if (!row || row.organizationId !== organizationId) {

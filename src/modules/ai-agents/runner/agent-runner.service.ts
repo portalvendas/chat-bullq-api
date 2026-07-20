@@ -31,6 +31,7 @@ import {
 } from '../prompts/layers/security.layer';
 import type { SecurityRules } from '../prompts/types';
 import { RetrievalService } from '../rag/retrieval.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { sanitizeAssistantText } from './text-guards';
 import { MediaUrlResolverService } from './media-url-resolver.service';
@@ -61,6 +62,12 @@ interface RunInput {
    * forth. Set automatically on chained calls, callers shouldn't pass this.
    */
   chainDepth?: number;
+  /**
+   * Conhecimento EFÊMERO injetado só neste run (ex: complemento do operador na
+   * regeneração). Entra no prompt junto com os itens validados da base, sem
+   * depender de já estar VALIDATED no banco.
+   */
+  extraKnowledge?: string[];
 }
 
 const MAX_CHAIN_DEPTH = 3;
@@ -98,12 +105,14 @@ export class AiAgentRunnerService {
     private readonly memoryExtractorQueue: Queue,
     @InjectQueue('rag-indexer')
     private readonly ragIndexerQueue: Queue,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   async run({
     conversation,
     triggerMessage,
     chainDepth = 0,
+    extraKnowledge = [],
   }: RunInput): Promise<void> {
     // Fase 2: usa o agentRouter (com IntentClassifier) pra escolher o agent.
     // Auto-chains (chainDepth > 0) NÃO classificam de novo — já tem activeAgentId.
@@ -242,20 +251,12 @@ export class AiAgentRunnerService {
         break;
       }
     }
-    const knowledgeNotes = await this.prisma.agentKnowledgeNote
-      .findMany({
-        where: {
-          organizationId: conversation.organizationId,
-          OR: currentItemId
-            ? [{ itemId: currentItemId }, { itemId: null }]
-            : [{ itemId: null }],
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-        select: { text: true },
-      })
-      .then((rows) => rows.map((r) => r.text))
+    const validated = await this.knowledge
+      .getValidatedForPrompt(conversation.organizationId, currentItemId ?? null)
       .catch(() => [] as string[]);
+    // Efêmero (ex: complemento do operador na regeneração) entra ANTES dos
+    // validados — é o mais fresco/específico pra este run.
+    const knowledgeNotes = [...(extraKnowledge ?? []), ...validated];
 
     const messages = this.promptBuilder.buildMessages({
       organization,

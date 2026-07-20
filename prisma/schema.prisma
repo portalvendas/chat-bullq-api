@@ -208,6 +208,7 @@ model Organization {
   products      Product[]
   mlDirectory   MlProductDirectory[]
   knowledgeNotes AgentKnowledgeNote[]
+  knowledgeItems KnowledgeItem[]
 
   @@map("organizations")
 }
@@ -1398,13 +1399,10 @@ model Card {
   @@map("cards")
 }
 
-// ─── Base de conhecimento do operador ────────────
-//
-// Complementos que um humano confirmou durante a revisão de uma resposta
-// (ex: "Material do armário MLB4721084373 é MDF"). Viram fatos AUTORITATIVOS
-// injetados no prompt do agente pra respostas futuras — inclusive de outros
-// compradores. `itemId` (MLB) é opcional: quando presente, o fato é específico
-// daquele anúncio; quando nulo, é um fato geral da loja.
+// ─── Base de conhecimento do operador (legado) ───
+// Mantido só por compatibilidade da migração inicial. A fonte da verdade
+// passou a ser `KnowledgeItem` (Central de Conhecimento unificada). Não é mais
+// lido/escrito pelo código.
 model AgentKnowledgeNote {
   id             String   @id @default(cuid())
   organizationId String   @map("organization_id")
@@ -1418,6 +1416,66 @@ model AgentKnowledgeNote {
 
   @@index([organizationId, itemId], name: "idx_knowledge_org_item")
   @@map("agent_knowledge_notes")
+}
+
+// ─── Central de Conhecimento (Knowledge Base unificada) ──────────
+//
+// Fonte da verdade ÚNICA que alimenta as respostas da IA. Cada fonte
+// (complemento do operador, varredura de anúncios, import de arquivo, nota
+// manual) grava um KnowledgeItem aqui, com STATUS de validação. Só itens
+// VALIDATED influenciam as respostas — a fila PENDING é a "central de
+// informações a validar". A recuperação injeta itens de escopo casado
+// (anúncio/geral) e, futuramente, via RAG (kind='knowledge').
+enum KnowledgeType {
+  FACT        // fato/afirmação livre ("material é MDF")
+  FAQ         // pergunta→resposta
+  POLICY      // política/regra da loja
+  VARIANT_MAP // faixa/medida → anúncio (organizadores sob medida)
+  AD_SPEC     // spec extraída de um anúncio (varredura)
+  LINK        // link de referência
+}
+
+enum KnowledgeStatus {
+  DRAFT
+  PENDING    // aguardando validação humana (fila)
+  VALIDATED  // ativo — alimenta as respostas
+  ARCHIVED
+}
+
+enum KnowledgeSource {
+  MANUAL
+  OPERATOR_COMPLEMENT // complemento durante a revisão de uma resposta
+  AD_SCAN             // varredura de anúncios da conta
+  FILE_IMPORT         // import de arquivo (ex: .txt de links)
+}
+
+model KnowledgeItem {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  type           KnowledgeType   @default(FACT)
+  status         KnowledgeStatus @default(PENDING)
+  source         KnowledgeSource @default(MANUAL)
+  /// MLB do anúncio quando específico; null = fato geral da loja.
+  itemId         String?         @map("item_id")
+  title          String?
+  /// Versão em linguagem natural — é o que entra no prompt.
+  text           String
+  /// Estruturado (ex: { ranges: [{minMm, maxMm, permalink}] }).
+  payload        Json            @default("{}")
+  sourceRef      String?         @map("source_ref")
+  sourceQuestion String?         @map("source_question")
+  createdById    String?         @map("created_by_id")
+  validatedById  String?         @map("validated_by_id")
+  validatedAt    DateTime?       @map("validated_at")
+  expiresAt      DateTime?       @map("expires_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status], name: "idx_kb_org_status")
+  @@index([organizationId, itemId], name: "idx_kb_org_item")
+  @@map("knowledge_items")
 }
 
 // ─── Product Catalog ─────────────────────────────

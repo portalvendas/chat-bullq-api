@@ -22,6 +22,7 @@ import { AiAgentsModule } from './modules/ai-agents/ai-agents.module';
 import { InboxViewsModule } from './modules/inbox-views/inbox-views.module';
 import { PipelinesModule } from './modules/pipelines/pipelines.module';
 import { MarketplacePipelineModule } from './modules/marketplace-pipeline/marketplace-pipeline.module';
+import { KnowledgeModule } from './modules/ai-agents/knowledge/knowledge.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
 // via skill HTTP getProductPitch + CatalogSyncService. Tabela `products`
@@ -65,6 +66,7 @@ import redisConfig from './config/redis.config';
     InboxViewsModule,
     PipelinesModule,
     MarketplacePipelineModule,
+    KnowledgeModule,
   ],
 })
 export class AppModule {}

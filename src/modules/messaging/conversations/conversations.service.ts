@@ -19,6 +19,7 @@ import {
 } from '../../iam/channel-access/channel-access.service';
 import { AgentRouterService } from '../../ai-agents/router/agent-router.service';
 import { AiAgentRunnerService } from '../../ai-agents/runner/agent-runner.service';
+import { KnowledgeService } from '../../ai-agents/knowledge/knowledge.service';
 
 const SYNC_MESSAGE_PAGE_SIZE = 50;
 const SYNC_MAX_PAGES = 4;
@@ -37,6 +38,7 @@ export class ConversationsService {
     private readonly channelAccess: ChannelAccessService,
     private readonly agentRouter: AgentRouterService,
     private readonly agentRunner: AiAgentRunnerService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /**
@@ -405,16 +407,21 @@ export class ConversationsService {
       : null;
     const itemId = scope === 'store' ? null : detectedItemId;
 
-    // 1) Memória: salva o complemento como fato confirmado.
-    await this.prisma.agentKnowledgeNote.create({
-      data: {
-        organizationId,
+    // 1) Central de Conhecimento: entra como PENDING (fila de validação) — só
+    // vira fonte oficial pra OUTRAS conversas depois que um humano validar.
+    await this.knowledge
+      .create(organizationId, {
+        type: 'FACT',
+        status: 'PENDING',
+        source: 'OPERATOR_COMPLEMENT',
         itemId,
         text: trimmed,
         sourceQuestion: typeof content.text === 'string' ? content.text : null,
         createdById: actorId,
-      },
-    });
+      })
+      .catch((err) =>
+        this.logger.warn(`regenerate: salvar conhecimento falhou: ${err?.message ?? err}`),
+      );
 
     // 2) Expira os pending pendentes desta conversa (removem-se da tela).
     await this.prisma.aiPendingAction.updateMany({
@@ -422,9 +429,15 @@ export class ConversationsService {
       data: { status: 'EXPIRED' },
     });
 
-    // 3) Re-roda o agente com a mesma pergunta (complemento já no prompt).
+    // 3) Re-roda o agente com a mesma pergunta. O complemento vai EFÊMERO neste
+    // run (aplica JÁ, mesmo antes de validado), e a nota fica na fila pra valer
+    // nas próximas conversas depois da validação.
     this.agentRunner
-      .run({ conversation: conversation as Conversation, triggerMessage })
+      .run({
+        conversation: conversation as Conversation,
+        triggerMessage,
+        extraKnowledge: [trimmed],
+      })
       .catch((err) =>
         this.logger.error(
           `regenerateAnswer run failed for conv ${id}: ${err?.message ?? err}`,

@@ -206,7 +206,6 @@ model Organization {
   pipelines     Pipeline[]
   cards         Card[]
   products      Product[]
-  mlDirectory   MlProductDirectory[]
   knowledgeNotes AgentKnowledgeNote[]
   knowledgeItems KnowledgeItem[]
 
@@ -1236,24 +1235,6 @@ model AiPendingAction {
 // (cm) para o anúncio (MLB) certo. Alimenta a skill `encontrar_organizador`,
 // que a IA usa pra direcionar o cliente pro produto sob medida correto.
 // Reimportável: substituído por completo a cada import (upload do .txt).
-model MlProductDirectory {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  categoria      String
-  larguraCm      Int      @map("largura_cm")
-  codigo         String?
-  mlb            String
-  url            String   @db.Text
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, categoria, larguraCm], name: "uq_mldir_org_cat_width")
-  @@index([organizationId, categoria], name: "idx_mldir_org_cat")
-  @@map("ml_product_directory")
-}
-
 // ─── Inbox views (saved filtered inboxes per user) ──────────
 //
 // Each user can create personal "inbox views" with custom filters

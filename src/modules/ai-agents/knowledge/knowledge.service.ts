@@ -1,11 +1,22 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import {
+  KnowledgeItem,
   KnowledgeSource,
   KnowledgeStatus,
   KnowledgeType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
+
+/** Tipos cujo texto vale recall semântico (RAG). VARIANT_MAP/AD_SPEC são
+ *  melhor recuperados por escopo/injeção direta, não semântica. */
+const RAG_INDEXABLE: KnowledgeType[] = [
+  KnowledgeType.FACT,
+  KnowledgeType.FAQ,
+  KnowledgeType.POLICY,
+];
 
 export interface CreateKnowledgeInput {
   type?: KnowledgeType;
@@ -30,10 +41,70 @@ export interface CreateKnowledgeInput {
 export class KnowledgeService {
   private readonly logger = new Logger(KnowledgeService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('rag-indexer') private readonly ragQueue: Queue,
+  ) {}
+
+  /** Agentes ativos da org — o conhecimento é indexado por-agente (o retrieval
+   *  já filtra por agentId, então isso garante isolamento por org). */
+  private async orgAgentIds(organizationId: string): Promise<string[]> {
+    const agents = await this.prisma.aiAgent.findMany({
+      where: { organizationId, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    return agents.map((a) => a.id);
+  }
+
+  /** Indexa um item VALIDADO (só tipos semânticos) no RAG, um por agente. */
+  private async indexToRag(item: KnowledgeItem): Promise<void> {
+    if (
+      item.status !== KnowledgeStatus.VALIDATED ||
+      !RAG_INDEXABLE.includes(item.type)
+    ) {
+      return;
+    }
+    try {
+      const agentIds = await this.orgAgentIds(item.organizationId);
+      for (const agentId of agentIds) {
+        await this.ragQueue.add(
+          'index_knowledge',
+          {
+            type: 'index_knowledge',
+            knowledgeId: `${item.id}:${agentId}`,
+            content: item.text,
+            scope: { agentId, ownerType: 'knowledge' },
+            metadata: { knowledgeItemId: item.id, organizationId: item.organizationId },
+          },
+          { removeOnComplete: 200, removeOnFail: 50 },
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`indexToRag ${item.id} falhou: ${err?.message ?? err}`);
+    }
+  }
+
+  /** Remove do RAG (todas as cópias por-agente). */
+  private async deindexFromRag(
+    organizationId: string,
+    itemId: string,
+  ): Promise<void> {
+    try {
+      const agentIds = await this.orgAgentIds(organizationId);
+      for (const agentId of agentIds) {
+        await this.ragQueue.add(
+          'delete_entry',
+          { type: 'delete_entry', id: `knowledge:${itemId}:${agentId}` },
+          { removeOnComplete: 200, removeOnFail: 50 },
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`deindexFromRag ${itemId} falhou: ${err?.message ?? err}`);
+    }
+  }
 
   async create(organizationId: string, input: CreateKnowledgeInput) {
-    return this.prisma.knowledgeItem.create({
+    const created = await this.prisma.knowledgeItem.create({
       data: {
         organizationId,
         type: input.type ?? KnowledgeType.FACT,
@@ -48,6 +119,8 @@ export class KnowledgeService {
         createdById: input.createdById ?? null,
       },
     });
+    await this.indexToRag(created); // no-op se não for VALIDATED/semântico
+    return created;
   }
 
   async list(
@@ -94,7 +167,7 @@ export class KnowledgeService {
 
   async validate(id: string, organizationId: string, userId: string) {
     await this.assertOwned(id, organizationId);
-    return this.prisma.knowledgeItem.update({
+    const updated = await this.prisma.knowledgeItem.update({
       where: { id },
       data: {
         status: KnowledgeStatus.VALIDATED,
@@ -102,15 +175,19 @@ export class KnowledgeService {
         validatedAt: new Date(),
       },
     });
+    await this.indexToRag(updated);
+    return updated;
   }
 
   /** Rejeita (arquiva) — não some do banco, mas sai de circulação. */
   async reject(id: string, organizationId: string) {
     await this.assertOwned(id, organizationId);
-    return this.prisma.knowledgeItem.update({
+    const updated = await this.prisma.knowledgeItem.update({
       where: { id },
       data: { status: KnowledgeStatus.ARCHIVED },
     });
+    await this.deindexFromRag(organizationId, id);
+    return updated;
   }
 
   async update(
@@ -121,7 +198,7 @@ export class KnowledgeService {
     >,
   ) {
     await this.assertOwned(id, organizationId);
-    return this.prisma.knowledgeItem.update({
+    const updated = await this.prisma.knowledgeItem.update({
       where: { id },
       data: {
         ...(dto.text !== undefined ? { text: dto.text.trim() } : {}),
@@ -130,10 +207,15 @@ export class KnowledgeService {
         ...(dto.type !== undefined ? { type: dto.type } : {}),
       },
     });
+    // Re-indexa (texto pode ter mudado). deindex + index cobre os dois casos.
+    await this.deindexFromRag(organizationId, id);
+    await this.indexToRag(updated);
+    return updated;
   }
 
   async remove(id: string, organizationId: string) {
     await this.assertOwned(id, organizationId);
+    await this.deindexFromRag(organizationId, id);
     await this.prisma.knowledgeItem.delete({ where: { id } });
   }
 

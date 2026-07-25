@@ -50,6 +50,16 @@ export class RagIndexerProcessor extends WorkerHost {
           );
           return { ok: true };
 
+        case 'index_knowledge':
+          await this.index(
+            'knowledge',
+            data.knowledgeId,
+            data.content,
+            data.scope,
+            data.metadata,
+          );
+          return { ok: true };
+
         case 'delete_entry':
           await this.store.delete(data.id);
           this.logger.log(`rag_indexer_deleted id=${data.id}`);

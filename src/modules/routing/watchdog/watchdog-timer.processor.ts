@@ -194,6 +194,20 @@ export class WatchdogTimerProcessor extends WorkerHost {
       return { skipped: true, reason: `router_${decision.reason}` };
     }
 
+    // MODO REVISÃO: se já existe resposta PENDENTE aguardando aprovação, a IA
+    // NÃO está "sem resposta" — ela já respondeu e o humano é que precisa agir.
+    // Sem essa guarda, o watchdog re-dispara e gera um 2º card contraditório.
+    const pendingReplies = await this.prisma.aiPendingAction.count({
+      where: {
+        conversationId,
+        status: 'PENDING',
+        toolName: 'replyToConversation',
+      },
+    });
+    if (pendingReplies > 0) {
+      return { skipped: true, reason: 'pending_reply_awaiting_approval' };
+    }
+
     // Pega a última mensagem INBOUND (a que está sem resposta) como
     // trigger pra o run.
     const triggerMessage = await this.prisma.message.findFirst({

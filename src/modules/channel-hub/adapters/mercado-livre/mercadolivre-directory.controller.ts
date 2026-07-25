@@ -34,6 +34,18 @@ export class MercadoLivreDirectoryController {
     return this.products.importDirectory(orgId, body ?? {});
   }
 
+  @Post('import-knowledge')
+  @ApiOperation({
+    summary:
+      'Importa o arquivo de links (mesmo formato do diretório) direto na Central de Conhecimento como VARIANT_MAP validado. Aceita { text }.',
+  })
+  async importKnowledge(
+    @CurrentOrg('id') orgId: string,
+    @Body() body: { text?: string },
+  ) {
+    return this.products.importLinksToKnowledge(orgId, body?.text ?? '');
+  }
+
   @Post('scan-variants')
   @ApiOperation({
     summary:

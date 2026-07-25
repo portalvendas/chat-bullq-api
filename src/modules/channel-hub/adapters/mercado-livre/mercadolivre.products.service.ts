@@ -543,6 +543,44 @@ export class MercadoLivreProductsService {
     return { scanned: open.length, checked, markedAnswered, imported };
   }
 
+  /**
+   * INGESTOR: arquivo de links (o .txt "Links dos Organizadores") → Central de
+   * Conhecimento. Reusa o mesmo parser do diretório e grava cada linha como um
+   * KnowledgeItem VARIANT_MAP (global, VALIDADO, fonte FILE_IMPORT). Substitui a
+   * fonte FILE_IMPORT a cada import (idempotente).
+   */
+  async importLinksToKnowledge(
+    organizationId: string,
+    text: string,
+  ): Promise<{ rows: number; created: number }> {
+    const { rows } = this.parseDirectory(text ?? '');
+    const items: CreateKnowledgeInput[] = rows.map((r) => ({
+      type: 'VARIANT_MAP',
+      status: 'VALIDATED',
+      itemId: null,
+      text:
+        `Organizador (${r.categoria}) para gaveta de largura ~${r.larguraCm}cm ` +
+        `(${r.larguraCm * 10}mm): anúncio ${r.mlb}. Link: ${r.url}`,
+      payload: {
+        categoria: r.categoria,
+        larguraCm: r.larguraCm,
+        larguraMm: r.larguraCm * 10,
+        mlb: r.mlb,
+        permalink: r.url,
+      },
+      sourceRef: r.mlb,
+    }));
+    const res = await this.knowledge.replaceBySource(
+      organizationId,
+      'FILE_IMPORT',
+      items,
+    );
+    this.logger.log(
+      `Import de links org ${organizationId}: ${rows.length} linhas → ${res.created} itens`,
+    );
+    return { rows: rows.length, created: res.created };
+  }
+
   // ─── Diretório largura→anúncio (fonte de dados da loja) ──────────
 
   private static readonly NOTE_CATEGORY = '__nota__';

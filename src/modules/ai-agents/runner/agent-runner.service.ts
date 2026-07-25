@@ -1039,10 +1039,37 @@ export class AiAgentRunnerService {
       }
     }
 
+    // 3) RAG da BASE DE CONHECIMENTO (org-wide, isolado por agente). Consulta
+    // separada porque conhecimento não tem conversa/contato — só agentId.
+    let knowledgePart: { type: 'text'; text: string; cache: false } | null = null;
+    if (triggerText && triggerText.length >= 10) {
+      try {
+        const kres = await this.retrieval.retrieve({
+          query: triggerText,
+          scope: { agentId, ownerType: 'knowledge' },
+          k: 5,
+          minScore: 0.65,
+        });
+        if (kres.length > 0) {
+          const lines = kres
+            .map((r) => `- ${r.entry.content.slice(0, 280)}`)
+            .join('\n');
+          knowledgePart = {
+            type: 'text',
+            text: `═══ Base de conhecimento relevante (validada pela operação) ═══\n${lines}\n\nSão fatos AUTORITATIVOS — use pra responder com segurança.`,
+            cache: false,
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(`Knowledge RAG retrieval failed: ${err?.message ?? err}`);
+      }
+    }
+
     firstMsg.content = [
       securityPart,
       ...firstMsg.content,
       ...(ragPart ? [ragPart] : []),
+      ...(knowledgePart ? [knowledgePart] : []),
     ];
   }
 

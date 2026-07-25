@@ -36,6 +36,29 @@ export class PendingActionService {
 
   /** Create a new PENDING action for human review. */
   async create(input: CreatePendingActionInput): Promise<PendingAction> {
+    // DEDUP de resposta ao cliente: um run duplicado (ex: watchdog re-engajou)
+    // geraria um 2º card contraditório pra mesma conversa. Antes de criar uma
+    // nova `replyToConversation`, expira as respostas PENDENTES anteriores da
+    // MESMA conversa — só a mais recente fica na tela.
+    if (input.toolName === 'replyToConversation') {
+      try {
+        const prior = await this.storage.listByStatus(
+          'PENDING',
+          input.conversationId,
+        );
+        for (const p of prior) {
+          if (p.toolName === 'replyToConversation') {
+            p.status = 'EXPIRED';
+            await this.storage.save(p, 'PENDING');
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `dedupe de pending reply falhou (conv=${input.conversationId}): ${err?.message ?? err}`,
+        );
+      }
+    }
+
     const now = new Date();
     const ttlMin = input.ttlMinutes ?? this.DEFAULT_TTL_MIN;
     const expiresAt = new Date(now.getTime() + ttlMin * 60 * 1000);

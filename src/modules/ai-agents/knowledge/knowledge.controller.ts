@@ -56,6 +56,22 @@ export class KnowledgeController {
     return this.service.create(orgId, { ...dto, createdById: userId });
   }
 
+  @Post('bulk')
+  @ApiOperation({
+    summary: 'Cria vários itens de uma vez (import em massa de FAQ/conteúdo)',
+  })
+  bulk(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: { items?: CreateKnowledgeInput[] },
+  ) {
+    const items = (body?.items ?? []).map((i) => ({
+      ...i,
+      createdById: userId,
+    }));
+    return this.service.bulkCreate(orgId, items);
+  }
+
   @Post(':id/validate')
   @ApiOperation({ summary: 'Valida um item (passa a alimentar as respostas)' })
   validate(

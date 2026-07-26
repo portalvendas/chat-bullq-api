@@ -56,6 +56,23 @@ export class KnowledgeService {
     return agents.map((a) => a.id);
   }
 
+  /**
+   * Cria vários itens de uma vez (import em massa — ex: FAQ migrada dos bots
+   * do Kommo). Reusa `create` (que já indexa no RAG). Retorna quantos criou.
+   */
+  async bulkCreate(
+    organizationId: string,
+    items: CreateKnowledgeInput[],
+  ): Promise<{ created: number }> {
+    let created = 0;
+    for (const it of items) {
+      if (!it?.text || !it.text.trim()) continue;
+      await this.create(organizationId, it);
+      created++;
+    }
+    return { created };
+  }
+
   /** Indexa um item VALIDADO (só tipos semânticos) no RAG, um por agente. */
   private async indexToRag(item: KnowledgeItem): Promise<void> {
     if (

@@ -1472,6 +1472,9 @@ model Cadence {
   name              String
   description       String?
   active            Boolean  @default(true)
+  /// Como dispara: MANUAL | TAG_ADDED (triggerValue = nome da tag)
+  triggerType       String   @default("MANUAL") @map("trigger_type")
+  triggerValue      String?  @map("trigger_value")
   stopOnReply       Boolean  @default(true) @map("stop_on_reply")
   businessHoursOnly Boolean  @default(false) @map("business_hours_only")
   /// [{ delayMinutes, text }] em ordem

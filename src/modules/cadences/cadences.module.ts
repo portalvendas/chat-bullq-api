@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { CadencesService } from './cadences.service';
 import { CadencesController } from './cadences.controller';
@@ -7,8 +7,10 @@ import { CADENCE_QUEUE } from './cadences.constants';
 
 /**
  * Cadências (follow-up/drip). Fila `cadence` (delayed) pros passos + reuso da
- * fila `outbound-messages` pra enviar. Prisma é global.
+ * fila `outbound-messages` pra enviar. Prisma é global. @Global — o
+ * CadencesService é chamado pelo TagsService (auto-disparo por tag).
  */
+@Global()
 @Module({
   imports: [
     BullModule.registerQueue(

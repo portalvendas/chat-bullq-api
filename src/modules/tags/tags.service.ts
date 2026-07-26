@@ -9,6 +9,7 @@ import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { PrismaService } from '../../database/prisma.service';
 import { OutboxService } from '../automations/outbox/outbox.service';
+import { CadencesService } from '../cadences/cadences.service';
 
 const DEFAULT_TAG_COLOR = '#6B7280';
 
@@ -18,6 +19,7 @@ export class TagsService {
     private readonly repository: TagsRepository,
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
+    private readonly cadences: CadencesService,
   ) {}
 
   async create(orgId: string, dto: CreateTagDto) {
@@ -74,15 +76,15 @@ export class TagsService {
     actorId?: string,
   ) {
     // Pre-flight checks outside the TX so we don't open one for nothing.
-    await this.findOne(tagId, orgId);
+    const tag = await this.findOne(tagId, orgId);
     const conv = await this.repository.findConversationInOrg(convId, orgId);
     if (!conv) {
       throw new NotFoundException('Conversation not found');
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const link = await tx.conversationTag.create({
+      const link = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.conversationTag.create({
           data: { conversationId: convId, tagId },
         });
         await this.outbox.enqueue(tx, AutomationTrigger.TAG_ADDED, {
@@ -94,8 +96,11 @@ export class TagsService {
           tagId,
           target: 'conversation',
         });
-        return link;
+        return created;
       });
+      // Auto-dispara cadências cujo gatilho é essa tag (best-effort).
+      void this.cadences.onTagAdded(orgId, convId, tag.name);
+      return link;
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&

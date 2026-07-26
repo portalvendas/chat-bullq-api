@@ -22,6 +22,8 @@ export interface CadenceInput {
   name: string;
   description?: string | null;
   active?: boolean;
+  triggerType?: 'MANUAL' | 'TAG_ADDED';
+  triggerValue?: string | null;
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
   steps?: CadenceStep[];
@@ -68,6 +70,8 @@ export class CadencesService {
         name: dto.name,
         description: dto.description ?? null,
         active: dto.active ?? true,
+        triggerType: dto.triggerType ?? 'MANUAL',
+        triggerValue: dto.triggerValue ?? null,
         stopOnReply: dto.stopOnReply ?? true,
         businessHoursOnly: dto.businessHoursOnly ?? false,
         steps: (dto.steps ?? []) as any,
@@ -84,6 +88,8 @@ export class CadencesService {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.description !== undefined ? { description: dto.description } : {}),
         ...(dto.active !== undefined ? { active: dto.active } : {}),
+        ...(dto.triggerType !== undefined ? { triggerType: dto.triggerType } : {}),
+        ...(dto.triggerValue !== undefined ? { triggerValue: dto.triggerValue } : {}),
         ...(dto.stopOnReply !== undefined ? { stopOnReply: dto.stopOnReply } : {}),
         ...(dto.businessHoursOnly !== undefined
           ? { businessHoursOnly: dto.businessHoursOnly }
@@ -123,6 +129,33 @@ export class CadencesService {
     await this.scheduleStep(run.id, 0, steps[0].delayMinutes);
     this.logger.log(`Cadência ${cadence.name} iniciada (run ${run.id}) conv ${conversationId}`);
     return { started: true };
+  }
+
+  /**
+   * Auto-disparo por TAG: chamado quando uma tag é aplicada a uma conversa.
+   * Inicia toda cadência ativa cujo gatilho é essa tag. Best-effort (não lança).
+   */
+  async onTagAdded(
+    organizationId: string,
+    conversationId: string,
+    tagName: string,
+  ): Promise<void> {
+    try {
+      const cadences = await this.prisma.cadence.findMany({
+        where: {
+          organizationId,
+          active: true,
+          triggerType: 'TAG_ADDED',
+          triggerValue: tagName,
+        },
+        select: { id: true },
+      });
+      for (const c of cadences) {
+        await this.start(c.id, organizationId, conversationId).catch(() => undefined);
+      }
+    } catch (err: any) {
+      this.logger.warn(`onTagAdded falhou (tag ${tagName}): ${err?.message ?? err}`);
+    }
   }
 
   private async scheduleStep(runId: string, stepIndex: number, delayMinutes: number) {

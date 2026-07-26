@@ -19,6 +19,7 @@ import {
   shiftIntoBusinessHours,
   startNode,
 } from './cadences.graph';
+import { KommoModel, kommoToGraph } from './kommo-import';
 
 /** Passo TIPADO do workflow (formato linear legado, ainda aceito no input). */
 export type WorkflowStep =
@@ -126,6 +127,77 @@ export class CadencesService {
   async remove(id: string, organizationId: string) {
     await this.get(id, organizationId);
     await this.prisma.cadence.delete({ where: { id } });
+  }
+
+  /**
+   * Importa bots exportados do Kommo. Cada arquivo vira um Salesbot com o grafo
+   * convertido. Dedupe por nome: bots já existentes são pulados (reimport seguro).
+   * Retorna resumo por bot (nós, avisos) pronto pro frontend renderizar.
+   */
+  async importKommo(
+    organizationId: string,
+    files: Array<{ name: string; model: KommoModel }>,
+  ): Promise<{
+    created: number;
+    skipped: number;
+    results: Array<{
+      name: string;
+      status: 'created' | 'skipped' | 'error';
+      nodes?: number;
+      warnings?: string[];
+      error?: string;
+    }>;
+  }> {
+    const existing = await this.prisma.cadence.findMany({
+      where: { organizationId },
+      select: { name: true },
+    });
+    const existingNames = new Set(existing.map((c) => c.name.trim().toLowerCase()));
+
+    const results: Array<{
+      name: string;
+      status: 'created' | 'skipped' | 'error';
+      nodes?: number;
+      warnings?: string[];
+      error?: string;
+    }> = [];
+    let created = 0;
+    let skipped = 0;
+
+    for (const f of files ?? []) {
+      const name = (f?.name ?? '').trim();
+      if (!name) {
+        results.push({ name: '(sem nome)', status: 'error', error: 'nome ausente' });
+        continue;
+      }
+      if (existingNames.has(name.toLowerCase())) {
+        results.push({ name, status: 'skipped' });
+        skipped++;
+        continue;
+      }
+      try {
+        const { graph, warnings } = kommoToGraph(f.model ?? {});
+        await this.create(organizationId, {
+          name,
+          triggerType: 'MANUAL',
+          stopOnReply: true,
+          graph,
+          onEnd: {},
+        });
+        existingNames.add(name.toLowerCase());
+        created++;
+        results.push({
+          name,
+          status: 'created',
+          nodes: graph.nodes.length,
+          warnings,
+        });
+      } catch (err: any) {
+        this.logger.warn(`Falha ao importar bot "${name}": ${err?.message ?? err}`);
+        results.push({ name, status: 'error', error: err?.message ?? 'erro' });
+      }
+    }
+    return { created, skipped, results };
   }
 
   // ─── Disparo ───────────────────────────────────

@@ -63,4 +63,13 @@ export class CadencesController {
   ) {
     return this.service.start(id, orgId, body?.conversationId);
   }
+
+  @Post('import-kommo')
+  @ApiOperation({ summary: 'Importa bots exportados do Kommo como Salesbots' })
+  importKommo(
+    @CurrentOrg('id') orgId: string,
+    @Body() body: { files: Array<{ name: string; model: any }> },
+  ) {
+    return this.service.importKommo(orgId, body?.files ?? []);
+  }
 }

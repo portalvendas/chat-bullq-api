@@ -208,6 +208,7 @@ model Organization {
   products      Product[]
   knowledgeNotes AgentKnowledgeNote[]
   knowledgeItems KnowledgeItem[]
+  cadences       Cadence[]
 
   @@map("organizations")
 }
@@ -1457,6 +1458,51 @@ model KnowledgeItem {
   @@index([organizationId, status], name: "idx_kb_org_status")
   @@index([organizationId, itemId], name: "idx_kb_org_item")
   @@map("knowledge_items")
+}
+
+// ─── Cadências (follow-up / drip) ────────────────
+//
+// Réguas de reengajamento migradas dos Salesbots do Kommo: passos com atraso,
+// param quando o cliente responde, respeitam horário comercial, e no fim
+// aplicam ações (tag / mover etapa / fechar). É o "motor de cadência" — a
+// tela mostra a lista estilo Kommo. Cada disparo cria um CadenceRun.
+model Cadence {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  name              String
+  description       String?
+  active            Boolean  @default(true)
+  stopOnReply       Boolean  @default(true) @map("stop_on_reply")
+  businessHoursOnly Boolean  @default(false) @map("business_hours_only")
+  /// [{ delayMinutes, text }] em ordem
+  steps             Json     @default("[]")
+  /// { tagName?, moveStageId?, close? }
+  onEnd             Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  runs         CadenceRun[]
+
+  @@index([organizationId, active], name: "idx_cadence_org_active")
+  @@map("cadences")
+}
+
+model CadenceRun {
+  id             String    @id @default(cuid())
+  cadenceId      String    @map("cadence_id")
+  conversationId String    @map("conversation_id")
+  status         String    @default("RUNNING") // RUNNING | STOPPED | DONE
+  currentStep    Int       @default(0) @map("current_step")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  stoppedReason  String?   @map("stopped_reason")
+
+  cadence Cadence @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status], name: "idx_cadencerun_conv_status")
+  @@index([cadenceId, status], name: "idx_cadencerun_cadence_status")
+  @@map("cadence_runs")
 }
 
 // ─── Product Catalog ─────────────────────────────

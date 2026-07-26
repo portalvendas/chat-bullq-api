@@ -9,7 +9,14 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CADENCE_QUEUE } from './cadences.constants';
 
-export interface CadenceStep {
+/** Passo TIPADO do workflow do salesbot. */
+export type WorkflowStep =
+  | { type: 'message'; text: string }
+  | { type: 'wait'; delayMinutes: number }
+  | { type: 'action'; action: 'tag' | 'move_stage' | 'close'; value?: string };
+
+/** Formato LEGADO (régua linear): vira [wait, message] na normalização. */
+export interface LegacyStep {
   delayMinutes: number;
   text: string;
 }
@@ -26,8 +33,28 @@ export interface CadenceInput {
   triggerValue?: string | null;
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
-  steps?: CadenceStep[];
+  steps?: Array<WorkflowStep | LegacyStep>;
   onEnd?: CadenceOnEnd;
+}
+
+/** Normaliza passos (aceita tipados novos + legado linear) em WorkflowStep[]. */
+function normalizeSteps(raw: unknown): WorkflowStep[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  const out: WorkflowStep[] = [];
+  for (const s of arr) {
+    if (!s || typeof s !== 'object') continue;
+    const o = s as Record<string, any>;
+    if (o.type === 'message' || o.type === 'wait' || o.type === 'action') {
+      out.push(o as WorkflowStep);
+    } else if (typeof o.text === 'string') {
+      // legado { delayMinutes, text } → espera + mensagem
+      if (Number(o.delayMinutes) > 0) {
+        out.push({ type: 'wait', delayMinutes: Number(o.delayMinutes) });
+      }
+      out.push({ type: 'message', text: o.text });
+    }
+  }
+  return out;
 }
 
 /**
@@ -115,7 +142,7 @@ export class CadencesService {
   ): Promise<{ started: boolean; reason?: string }> {
     const cadence = await this.get(id, organizationId);
     if (!cadence.active) return { started: false, reason: 'inactive' };
-    const steps = (cadence.steps as unknown as CadenceStep[]) ?? [];
+    const steps = normalizeSteps(cadence.steps);
     if (steps.length === 0) return { started: false, reason: 'no_steps' };
 
     const existing = await this.prisma.cadenceRun.findFirst({
@@ -126,7 +153,8 @@ export class CadencesService {
     const run = await this.prisma.cadenceRun.create({
       data: { cadenceId: id, conversationId, status: 'RUNNING', currentStep: 0 },
     });
-    await this.scheduleStep(run.id, 0, steps[0].delayMinutes);
+    // Começa no passo 0 imediatamente; passos 'wait' agendam o próximo.
+    await this.scheduleStep(run.id, 0, 0);
     this.logger.log(`Cadência ${cadence.name} iniciada (run ${run.id}) conv ${conversationId}`);
     return { started: true };
   }
@@ -186,7 +214,7 @@ export class CadencesService {
       await this.finish(runId, 'DONE', 'cadence_inactive');
       return;
     }
-    const steps = (cadence.steps as unknown as CadenceStep[]) ?? [];
+    const steps = normalizeSteps(cadence.steps);
     if (stepIndex >= steps.length) {
       await this.applyOnEnd(cadence, run.conversationId);
       await this.finish(runId, 'DONE', null);
@@ -209,7 +237,16 @@ export class CadencesService {
       }
     }
 
-    await this.sendMessage(run.conversationId, cadence.organizationId, steps[stepIndex].text);
+    const step = steps[stepIndex];
+    let waitBeforeNext = 0; // min
+    if (step.type === 'message') {
+      await this.sendMessage(run.conversationId, cadence.organizationId, step.text);
+    } else if (step.type === 'action') {
+      await this.applyAction(cadence.organizationId, run.conversationId, step);
+    } else if (step.type === 'wait') {
+      waitBeforeNext = step.delayMinutes; // o próximo passo sai após o atraso
+    }
+
     await this.prisma.cadenceRun.update({
       where: { id: runId },
       data: { currentStep: stepIndex },
@@ -217,11 +254,24 @@ export class CadencesService {
 
     const next = stepIndex + 1;
     if (next < steps.length) {
-      await this.scheduleStep(runId, next, steps[next].delayMinutes);
+      await this.scheduleStep(runId, next, waitBeforeNext);
     } else {
       await this.applyOnEnd(cadence, run.conversationId);
       await this.finish(runId, 'DONE', null);
     }
+  }
+
+  /** Aplica um passo de AÇÃO (tag / mover etapa / fechar). */
+  private async applyAction(
+    organizationId: string,
+    conversationId: string,
+    step: { action: 'tag' | 'move_stage' | 'close'; value?: string },
+  ): Promise<void> {
+    const onEnd: CadenceOnEnd = {};
+    if (step.action === 'tag') onEnd.tagName = step.value;
+    else if (step.action === 'move_stage') onEnd.moveStageId = step.value;
+    else if (step.action === 'close') onEnd.close = true;
+    await this.applyOnEnd({ onEnd, organizationId }, conversationId);
   }
 
   private async finish(runId: string, status: 'STOPPED' | 'DONE', reason: string | null) {

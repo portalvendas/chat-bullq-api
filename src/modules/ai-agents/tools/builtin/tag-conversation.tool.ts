@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AutomationTrigger, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../database/prisma.service';
 import { OutboxService } from '../../../automations/outbox/outbox.service';
+import { CadencesService } from '../../../cadences/cadences.service';
 import { AiTool, ToolContext, ToolResult } from '../tool.types';
 
 /**
@@ -38,6 +39,7 @@ export class TagConversationTool implements AiTool {
   constructor(
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
+    private readonly cadences: CadencesService,
   ) {}
 
   /**
@@ -129,6 +131,12 @@ export class TagConversationTool implements AiTool {
             target: 'conversation',
           });
         });
+        // Auto-dispara cadências cujo gatilho é essa tag (best-effort).
+        void this.cadences.onTagAdded(
+          ctx.organizationId,
+          ctx.conversationId,
+          tag.name,
+        );
       } catch (err) {
         // Tag already on this conversation — silent no-op. We don't want
         // to spam the run log with "duplicate" errors for re-applies.

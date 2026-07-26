@@ -5,6 +5,7 @@ import {
   ActionExecutionResult,
   ActionHandler,
 } from '../action.types';
+import { CadencesService } from '../../../cadences/cadences.service';
 
 interface AddTagParams {
   tagId: string;
@@ -20,6 +21,8 @@ export class AddTagHandler implements ActionHandler {
   // State-changing action — by default, halt the run on failure so we
   // don't keep running downstream actions on inconsistent state.
   readonly continueOnErrorDefault = false;
+
+  constructor(private readonly cadences: CadencesService) {}
 
   validateParams(params: Record<string, unknown>): void {
     if (!params.tagId || typeof params.tagId !== 'string') {
@@ -45,7 +48,7 @@ export class AddTagHandler implements ActionHandler {
     // referencing a tag deleted/moved after the rule was saved.
     const tag = await prisma.tag.findFirst({
       where: { id: p.tagId, organizationId },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!tag) {
       return {
@@ -90,6 +93,12 @@ export class AddTagHandler implements ActionHandler {
             },
           );
         });
+        // Auto-dispara cadências cujo gatilho é essa tag (best-effort).
+        void this.cadences.onTagAdded(
+          organizationId,
+          payload.conversationId,
+          tag.name,
+        );
       } else {
         await prisma.$transaction(async (tx) => {
           await tx.contactTag.create({

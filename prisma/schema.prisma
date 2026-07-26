@@ -1477,8 +1477,11 @@ model Cadence {
   triggerValue      String?  @map("trigger_value")
   stopOnReply       Boolean  @default(true) @map("stop_on_reply")
   businessHoursOnly Boolean  @default(false) @map("business_hours_only")
-  /// [{ delayMinutes, text }] em ordem
+  /// [{ delayMinutes, text }] em ordem — formato LINEAR legado (mantido p/ compat)
   steps             Json     @default("[]")
+  /// { nodes:[{id,type,...}], edges:[{from,fromHandle,to}] } — grafo do salesbot.
+  /// Quando vazio, o motor deriva um grafo linear a partir de `steps`.
+  graph             Json     @default("{}")
   /// { tagName?, moveStageId?, close? }
   onEnd             Json     @default("{}")
   createdAt         DateTime @default(now()) @map("created_at")
@@ -1495,8 +1498,10 @@ model CadenceRun {
   id             String    @id @default(cuid())
   cadenceId      String    @map("cadence_id")
   conversationId String    @map("conversation_id")
-  status         String    @default("RUNNING") // RUNNING | STOPPED | DONE
+  status         String    @default("RUNNING") // RUNNING | WAITING | STOPPED | DONE
   currentStep    Int       @default(0) @map("current_step")
+  /// Nó atual no grafo (motor de ramificações). Null em runs lineares antigos.
+  currentNodeId  String?   @map("current_node_id")
   startedAt      DateTime  @default(now()) @map("started_at")
   finishedAt     DateTime? @map("finished_at")
   stoppedReason  String?   @map("stopped_reason")

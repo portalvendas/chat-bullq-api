@@ -8,14 +8,24 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CADENCE_QUEUE } from './cadences.constants';
+import {
+  ActionKind,
+  GraphNode,
+  WorkflowGraph,
+  edgeTarget,
+  nodeById,
+  normalizeSteps,
+  resolveGraph,
+  shiftIntoBusinessHours,
+  startNode,
+} from './cadences.graph';
 
-/** Passo TIPADO do workflow do salesbot. */
+/** Passo TIPADO do workflow (formato linear legado, ainda aceito no input). */
 export type WorkflowStep =
   | { type: 'message'; text: string }
   | { type: 'wait'; delayMinutes: number }
-  | { type: 'action'; action: 'tag' | 'move_stage' | 'close'; value?: string };
+  | { type: 'action'; action: ActionKind; value?: string };
 
-/** Formato LEGADO (régua linear): vira [wait, message] na normalização. */
 export interface LegacyStep {
   delayMinutes: number;
   text: string;
@@ -34,34 +44,18 @@ export interface CadenceInput {
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
   steps?: Array<WorkflowStep | LegacyStep>;
+  graph?: WorkflowGraph;
   onEnd?: CadenceOnEnd;
 }
 
-/** Normaliza passos (aceita tipados novos + legado linear) em WorkflowStep[]. */
-function normalizeSteps(raw: unknown): WorkflowStep[] {
-  const arr = Array.isArray(raw) ? raw : [];
-  const out: WorkflowStep[] = [];
-  for (const s of arr) {
-    if (!s || typeof s !== 'object') continue;
-    const o = s as Record<string, any>;
-    if (o.type === 'message' || o.type === 'wait' || o.type === 'action') {
-      out.push(o as WorkflowStep);
-    } else if (typeof o.text === 'string') {
-      // legado { delayMinutes, text } → espera + mensagem
-      if (Number(o.delayMinutes) > 0) {
-        out.push({ type: 'wait', delayMinutes: Number(o.delayMinutes) });
-      }
-      out.push({ type: 'message', text: o.text });
-    }
-  }
-  return out;
-}
+const RUNNABLE = ['RUNNING', 'WAITING'] as const;
 
 /**
- * Cadências (follow-up/drip) — réguas de reengajamento com passos temporizados,
- * migradas dos Salesbots do Kommo. O disparo cria um CadenceRun e enfileira o
- * 1º passo na fila `cadence` (BullMQ delayed). O processor manda a mensagem,
- * checa se o cliente respondeu (para) e agenda o próximo passo.
+ * Salesbots (motor com RAMIFICAÇÕES). Cada bot é um grafo de nós; um
+ * `CadenceRun` é uma execução que caminha pelo grafo guardando o nó atual
+ * (`currentNodeId`). Nós de espera bifurcam entre `timeout` (cronômetro) e
+ * `reply` (cliente respondeu). Cadências antigas (lineares) viram grafo
+ * automaticamente via `resolveGraph` — sem migração de dados.
  */
 @Injectable()
 export class CadencesService {
@@ -85,7 +79,7 @@ export class CadencesService {
   async get(id: string, organizationId: string) {
     const c = await this.prisma.cadence.findUnique({ where: { id } });
     if (!c || c.organizationId !== organizationId) {
-      throw new NotFoundException('Cadência não encontrada');
+      throw new NotFoundException('Salesbot não encontrado');
     }
     return c;
   }
@@ -102,6 +96,7 @@ export class CadencesService {
         stopOnReply: dto.stopOnReply ?? true,
         businessHoursOnly: dto.businessHoursOnly ?? false,
         steps: (dto.steps ?? []) as any,
+        graph: (dto.graph ?? {}) as any,
         onEnd: (dto.onEnd ?? {}) as any,
       },
     });
@@ -122,6 +117,7 @@ export class CadencesService {
           ? { businessHoursOnly: dto.businessHoursOnly }
           : {}),
         ...(dto.steps !== undefined ? { steps: dto.steps as any } : {}),
+        ...(dto.graph !== undefined ? { graph: dto.graph as any } : {}),
         ...(dto.onEnd !== undefined ? { onEnd: dto.onEnd as any } : {}),
       },
     });
@@ -133,8 +129,11 @@ export class CadencesService {
   }
 
   // ─── Disparo ───────────────────────────────────
-  /** Inicia a cadência numa conversa. Idempotente por conversa (não duplica
-   *  se já há um run RUNNING dessa cadência na conversa). */
+  /**
+   * Inicia o bot numa conversa. Idempotente por conversa (não duplica se já há
+   * um run em andamento dessa cadência). Cria o run apontando para o nó de
+   * entrada e enfileira o avanço no worker (não bloqueia o caller).
+   */
   async start(
     id: string,
     organizationId: string,
@@ -142,26 +141,35 @@ export class CadencesService {
   ): Promise<{ started: boolean; reason?: string }> {
     const cadence = await this.get(id, organizationId);
     if (!cadence.active) return { started: false, reason: 'inactive' };
-    const steps = normalizeSteps(cadence.steps);
-    if (steps.length === 0) return { started: false, reason: 'no_steps' };
+
+    const graph = resolveGraph(cadence);
+    const entry = startNode(graph);
+    if (!entry) return { started: false, reason: 'empty_graph' };
 
     const existing = await this.prisma.cadenceRun.findFirst({
-      where: { cadenceId: id, conversationId, status: 'RUNNING' },
+      where: { cadenceId: id, conversationId, status: { in: RUNNABLE as any } },
     });
     if (existing) return { started: false, reason: 'already_running' };
 
     const run = await this.prisma.cadenceRun.create({
-      data: { cadenceId: id, conversationId, status: 'RUNNING', currentStep: 0 },
+      data: {
+        cadenceId: id,
+        conversationId,
+        status: 'RUNNING',
+        currentStep: 0,
+        currentNodeId: entry.id,
+      },
     });
-    // Começa no passo 0 imediatamente; passos 'wait' agendam o próximo.
-    await this.scheduleStep(run.id, 0, 0);
-    this.logger.log(`Cadência ${cadence.name} iniciada (run ${run.id}) conv ${conversationId}`);
+    await this.enqueueAdvance(run.id, entry.id, 0);
+    this.logger.log(
+      `Salesbot "${cadence.name}" iniciado (run ${run.id}) conv ${conversationId}`,
+    );
     return { started: true };
   }
 
   /**
-   * Auto-disparo por TAG: chamado quando uma tag é aplicada a uma conversa.
-   * Inicia toda cadência ativa cujo gatilho é essa tag. Best-effort (não lança).
+   * Auto-disparo por TAG: inicia todo bot ativo cujo gatilho é essa tag.
+   * Best-effort (não lança). Chamado pelos hooks de tagueamento.
    */
   async onTagAdded(
     organizationId: string,
@@ -186,12 +194,30 @@ export class CadencesService {
     }
   }
 
-  private async scheduleStep(runId: string, stepIndex: number, delayMinutes: number) {
+  // ─── Motor (grafo) ─────────────────────────────
+  private async enqueueAdvance(runId: string, nodeId: string, delayMs = 0) {
     await this.queue.add(
-      'cadence-step',
-      { runId, stepIndex },
+      'cadence-advance',
+      { runId, nodeId, kind: 'advance' },
       {
-        delay: Math.max(0, Math.round((delayMinutes || 0) * 60_000)),
+        delay: Math.max(0, Math.round(delayMs)),
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true,
+        removeOnFail: 50,
+      },
+    );
+  }
+
+  private async scheduleTimeout(runId: string, node: GraphNode) {
+    const minutes = Number(node.delayMinutes) || 0;
+    let fireAt = Date.now() + minutes * 60_000;
+    if (node.businessHoursOnly) fireAt = shiftIntoBusinessHours(fireAt);
+    await this.queue.add(
+      'cadence-timeout',
+      { runId, nodeId: node.id, kind: 'timeout' },
+      {
+        delay: Math.max(0, fireAt - Date.now()),
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
         removeOnComplete: true,
@@ -201,8 +227,137 @@ export class CadencesService {
   }
 
   /**
-   * Executa um passo (chamado pelo processor). Manda a mensagem, checa parada,
-   * agenda o próximo ou finaliza. Toda a lógica de estado vive aqui.
+   * Caminha pelo grafo a partir de `fromNodeId`, executando nós sem espera
+   * (message/action/start) em sequência até topar num `wait` (agenda timeout e
+   * para) ou `stop` (finaliza). Guard contra grafos cíclicos.
+   */
+  async advance(runId: string, fromNodeId: string): Promise<void> {
+    let nodeId: string | null = fromNodeId;
+
+    for (let guard = 0; guard < 200 && nodeId; guard++) {
+      const run = await this.prisma.cadenceRun.findUnique({ where: { id: runId } });
+      if (!run || !(RUNNABLE as readonly string[]).includes(run.status)) return;
+
+      const cadence = await this.prisma.cadence.findUnique({
+        where: { id: run.cadenceId },
+      });
+      if (!cadence || !cadence.active) {
+        await this.finish(runId, 'DONE', 'cadence_inactive');
+        return;
+      }
+
+      const graph = resolveGraph(cadence);
+      const node = nodeById(graph, nodeId);
+      if (!node) {
+        await this.finish(runId, 'DONE', 'node_missing');
+        return;
+      }
+
+      await this.prisma.cadenceRun.update({
+        where: { id: runId },
+        data: { currentNodeId: nodeId, status: 'RUNNING' },
+      });
+
+      if (node.type === 'stop') {
+        await this.applyOnEnd(cadence, run.conversationId);
+        await this.finish(runId, 'DONE', null);
+        return;
+      }
+
+      if (node.type === 'wait') {
+        await this.prisma.cadenceRun.update({
+          where: { id: runId },
+          data: { status: 'WAITING' },
+        });
+        await this.scheduleTimeout(runId, node);
+        return; // aguarda timeout OU reply
+      }
+
+      if (node.type === 'message') {
+        if (node.text?.trim()) {
+          await this.sendMessage(run.conversationId, cadence.organizationId, node.text);
+        }
+      } else if (node.type === 'action') {
+        await this.applyAction(cadence.organizationId, run.conversationId, {
+          action: node.action ?? 'close',
+          value: node.value,
+        });
+        if (node.action === 'close') {
+          await this.finish(runId, 'DONE', 'closed');
+          return;
+        }
+      }
+
+      // start / message / action → segue pela saída "out"
+      nodeId = edgeTarget(graph, node.id, 'out');
+    }
+
+    // sem próximo nó → encerra
+    await this.finish(runId, 'DONE', null);
+  }
+
+  /** Cronômetro de um nó de espera estourou → pega a saída "timeout". */
+  async onTimeout(runId: string, nodeId: string): Promise<void> {
+    const run = await this.prisma.cadenceRun.findUnique({ where: { id: runId } });
+    // Stale guard: só age se o run ainda espera NESTE nó (reply pode ter
+    // movido o cursor antes do timeout chegar).
+    if (!run || run.status !== 'WAITING' || run.currentNodeId !== nodeId) return;
+
+    const cadence = await this.prisma.cadence.findUnique({
+      where: { id: run.cadenceId },
+    });
+    if (!cadence || !cadence.active) {
+      await this.finish(runId, 'DONE', 'cadence_inactive');
+      return;
+    }
+    const graph = resolveGraph(cadence);
+    const next = edgeTarget(graph, nodeId, 'timeout') ?? edgeTarget(graph, nodeId, 'out');
+    if (!next) {
+      await this.applyOnEnd(cadence, run.conversationId);
+      await this.finish(runId, 'DONE', null);
+      return;
+    }
+    await this.advance(runId, next);
+  }
+
+  /**
+   * Cliente respondeu na conversa. Para cada run em espera:
+   *   - se o nó atual (wait) tem saída "reply", segue por ela (ramificação);
+   *   - senão, se `stopOnReply`, encerra o run (comportamento clássico).
+   * Best-effort — chamado pelo pipeline de inbound.
+   */
+  async onCustomerReply(conversationId: string): Promise<void> {
+    try {
+      const runs = await this.prisma.cadenceRun.findMany({
+        where: { conversationId, status: { in: RUNNABLE as any } },
+      });
+      for (const run of runs) {
+        const cadence = await this.prisma.cadence.findUnique({
+          where: { id: run.cadenceId },
+        });
+        if (!cadence) continue;
+        const graph = resolveGraph(cadence);
+        const node = nodeById(graph, run.currentNodeId);
+        const replyTarget =
+          node && node.type === 'wait' ? edgeTarget(graph, node.id, 'reply') : null;
+
+        if (replyTarget) {
+          await this.advance(run.id, replyTarget);
+        } else if (cadence.stopOnReply) {
+          await this.finish(run.id, 'STOPPED', 'cliente_respondeu');
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `onCustomerReply falhou (conv ${conversationId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * LEGADO: consome jobs `cadence-step` que ainda possam estar na fila (em voo
+   * antes do deploy do motor de grafo). Executa o passo linear e agenda o
+   * próximo. Novos runs não usam este caminho.
    */
   async runStep(runId: string, stepIndex: number): Promise<void> {
     const run = await this.prisma.cadenceRun.findUnique({ where: { id: runId } });
@@ -220,8 +375,6 @@ export class CadencesService {
       await this.finish(runId, 'DONE', null);
       return;
     }
-
-    // Parar se o cliente respondeu depois que a régua começou.
     if (cadence.stopOnReply) {
       const reply = await this.prisma.message.findFirst({
         where: {
@@ -236,36 +389,43 @@ export class CadencesService {
         return;
       }
     }
-
     const step = steps[stepIndex];
-    let waitBeforeNext = 0; // min
+    let waitBeforeNext = 0;
     if (step.type === 'message') {
       await this.sendMessage(run.conversationId, cadence.organizationId, step.text);
     } else if (step.type === 'action') {
       await this.applyAction(cadence.organizationId, run.conversationId, step);
     } else if (step.type === 'wait') {
-      waitBeforeNext = step.delayMinutes; // o próximo passo sai após o atraso
+      waitBeforeNext = step.delayMinutes;
     }
-
     await this.prisma.cadenceRun.update({
       where: { id: runId },
       data: { currentStep: stepIndex },
     });
-
     const next = stepIndex + 1;
     if (next < steps.length) {
-      await this.scheduleStep(runId, next, waitBeforeNext);
+      await this.queue.add(
+        'cadence-step',
+        { runId, stepIndex: next },
+        {
+          delay: Math.max(0, Math.round((waitBeforeNext || 0) * 60_000)),
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: true,
+          removeOnFail: 50,
+        },
+      );
     } else {
       await this.applyOnEnd(cadence, run.conversationId);
       await this.finish(runId, 'DONE', null);
     }
   }
 
-  /** Aplica um passo de AÇÃO (tag / mover etapa / fechar). */
+  // ─── Efeitos ───────────────────────────────────
   private async applyAction(
     organizationId: string,
     conversationId: string,
-    step: { action: 'tag' | 'move_stage' | 'close'; value?: string },
+    step: { action: ActionKind; value?: string },
   ): Promise<void> {
     const onEnd: CadenceOnEnd = {};
     if (step.action === 'tag') onEnd.tagName = step.value;
@@ -274,16 +434,23 @@ export class CadencesService {
     await this.applyOnEnd({ onEnd, organizationId }, conversationId);
   }
 
-  private async finish(runId: string, status: 'STOPPED' | 'DONE', reason: string | null) {
+  private async finish(
+    runId: string,
+    status: 'STOPPED' | 'DONE',
+    reason: string | null,
+  ) {
     await this.prisma.cadenceRun.update({
       where: { id: runId },
       data: { status, finishedAt: new Date(), stoppedReason: reason },
     });
   }
 
-  /** Envia a mensagem do passo reusando o pipeline de outbound (igual ao
-   *  send_message das automações). senderId null = enviado pelo sistema. */
-  private async sendMessage(conversationId: string, organizationId: string, text: string) {
+  /** Envia a mensagem do nó reusando o pipeline de outbound. */
+  private async sendMessage(
+    conversationId: string,
+    organizationId: string,
+    text: string,
+  ) {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
       include: { contact: { include: { channels: true } } },
@@ -312,7 +479,11 @@ export class CadencesService {
         contactExternalId: cc.externalId,
         message: { type: 'TEXT', content: { text } },
       },
-      { attempts: 5, backoff: { type: 'exponential', delay: 2000 }, removeOnComplete: true },
+      {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: true,
+      },
     );
   }
 
@@ -323,14 +494,12 @@ export class CadencesService {
     const onEnd = (cadence.onEnd as CadenceOnEnd) ?? {};
     try {
       if (onEnd.moveStageId) {
-        // move o card da conversa (se houver) pra etapa alvo — best-effort.
         await this.prisma.card.updateMany({
           where: { conversationId, organizationId: cadence.organizationId },
           data: { stageId: onEnd.moveStageId },
         });
       }
       if (onEnd.tagName) {
-        // cria/associa a tag na conversa.
         const tag = await this.prisma.tag.upsert({
           where: {
             organizationId_name: {
@@ -354,7 +523,9 @@ export class CadencesService {
         });
       }
     } catch (err: any) {
-      this.logger.warn(`onEnd da cadência falhou (conv ${conversationId}): ${err?.message ?? err}`);
+      this.logger.warn(
+        `onEnd do salesbot falhou (conv ${conversationId}): ${err?.message ?? err}`,
+      );
     }
   }
 }

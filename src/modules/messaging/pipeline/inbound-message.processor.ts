@@ -15,6 +15,7 @@ import { AiAgentRunnerService } from '../../ai-agents/runner/agent-runner.servic
 import { TranscriptionService } from '../messages/transcription.service';
 import { OutboxService } from '../../automations/outbox/outbox.service';
 import { WatchdogService } from '../../routing/watchdog/watchdog.service';
+import { CadencesService } from '../../cadences/cadences.service';
 import {
   AutomationTrigger,
   ChannelType,
@@ -101,6 +102,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly transcription: TranscriptionService,
     private readonly outbox: OutboxService,
     private readonly watchdog: WatchdogService,
+    private readonly cadences: CadencesService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -295,6 +297,12 @@ export class InboundMessageProcessor extends WorkerHost {
         this.watchdog.scheduleCheck(conversationId).catch((err) =>
           this.logger.warn(
             `Watchdog scheduleCheck failed for conv ${conversationId}: ${err?.message ?? err}`,
+          ),
+        );
+        // Salesbot: cliente respondeu → bifurca (galho "reply") ou para a régua.
+        this.cadences.onCustomerReply(conversationId).catch((err) =>
+          this.logger.warn(
+            `Cadence onCustomerReply failed for conv ${conversationId}: ${err?.message ?? err}`,
           ),
         );
       } else if (isEcho) {

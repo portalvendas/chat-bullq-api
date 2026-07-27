@@ -7,6 +7,7 @@ import {
 import { CardStatus, PipelineStageType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { CadencesService } from '../cadences/cadences.service';
 import {
   CreateCardDto,
   CreatePipelineDto,
@@ -29,6 +30,7 @@ export class PipelinesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly cadences: CadencesService,
   ) {}
 
   // ─── Pipelines ─────────────────────────────────
@@ -476,6 +478,17 @@ export class PipelinesService {
       status: newStatus,
     });
 
+    // Auto-dispara Salesbots cujo gatilho é "ao entrar nesta etapa" (paridade
+    // com o "executar robô ao mover para a etapa" do Kommo). Só quando o card
+    // realmente mudou de etapa e está vinculado a uma conversa.
+    if (!sameStage && card.conversationId) {
+      void this.cadences.onStageEntered(
+        organizationId,
+        card.conversationId,
+        dto.toStageId,
+      );
+    }
+
     return this.prisma.card.findUnique({
       where: { id: cardId },
       include: {
@@ -483,6 +496,49 @@ export class PipelinesService {
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
       },
     });
+  }
+
+  /**
+   * Cria automaticamente um card na ETAPA DE ENTRADA (1ª etapa do pipeline
+   * padrão) para uma conversa nova — paridade com o "origem → cria lead" do
+   * Kommo. Idempotente: não duplica se a conversa já tem card. Best-effort.
+   */
+  async ensureEntryCard(
+    organizationId: string,
+    conversationId: string,
+    contactId: string | null,
+    title: string,
+  ) {
+    const existing = await this.prisma.card.findFirst({
+      where: { conversationId },
+      select: { id: true },
+    });
+    if (existing) return null;
+
+    const pipeline = await this.prisma.pipeline.findFirst({
+      where: { organizationId, archived: false },
+      orderBy: [{ isDefault: 'desc' }, { order: 'asc' }],
+      include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
+    });
+    if (!pipeline || pipeline.stages.length === 0) return null;
+    const stage = pipeline.stages[0];
+
+    const count = await this.prisma.card.count({
+      where: { pipelineId: pipeline.id, stageId: stage.id },
+    });
+    const card = await this.prisma.card.create({
+      data: {
+        organizationId,
+        pipelineId: pipeline.id,
+        stageId: stage.id,
+        title: title?.trim() || 'Novo lead',
+        contactId: contactId ?? null,
+        conversationId,
+        order: count,
+      },
+    });
+    this.realtime.emitToOrg(organizationId, 'card:created', { card });
+    return card;
   }
 
   /**

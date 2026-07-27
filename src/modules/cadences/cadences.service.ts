@@ -40,7 +40,7 @@ export interface CadenceInput {
   name: string;
   description?: string | null;
   active?: boolean;
-  triggerType?: 'MANUAL' | 'TAG_ADDED';
+  triggerType?: 'MANUAL' | 'TAG_ADDED' | 'STAGE_ENTERED';
   triggerValue?: string | null;
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
@@ -263,6 +263,34 @@ export class CadencesService {
       }
     } catch (err: any) {
       this.logger.warn(`onTagAdded falhou (tag ${tagName}): ${err?.message ?? err}`);
+    }
+  }
+
+  /**
+   * Auto-disparo por ETAPA: chamado quando um card entra numa etapa do funil.
+   * Inicia todo bot ativo cujo gatilho é STAGE_ENTERED nessa etapa (stageId).
+   * Best-effort — espelha o "executar robô ao mover para a etapa" do Kommo.
+   */
+  async onStageEntered(
+    organizationId: string,
+    conversationId: string,
+    stageId: string,
+  ): Promise<void> {
+    try {
+      const cadences = await this.prisma.cadence.findMany({
+        where: {
+          organizationId,
+          active: true,
+          triggerType: 'STAGE_ENTERED',
+          triggerValue: stageId,
+        },
+        select: { id: true },
+      });
+      for (const c of cadences) {
+        await this.start(c.id, organizationId, conversationId).catch(() => undefined);
+      }
+    } catch (err: any) {
+      this.logger.warn(`onStageEntered falhou (stage ${stageId}): ${err?.message ?? err}`);
     }
   }
 

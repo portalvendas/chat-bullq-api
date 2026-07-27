@@ -16,6 +16,7 @@ import { TranscriptionService } from '../messages/transcription.service';
 import { OutboxService } from '../../automations/outbox/outbox.service';
 import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { CadencesService } from '../../cadences/cadences.service';
+import { PipelinesService } from '../../pipelines/pipelines.service';
 import {
   AutomationTrigger,
   ChannelType,
@@ -103,6 +104,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly outbox: OutboxService,
     private readonly watchdog: WatchdogService,
     private readonly cadences: CadencesService,
+    private readonly pipelines: PipelinesService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -176,12 +178,33 @@ export class InboundMessageProcessor extends WorkerHost {
         }
       }
 
-      const { conversationId, status } = await this.conversationResolver.resolve(
+      const {
+        conversationId,
+        status,
+        isNew: isNewConversation,
+      } = await this.conversationResolver.resolve(
         organizationId,
         channelId,
         contactId,
         message.isGroup,
       );
+
+      // Paridade Kommo "origem → cria lead": conversa nova (não-echo) cria um
+      // card na etapa de entrada do pipeline padrão. Best-effort, não bloqueia.
+      if (isNewConversation && !message.isEcho && !message.isGroup) {
+        this.pipelines
+          .ensureEntryCard(
+            organizationId,
+            conversationId,
+            contactId,
+            message.contactName ?? message.contactPhone ?? 'Novo lead',
+          )
+          .catch((err) =>
+            this.logger.warn(
+              `ensureEntryCard falhou (conv ${conversationId}): ${err?.message ?? err}`,
+            ),
+          );
+      }
 
       const isEcho = !!message.isEcho;
       const direction = isEcho

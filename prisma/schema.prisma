@@ -209,6 +209,7 @@ model Organization {
   knowledgeNotes AgentKnowledgeNote[]
   knowledgeItems KnowledgeItem[]
   cadences       Cadence[]
+  whatsappTemplates WhatsappTemplate[]
 
   @@map("organizations")
 }
@@ -1719,4 +1720,38 @@ model AutomationRun {
   @@index([traceId], name: "idx_run_trace")
   @@index([status, startedAt(sort: Desc)], name: "idx_run_status_time")
   @@map("automation_runs")
+}
+
+/// Templates de mensagem do WhatsApp Business (HSM) aprovados pela Meta.
+/// Espelha os "Modelos de chat" do Kommo. Populados via sync na Graph API
+/// (GET /{waba}/message_templates) ou seed dos aprovados.
+model WhatsappTemplate {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  /// Canal de origem (WHATSAPP_OFFICIAL) quando veio de sync. Null p/ seed.
+  channelId      String?  @map("channel_id")
+  /// ID do template na Meta (quando sincronizado).
+  externalId     String?  @map("external_id")
+  name           String
+  /// APPROVED | PENDING | REJECTED | PAUSED | DISABLED
+  status         String   @default("APPROVED")
+  /// MARKETING | UTILITY | AUTHENTICATION
+  category       String   @default("MARKETING")
+  language       String   @default("pt_BR")
+  /// ID da conta WhatsApp Business (businessAccountId).
+  waba           String?  @map("waba")
+  /// Texto do corpo (componente BODY).
+  bodyText       String   @db.Text
+  /// Componentes crus da Meta: [{type:HEADER|BODY|FOOTER|BUTTONS, ...}]
+  components     Json     @default("[]")
+  /// Origem: META_SYNC | MANUAL | SEED
+  source         String   @default("SEED")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, waba, name, language], name: "uq_wa_template")
+  @@index([organizationId, status], name: "idx_wa_template_org_status")
+  @@map("whatsapp_templates")
 }

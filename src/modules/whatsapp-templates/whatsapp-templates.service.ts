@@ -132,45 +132,55 @@ export class WhatsappTemplatesService {
    */
   async seedApproved(
     organizationId: string,
-  ): Promise<{ seeded: number; skipped: number }> {
+  ): Promise<{ seeded: number; skipped: number; errors: string[] }> {
     const seen = new Set<string>();
     let seeded = 0;
     let skipped = 0;
+    const errors: string[] = [];
+
     for (const t of WA_TEMPLATE_SEED) {
       let name = t.name;
       let n = 2;
       while (seen.has(`${t.waba}|${name}`)) name = `${t.name} (${n++})`;
       seen.add(`${t.waba}|${name}`);
 
-      // findFirst + create (idempotente) — evita qualquer particularidade do
-      // upsert por chave composta com coluna anulável.
-      const exists = await this.prisma.whatsappTemplate.findFirst({
-        where: { organizationId, waba: t.waba, name, language: 'pt_BR' },
-        select: { id: true },
-      });
-      if (exists) {
-        skipped++;
-        continue;
+      // Cada item é isolado: um erro não derruba os demais, e a mensagem real
+      // sobe na resposta (facilita diagnosticar em produção sem logs).
+      try {
+        const exists = await this.prisma.whatsappTemplate.findFirst({
+          where: { organizationId, waba: t.waba, name, language: 'pt_BR' },
+          select: { id: true },
+        });
+        if (exists) {
+          skipped++;
+          continue;
+        }
+        await this.prisma.whatsappTemplate.create({
+          data: {
+            organizationId,
+            name,
+            waba: t.waba,
+            bodyText: t.bodyText,
+            status: 'APPROVED',
+            category: 'MARKETING',
+            language: 'pt_BR',
+            source: 'SEED',
+            components: [
+              { type: 'BODY', text: t.bodyText },
+            ] as Prisma.InputJsonValue,
+          },
+        });
+        seeded++;
+      } catch (err: any) {
+        const msg = err?.message ?? String(err);
+        this.logger.warn(`Seed falhou em "${name}": ${msg}`);
+        if (errors.length < 3) errors.push(`${name}: ${msg}`);
       }
-      await this.prisma.whatsappTemplate.create({
-        data: {
-          organizationId,
-          name,
-          waba: t.waba,
-          bodyText: t.bodyText,
-          status: 'APPROVED',
-          category: 'MARKETING',
-          language: 'pt_BR',
-          source: 'SEED',
-          components: [{ type: 'BODY', text: t.bodyText }],
-        },
-      });
-      seeded++;
     }
     this.logger.log(
-      `Seed de templates: ${seeded} criados, ${skipped} já existiam (org ${organizationId})`,
+      `Seed de templates: ${seeded} criados, ${skipped} já existiam, ${errors.length} erros (org ${organizationId})`,
     );
-    return { seeded, skipped };
+    return { seeded, skipped, errors };
   }
 
   /** Normaliza o nome para o padrão da Meta: minúsculas, snake_case, [a-z0-9_]. */

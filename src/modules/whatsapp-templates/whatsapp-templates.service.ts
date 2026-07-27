@@ -32,6 +32,16 @@ export interface TemplateInput {
  * (`GET /{waba}/message_templates`), sincronizada por canal WHATSAPP_OFFICIAL.
  * Também aceita seed dos aprovados e CRUD manual.
  */
+/** Extrai o texto do componente BODY de uma lista de componentes da Meta. */
+function bodyFromComponents(components: unknown): string | undefined {
+  if (!Array.isArray(components)) return undefined;
+  const body = components.find(
+    (c) => c && typeof c === 'object' && (c as any).type === 'BODY',
+  );
+  const text = body && (body as any).text;
+  return typeof text === 'string' ? text : undefined;
+}
+
 @Injectable()
 export class WhatsappTemplatesService {
   private readonly logger = new Logger(WhatsappTemplatesService.name);
@@ -82,18 +92,19 @@ export class WhatsappTemplatesService {
   }
 
   create(organizationId: string, dto: TemplateInput) {
+    const bodyText = bodyFromComponents(dto.components) ?? dto.bodyText;
     return this.prisma.whatsappTemplate.create({
       data: {
         organizationId,
         name: dto.name,
-        bodyText: dto.bodyText,
+        bodyText,
         waba: dto.waba ?? null,
         status: dto.status ?? 'APPROVED',
         category: dto.category ?? 'MARKETING',
         language: dto.language ?? 'pt_BR',
         components:
           (dto.components as Prisma.InputJsonValue) ??
-          ([{ type: 'BODY', text: dto.bodyText }] as Prisma.InputJsonValue),
+          ([{ type: 'BODY', text: bodyText }] as Prisma.InputJsonValue),
         source: 'MANUAL',
       },
     });
@@ -104,11 +115,21 @@ export class WhatsappTemplatesService {
     if (!t || t.organizationId !== organizationId) {
       throw new NotFoundException('Template não encontrado');
     }
+    // Se vierem componentes (cabeçalho/corpo/rodapé/botões), o bodyText é
+    // derivado do componente BODY para manter a coluna de busca/preview em dia.
+    const derivedBody =
+      dto.components !== undefined
+        ? bodyFromComponents(dto.components) ?? dto.bodyText
+        : dto.bodyText;
+
     return this.prisma.whatsappTemplate.update({
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.bodyText !== undefined ? { bodyText: dto.bodyText } : {}),
+        ...(derivedBody !== undefined ? { bodyText: derivedBody } : {}),
+        ...(dto.components !== undefined
+          ? { components: dto.components as Prisma.InputJsonValue }
+          : {}),
         ...(dto.waba !== undefined ? { waba: dto.waba } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
         ...(dto.category !== undefined ? { category: dto.category } : {}),

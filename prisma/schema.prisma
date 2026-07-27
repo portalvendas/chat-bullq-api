@@ -1732,6 +1732,10 @@ model WhatsappTemplate {
   channelId      String?  @map("channel_id")
   /// ID do template na Meta (quando sincronizado).
   externalId     String?  @map("external_id")
+  /// Nome normalizado (snake_case) usado na Meta ao submeter/enviar.
+  metaName       String?  @map("meta_name")
+  /// Motivo de rejeição, quando a Meta reprova.
+  rejectionReason String? @map("rejection_reason")
   name           String
   /// APPROVED | PENDING | REJECTED | PAUSED | DISABLED
   status         String   @default("APPROVED")

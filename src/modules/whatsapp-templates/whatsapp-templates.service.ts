@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import axios from 'axios';
 import { PrismaService } from '../../database/prisma.service';
@@ -168,6 +173,163 @@ export class WhatsappTemplatesService {
     return { seeded, skipped };
   }
 
+  /** Normaliza o nome para o padrão da Meta: minúsculas, snake_case, [a-z0-9_]. */
+  private toMetaName(name: string): string {
+    return (
+      name
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '') // remove acentos
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 480) || 'template'
+    );
+  }
+
+  /** Acha um canal WHATSAPP_OFFICIAL da org compatível com o WABA do template. */
+  private async pickChannel(organizationId: string, waba?: string | null) {
+    const channels = await this.prisma.channel.findMany({
+      where: { organizationId, type: 'WHATSAPP_OFFICIAL' },
+    });
+    if (channels.length === 0) return null;
+    if (waba) {
+      const match = channels.find(
+        (c) => (c.config as any)?.businessAccountId === waba,
+      );
+      if (match) return match;
+    }
+    return channels[0];
+  }
+
+  /**
+   * Submete um template à Meta para aprovação (`POST /{waba}/message_templates`).
+   * Requer um canal WhatsApp oficial conectado (token + WABA). Marca o template
+   * como PENDING e guarda o metaName/externalId. O resultado da revisão volta
+   * depois pelo `syncFromMeta`.
+   *
+   * Payload de exemplo enviado à Meta:
+   *   { name: "bm02_fup_automatico_1", language: "pt_BR", category: "MARKETING",
+   *     components: [{ type: "BODY", text: "Oie! Consegue conversar agora?" }] }
+   */
+  async submitToMeta(
+    id: string,
+    organizationId: string,
+  ): Promise<{ status: string; metaName: string; externalId?: string }> {
+    const tpl = await this.prisma.whatsappTemplate.findUnique({ where: { id } });
+    if (!tpl || tpl.organizationId !== organizationId) {
+      throw new NotFoundException('Template não encontrado');
+    }
+    const channel = await this.pickChannel(organizationId, tpl.waba);
+    if (!channel) {
+      throw new BadRequestException(
+        'Nenhum canal WhatsApp oficial conectado para submeter à Meta.',
+      );
+    }
+    const cfg = (channel.config ?? {}) as Record<string, any>;
+    const waba = cfg.businessAccountId;
+    const token = cfg.accessToken;
+    const ver = cfg.apiVersion || 'v21.0';
+    if (!waba || !token) {
+      throw new BadRequestException(
+        'Canal sem businessAccountId/accessToken configurado.',
+      );
+    }
+
+    const metaName = tpl.metaName || this.toMetaName(tpl.name);
+    const existingComponents = Array.isArray(tpl.components)
+      ? (tpl.components as any[])
+      : [];
+    const hasBody = existingComponents.some((c) => c?.type === 'BODY');
+    const components = hasBody
+      ? existingComponents
+      : [{ type: 'BODY', text: tpl.bodyText }];
+
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${ver}/${waba}/message_templates`,
+        {
+          name: metaName,
+          language: tpl.language,
+          category: tpl.category,
+          components,
+        },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 30000 },
+      );
+      const status = (data?.status as string) || 'PENDING';
+      await this.prisma.whatsappTemplate.update({
+        where: { id },
+        data: {
+          metaName,
+          externalId: data?.id ? String(data.id) : tpl.externalId,
+          channelId: channel.id,
+          waba,
+          status,
+          rejectionReason: null,
+        },
+      });
+      this.logger.log(
+        `Template "${tpl.name}" submetido à Meta como "${metaName}" (status ${status})`,
+      );
+      return { status, metaName, externalId: data?.id ? String(data.id) : undefined };
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error?.error_user_msg ??
+        err?.response?.data?.error?.message ??
+        err?.message ??
+        'erro ao submeter';
+      this.logger.warn(`Submit à Meta falhou (template ${id}): ${msg}`);
+      throw new BadRequestException(`Meta recusou a submissão: ${msg}`);
+    }
+  }
+
+  /**
+   * Saúde dos números WhatsApp: quality rating e limite de mensagens, lidos ao
+   * vivo da Graph API (`GET /{phoneNumberId}?fields=quality_rating,...`).
+   */
+  async channelHealth(organizationId: string) {
+    const channels = await this.prisma.channel.findMany({
+      where: { organizationId, type: 'WHATSAPP_OFFICIAL' },
+    });
+    const result: Array<Record<string, any>> = [];
+    for (const ch of channels) {
+      const cfg = (ch.config ?? {}) as Record<string, any>;
+      const phone = cfg.phoneNumberId;
+      const token = cfg.accessToken;
+      const ver = cfg.apiVersion || 'v21.0';
+      if (!phone || !token) {
+        result.push({ channelId: ch.id, name: ch.name, error: 'sem phoneNumberId/token' });
+        continue;
+      }
+      try {
+        const { data } = await axios.get(
+          `https://graph.facebook.com/${ver}/${phone}`,
+          {
+            params: {
+              fields:
+                'display_phone_number,verified_name,quality_rating,messaging_limit_tier,name_status',
+            },
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 20000,
+          },
+        );
+        result.push({
+          channelId: ch.id,
+          name: ch.name,
+          phone: data.display_phone_number,
+          verifiedName: data.verified_name,
+          qualityRating: data.quality_rating,
+          messagingLimit: data.messaging_limit_tier,
+          nameStatus: data.name_status,
+        });
+      } catch (err: any) {
+        const msg =
+          err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+        result.push({ channelId: ch.id, name: ch.name, error: msg });
+      }
+    }
+    return { channels: result };
+  }
+
   /**
    * Sincroniza com a Meta: para cada canal WHATSAPP_OFFICIAL da org, busca os
    * templates na Graph API e faz upsert. Best-effort por canal — falha de um
@@ -194,7 +356,7 @@ export class WhatsappTemplatesService {
         continue;
       }
       try {
-        let nextUrl: string | null = `https://graph.facebook.com/${ver}/${waba}/message_templates?limit=100&fields=name,status,category,language,components,id`;
+        let nextUrl: string | null = `https://graph.facebook.com/${ver}/${waba}/message_templates?limit=100&fields=name,status,category,language,components,id,rejected_reason`;
         while (nextUrl) {
           const resp = await axios.get(nextUrl, {
             headers: { Authorization: `Bearer ${token}` },
@@ -208,16 +370,28 @@ export class WhatsappTemplatesService {
             const body =
               (t.components ?? []).find((c: any) => c.type === 'BODY')?.text ?? '';
             const language = t.language ?? 'pt_BR';
+            const externalId = String(t.id ?? '');
+            // Casa por externalId (submetidos por nós), senão pelo nome normalizado
+            // que a Meta usa (metaName), senão pelo nome exato.
             const existing = await this.prisma.whatsappTemplate.findFirst({
-              where: { organizationId, waba, name: t.name, language },
+              where: {
+                organizationId,
+                OR: [
+                  ...(externalId ? [{ externalId }] : []),
+                  { waba, metaName: t.name, language },
+                  { waba, name: t.name, language },
+                ],
+              },
               select: { id: true },
             });
             const dataCommon = {
               channelId: ch.id,
-              externalId: String(t.id ?? ''),
+              externalId,
+              metaName: t.name,
               status: t.status ?? 'APPROVED',
               category: t.category ?? 'MARKETING',
               bodyText: body,
+              rejectionReason: t.rejected_reason ?? null,
               components: (t.components ?? []) as Prisma.InputJsonValue,
               source: 'META_SYNC',
             };

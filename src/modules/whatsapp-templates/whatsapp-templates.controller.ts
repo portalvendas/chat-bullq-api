@@ -82,4 +82,16 @@ export class WhatsappTemplatesController {
   sync(@CurrentOrg('id') orgId: string) {
     return this.service.syncFromMeta(orgId);
   }
+
+  @Get('health')
+  @ApiOperation({ summary: 'Quality rating + limite dos números WhatsApp' })
+  health(@CurrentOrg('id') orgId: string) {
+    return this.service.channelHealth(orgId);
+  }
+
+  @Post(':id/submit')
+  @ApiOperation({ summary: 'Submete o template à Meta para aprovação' })
+  submit(@Param('id') id: string, @CurrentOrg('id') orgId: string) {
+    return this.service.submitToMeta(id, orgId);
+  }
 }

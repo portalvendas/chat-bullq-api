@@ -346,8 +346,13 @@ export class CadencesService {
       }
 
       if (node.type === 'message') {
-        if (node.text?.trim()) {
-          await this.sendMessage(run.conversationId, cadence.organizationId, node.text);
+        if (node.text?.trim() || node.templateId) {
+          await this.sendMessage(
+            run.conversationId,
+            cadence.organizationId,
+            node.text ?? '',
+            node.templateId,
+          );
         }
       } else if (node.type === 'action') {
         await this.applyAction(cadence.organizationId, run.conversationId, {
@@ -517,21 +522,87 @@ export class CadencesService {
     });
   }
 
-  /** Envia a mensagem do nó reusando o pipeline de outbound. */
+  /**
+   * Envia a mensagem do nó reusando o pipeline de outbound. ENVIO INTELIGENTE:
+   * em canal WhatsApp oficial, se a janela de atendimento de 24h estiver
+   * FECHADA (cliente não responde há +24h), envia como TEMPLATE aprovado
+   * (obrigatório pela Meta); dentro da janela, ou em outros canais, envia
+   * texto livre. Se estiver fora da janela e não houver template aprovado,
+   * envia o texto assim mesmo (o WhatsApp pode bloquear) e loga o aviso.
+   */
   private async sendMessage(
     conversationId: string,
     organizationId: string,
     text: string,
+    templateId?: string,
   ) {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
-      include: { contact: { include: { channels: true } } },
+      include: { channel: true, contact: { include: { channels: true } } },
     });
     if (!conversation) return;
     const cc = conversation.contact.channels.find(
       (x) => x.channelId === conversation.channelId,
     );
     if (!cc) return;
+
+    const isWhatsAppOfficial = conversation.channel?.type === 'WHATSAPP_OFFICIAL';
+    let windowOpen = true;
+    if (isWhatsAppOfficial) {
+      const lastInbound = await this.prisma.message.findFirst({
+        where: { conversationId, direction: MessageDirection.INBOUND },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      windowOpen =
+        !!lastInbound &&
+        Date.now() - lastInbound.createdAt.getTime() < 24 * 60 * 60 * 1000;
+    }
+
+    // FORA da janela num canal WhatsApp → tenta template aprovado.
+    if (isWhatsAppOfficial && !windowOpen && templateId) {
+      const tpl = await this.prisma.whatsappTemplate.findFirst({
+        where: { id: templateId, organizationId },
+      });
+      if (tpl && tpl.status === 'APPROVED' && (tpl.metaName || tpl.name)) {
+        const metaName = tpl.metaName ?? this.toMetaName(tpl.name);
+        const message = await this.prisma.message.create({
+          data: {
+            conversationId,
+            direction: MessageDirection.OUTBOUND,
+            type: MessageContentType.TEMPLATE,
+            content: { text: tpl.bodyText, template: { name: metaName } },
+            status: MessageStatus.QUEUED,
+            senderId: null,
+            metadata: { source: 'cadence', templateId, viaTemplate: true },
+          },
+        });
+        await this.outbound.add(
+          'send-outbound',
+          {
+            messageId: message.id,
+            channelId: conversation.channelId,
+            contactExternalId: cc.externalId,
+            message: {
+              type: 'TEMPLATE',
+              content: { name: metaName, language: { code: tpl.language } },
+            },
+          },
+          {
+            attempts: 5,
+            backoff: { type: 'exponential', delay: 2000 },
+            removeOnComplete: true,
+          },
+        );
+        return;
+      }
+      this.logger.warn(
+        `Conv ${conversationId} fora da janela de 24h e sem template aprovado — texto livre pode ser bloqueado pela Meta.`,
+      );
+    }
+
+    // Texto livre (dentro da janela, outros canais, ou fallback).
+    if (!text.trim()) return;
     const message = await this.prisma.message.create({
       data: {
         conversationId,
@@ -556,6 +627,19 @@ export class CadencesService {
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: true,
       },
+    );
+  }
+
+  /** Normaliza nome p/ o padrão da Meta (fallback quando falta metaName). */
+  private toMetaName(name: string): string {
+    return (
+      name
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 480) || 'template'
     );
   }
 

@@ -40,6 +40,8 @@ export interface GraphNode {
   type: GraphNodeType;
   // message
   text?: string;
+  /// Template aprovado (WhatsappTemplate.id) usado quando FORA da janela de 24h.
+  templateId?: string;
   // wait
   delayMinutes?: number;
   untilReply?: boolean;

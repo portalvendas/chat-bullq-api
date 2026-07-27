@@ -125,24 +125,30 @@ export class WhatsappTemplatesService {
    * pela chave (org, waba, name, language) e desambigua nomes repetidos no
    * mesmo WABA (rascunhos do Kommo).
    */
-  async seedApproved(organizationId: string): Promise<{ seeded: number }> {
+  async seedApproved(
+    organizationId: string,
+  ): Promise<{ seeded: number; skipped: number }> {
     const seen = new Set<string>();
     let seeded = 0;
+    let skipped = 0;
     for (const t of WA_TEMPLATE_SEED) {
       let name = t.name;
       let n = 2;
       while (seen.has(`${t.waba}|${name}`)) name = `${t.name} (${n++})`;
       seen.add(`${t.waba}|${name}`);
-      await this.prisma.whatsappTemplate.upsert({
-        where: {
-          uq_wa_template: {
-            organizationId,
-            waba: t.waba,
-            name,
-            language: 'pt_BR',
-          },
-        },
-        create: {
+
+      // findFirst + create (idempotente) — evita qualquer particularidade do
+      // upsert por chave composta com coluna anulável.
+      const exists = await this.prisma.whatsappTemplate.findFirst({
+        where: { organizationId, waba: t.waba, name, language: 'pt_BR' },
+        select: { id: true },
+      });
+      if (exists) {
+        skipped++;
+        continue;
+      }
+      await this.prisma.whatsappTemplate.create({
+        data: {
           organizationId,
           name,
           waba: t.waba,
@@ -153,12 +159,13 @@ export class WhatsappTemplatesService {
           source: 'SEED',
           components: [{ type: 'BODY', text: t.bodyText }],
         },
-        update: {},
       });
       seeded++;
     }
-    this.logger.log(`Seed de ${seeded} templates aprovados (org ${organizationId})`);
-    return { seeded };
+    this.logger.log(
+      `Seed de templates: ${seeded} criados, ${skipped} já existiam (org ${organizationId})`,
+    );
+    return { seeded, skipped };
   }
 
   /**
@@ -200,38 +207,36 @@ export class WhatsappTemplatesService {
           for (const t of payload.data ?? []) {
             const body =
               (t.components ?? []).find((c: any) => c.type === 'BODY')?.text ?? '';
-            await this.prisma.whatsappTemplate.upsert({
-              where: {
-                uq_wa_template: {
-                  organizationId,
-                  waba,
-                  name: t.name,
-                  language: t.language,
-                },
-              },
-              create: {
-                organizationId,
-                channelId: ch.id,
-                externalId: String(t.id ?? ''),
-                name: t.name,
-                status: t.status ?? 'APPROVED',
-                category: t.category ?? 'MARKETING',
-                language: t.language ?? 'pt_BR',
-                waba,
-                bodyText: body,
-                components: (t.components ?? []) as Prisma.InputJsonValue,
-                source: 'META_SYNC',
-              },
-              update: {
-                channelId: ch.id,
-                externalId: String(t.id ?? ''),
-                status: t.status ?? 'APPROVED',
-                category: t.category ?? 'MARKETING',
-                bodyText: body,
-                components: (t.components ?? []) as Prisma.InputJsonValue,
-                source: 'META_SYNC',
-              },
+            const language = t.language ?? 'pt_BR';
+            const existing = await this.prisma.whatsappTemplate.findFirst({
+              where: { organizationId, waba, name: t.name, language },
+              select: { id: true },
             });
+            const dataCommon = {
+              channelId: ch.id,
+              externalId: String(t.id ?? ''),
+              status: t.status ?? 'APPROVED',
+              category: t.category ?? 'MARKETING',
+              bodyText: body,
+              components: (t.components ?? []) as Prisma.InputJsonValue,
+              source: 'META_SYNC',
+            };
+            if (existing) {
+              await this.prisma.whatsappTemplate.update({
+                where: { id: existing.id },
+                data: dataCommon,
+              });
+            } else {
+              await this.prisma.whatsappTemplate.create({
+                data: {
+                  organizationId,
+                  name: t.name,
+                  language,
+                  waba,
+                  ...dataCommon,
+                },
+              });
+            }
             synced++;
           }
           nextUrl = payload.paging?.next ?? null;

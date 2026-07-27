@@ -210,6 +210,7 @@ model Organization {
   knowledgeItems KnowledgeItem[]
   cadences       Cadence[]
   whatsappTemplates WhatsappTemplate[]
+  leadAdsPages   LeadAdsPage[]
 
   @@map("organizations")
 }
@@ -1758,4 +1759,26 @@ model WhatsappTemplate {
   @@unique([organizationId, waba, name, language], name: "uq_wa_template")
   @@index([organizationId, status], name: "idx_wa_template_org_status")
   @@map("whatsapp_templates")
+}
+
+/// Página do Facebook conectada para receber Leads Ads (formulários instantâneos).
+/// Mapeia page_id → organização + token de página (usado pra buscar o lead na
+/// Graph API quando chega o webhook `leadgen`).
+model LeadAdsPage {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  /// ID da página do Facebook (chave do webhook leadgen).
+  pageId         String   @unique @map("page_id")
+  pageName       String?  @map("page_name")
+  /// Page access token (com permissão leads_retrieval).
+  accessToken    String   @map("access_token") @db.Text
+  /// Pipeline/etapa destino (opcional — default: etapa de entrada do pipeline padrão).
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId], name: "idx_leadads_org")
+  @@map("lead_ads_pages")
 }

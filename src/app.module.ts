@@ -25,6 +25,7 @@ import { MarketplacePipelineModule } from './modules/marketplace-pipeline/market
 import { KnowledgeModule } from './modules/ai-agents/knowledge/knowledge.module';
 import { CadencesModule } from './modules/cadences/cadences.module';
 import { WhatsappTemplatesModule } from './modules/whatsapp-templates/whatsapp-templates.module';
+import { LeadAdsModule } from './modules/lead-ads/lead-ads.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
 // via skill HTTP getProductPitch + CatalogSyncService. Tabela `products`
@@ -71,6 +72,7 @@ import redisConfig from './config/redis.config';
     KnowledgeModule,
     CadencesModule,
     WhatsappTemplatesModule,
+    LeadAdsModule,
   ],
 })
 export class AppModule {}

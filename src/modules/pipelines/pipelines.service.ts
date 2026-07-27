@@ -504,6 +504,47 @@ export class PipelinesService {
   }
 
   /**
+   * Cria um card na etapa de entrada para um CONTATO (sem conversa) — usado
+   * por fontes como Facebook Leads Ads. Dedupe por card aberto do contato.
+   */
+  async createEntryCardForContact(
+    organizationId: string,
+    contactId: string,
+    title: string,
+    metadata?: Record<string, any>,
+  ) {
+    const contactCard = await this.prisma.card.findFirst({
+      where: { organizationId, contactId, status: 'OPEN' },
+      select: { id: true },
+    });
+    if (contactCard) return null;
+
+    const pipeline = await this.prisma.pipeline.findFirst({
+      where: { organizationId, archived: false },
+      orderBy: [{ isDefault: 'desc' }, { order: 'asc' }],
+      include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
+    });
+    if (!pipeline || pipeline.stages.length === 0) return null;
+    const stage = pipeline.stages[0];
+    const count = await this.prisma.card.count({
+      where: { pipelineId: pipeline.id, stageId: stage.id },
+    });
+    const card = await this.prisma.card.create({
+      data: {
+        organizationId,
+        pipelineId: pipeline.id,
+        stageId: stage.id,
+        title: title?.trim() || 'Novo lead',
+        contactId,
+        order: count,
+        metadata: (metadata ?? {}) as any,
+      },
+    });
+    this.realtime.emitToOrg(organizationId, 'card:created', { card });
+    return card;
+  }
+
+  /**
    * Cria automaticamente um card na ETAPA DE ENTRADA (1ª etapa do pipeline
    * padrão) para uma conversa nova — paridade com o "origem → cria lead" do
    * Kommo. Idempotente: não duplica se a conversa já tem card. Best-effort.

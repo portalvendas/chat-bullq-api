@@ -174,4 +174,9 @@ export class MoveCardDto {
   @IsInt()
   @Min(0)
   toIndex!: number;
+
+  /** Motivo da perda — usado quando a etapa destino é do tipo LOST. */
+  @IsOptional()
+  @IsString()
+  closedReason?: string;
 }

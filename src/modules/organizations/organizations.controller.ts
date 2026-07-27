@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Put,
   Post,
   Delete,
   Body,
@@ -36,6 +37,22 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Update current organization' })
   update(@CurrentOrg('id') orgId: string, @Body() dto: UpdateOrganizationDto) {
     return this.service.updateOrganization(orgId, dto);
+  }
+
+  @Get('loss-reasons')
+  @ApiOperation({ summary: 'Lista os motivos de perda configurados' })
+  getLossReasons(@CurrentOrg('id') orgId: string) {
+    return this.service.getLossReasons(orgId);
+  }
+
+  @Put('loss-reasons')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Define os motivos de perda' })
+  setLossReasons(
+    @CurrentOrg('id') orgId: string,
+    @Body() body: { reasons: string[] },
+  ) {
+    return this.service.setLossReasons(orgId, body?.reasons ?? []);
   }
 
   @Get('members')

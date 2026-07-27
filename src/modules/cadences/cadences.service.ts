@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import {
@@ -40,7 +45,7 @@ export interface CadenceInput {
   name: string;
   description?: string | null;
   active?: boolean;
-  triggerType?: 'MANUAL' | 'TAG_ADDED' | 'STAGE_ENTERED';
+  triggerType?: 'MANUAL' | 'TAG_ADDED' | 'STAGE_ENTERED' | 'INACTIVITY';
   triggerValue?: string | null;
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
@@ -59,8 +64,29 @@ const RUNNABLE = ['RUNNING', 'WAITING'] as const;
  * automaticamente via `resolveGraph` — sem migração de dados.
  */
 @Injectable()
-export class CadencesService {
+export class CadencesService implements OnModuleInit {
   private readonly logger = new Logger(CadencesService.name);
+
+  /**
+   * Agenda o scan de inatividade (job repetível na fila `cadence`). Roda de
+   * hora em hora; BullMQ deduplica pela chave de repeat, então re-agendar a
+   * cada boot é seguro.
+   */
+  async onModuleInit() {
+    try {
+      await this.queue.add(
+        'inactivity-scan',
+        { kind: 'inactivity-scan' },
+        {
+          repeat: { every: 60 * 60 * 1000 },
+          removeOnComplete: true,
+          removeOnFail: 20,
+        },
+      );
+    } catch (err: any) {
+      this.logger.warn(`Falha ao agendar inactivity-scan: ${err?.message ?? err}`);
+    }
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -291,6 +317,50 @@ export class CadencesService {
       }
     } catch (err: any) {
       this.logger.warn(`onStageEntered falhou (stage ${stageId}): ${err?.message ?? err}`);
+    }
+  }
+
+  /**
+   * REENGAJAMENTO POR INATIVIDADE. Para cada bot com gatilho INACTIVITY
+   * (triggerValue = nº de dias), acha conversas paradas há ≥ N dias (e ≤ 90d,
+   * pra não ressuscitar leads mortos), sem run prévio dessa cadência, e inicia
+   * o bot. Chamado pelo job repetível. Best-effort.
+   */
+  async scanInactivity(): Promise<void> {
+    const cadences = await this.prisma.cadence.findMany({
+      where: { active: true, triggerType: 'INACTIVITY' },
+    });
+    const now = Date.now();
+    for (const c of cadences) {
+      try {
+        const days = Math.max(1, Number(c.triggerValue) || 1);
+        const cutoff = new Date(now - days * 86_400_000);
+        const floor = new Date(now - 90 * 86_400_000);
+        const convs = await this.prisma.conversation.findMany({
+          where: {
+            organizationId: c.organizationId,
+            status: { not: 'CLOSED' },
+            lastMessageAt: { lt: cutoff, gt: floor },
+          },
+          select: { id: true },
+          take: 300,
+        });
+        if (convs.length === 0) continue;
+        const ids = convs.map((x) => x.id);
+        const runs = await this.prisma.cadenceRun.findMany({
+          where: { cadenceId: c.id, conversationId: { in: ids } },
+          select: { conversationId: true },
+        });
+        const already = new Set(runs.map((r) => r.conversationId));
+        for (const conv of convs) {
+          if (already.has(conv.id)) continue;
+          await this.start(c.id, c.organizationId, conv.id).catch(() => undefined);
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `scanInactivity falhou (cadence ${c.id}): ${err?.message ?? err}`,
+        );
+      }
     }
   }
 

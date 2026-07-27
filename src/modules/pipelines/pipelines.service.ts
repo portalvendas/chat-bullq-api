@@ -403,15 +403,19 @@ export class PipelinesService {
 
     let newStatus: CardStatus = card.status;
     let newClosedAt = card.closedAt;
+    let newClosedReason = card.closedReason;
     if (targetStage.type === 'WON') {
       newStatus = CardStatus.WON;
       newClosedAt = newClosedAt ?? new Date();
+      newClosedReason = null;
     } else if (targetStage.type === 'LOST') {
       newStatus = CardStatus.LOST;
       newClosedAt = newClosedAt ?? new Date();
+      newClosedReason = dto.closedReason?.trim() || newClosedReason || null;
     } else {
       newStatus = CardStatus.OPEN;
       newClosedAt = null;
+      newClosedReason = null;
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -465,6 +469,7 @@ export class PipelinesService {
           order: dto.toIndex,
           status: newStatus,
           closedAt: newClosedAt,
+          closedReason: newClosedReason,
         },
       });
     });
@@ -514,6 +519,16 @@ export class PipelinesService {
       select: { id: true },
     });
     if (existing) return null;
+
+    // Controle de duplicatas: se o contato já tem um card ABERTO na org, não
+    // cria outro lead (paridade com o "controle de duplicatas" do Kommo).
+    if (contactId) {
+      const contactCard = await this.prisma.card.findFirst({
+        where: { organizationId, contactId, status: 'OPEN' },
+        select: { id: true },
+      });
+      if (contactCard) return null;
+    }
 
     const pipeline = await this.prisma.pipeline.findFirst({
       where: { organizationId, archived: false },

@@ -12,6 +12,18 @@ import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 
+const DEFAULT_LOSS_REASONS = [
+  'Não respondeu a mensagem inicial',
+  'Não informou',
+  'Orçamento insuficiente',
+  'O produto não se encaixa à necessidade',
+  'Comprado do concorrente',
+  'Frete caro',
+  'Frete lento',
+  'Em fase de construção',
+  'Não está no momento/precisa de tempo',
+];
+
 @Injectable()
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
@@ -22,6 +34,35 @@ export class OrganizationsService {
     const org = await this.repository.findById(orgId);
     if (!org) throw new NotFoundException('Organization not found');
     return org;
+  }
+
+  /** Motivos de perda configurados (org.settings.lossReasons). */
+  async getLossReasons(orgId: string): Promise<{ reasons: string[] }> {
+    const org = await this.getOrganization(orgId);
+    const settings = (org.settings as Record<string, any>) ?? {};
+    const reasons = Array.isArray(settings.lossReasons)
+      ? (settings.lossReasons as string[])
+      : DEFAULT_LOSS_REASONS;
+    return { reasons };
+  }
+
+  async setLossReasons(
+    orgId: string,
+    reasons: string[],
+  ): Promise<{ reasons: string[] }> {
+    const org = await this.getOrganization(orgId);
+    const clean = (reasons ?? [])
+      .map((r) => String(r).trim())
+      .filter((r) => r.length > 0)
+      .slice(0, 30);
+    const settings = {
+      ...((org.settings as Record<string, any>) ?? {}),
+      lossReasons: clean,
+    };
+    await this.repository.update(orgId, {
+      settings: settings as Prisma.InputJsonValue,
+    });
+    return { reasons: clean };
   }
 
   async updateOrganization(orgId: string, dto: UpdateOrganizationDto) {

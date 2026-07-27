@@ -5,10 +5,10 @@ import { CadencesService } from './cadences.service';
 import { CADENCE_QUEUE } from './cadences.constants';
 
 interface CadenceJob {
-  runId: string;
+  runId?: string;
   // motor de grafo
   nodeId?: string;
-  kind?: 'advance' | 'timeout';
+  kind?: 'advance' | 'timeout' | 'inactivity-scan';
   // legado linear (jobs em voo de antes do deploy)
   stepIndex?: number;
 }
@@ -30,14 +30,16 @@ export class CadencesProcessor extends WorkerHost {
   async process(job: Job<CadenceJob>): Promise<void> {
     const { runId, nodeId, kind, stepIndex } = job.data;
     try {
-      if (typeof stepIndex === 'number' && !kind) {
+      if (kind === 'inactivity-scan') {
+        await this.service.scanInactivity();
+      } else if (typeof stepIndex === 'number' && !kind && runId) {
         await this.service.runStep(runId, stepIndex); // legado
-      } else if (kind === 'timeout' && nodeId) {
+      } else if (kind === 'timeout' && nodeId && runId) {
         await this.service.onTimeout(runId, nodeId);
-      } else if (nodeId) {
+      } else if (nodeId && runId) {
         await this.service.advance(runId, nodeId);
       } else {
-        this.logger.warn(`Job de salesbot sem alvo (run ${runId})`);
+        this.logger.warn(`Job de salesbot sem alvo (run ${runId ?? '—'})`);
       }
     } catch (err: any) {
       this.logger.error(

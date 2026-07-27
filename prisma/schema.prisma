@@ -1745,7 +1745,7 @@ model WhatsappTemplate {
   /// ID da conta WhatsApp Business (businessAccountId).
   waba           String?  @map("waba")
   /// Texto do corpo (componente BODY).
-  bodyText       String   @db.Text
+  bodyText       String   @db.Text @map("body_text")
   /// Componentes crus da Meta: [{type:HEADER|BODY|FOOTER|BUTTONS, ...}]
   components     Json     @default("[]")
   /// Origem: META_SYNC | MANUAL | SEED

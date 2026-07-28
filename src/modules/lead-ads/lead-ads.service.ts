@@ -242,7 +242,13 @@ export class LeadAdsService {
     dto: { pageId: string; pageName?: string; accessToken: string },
   ) {
     const pageId = String(dto.pageId).trim();
-    const token = dto.accessToken.trim();
+    const provided = dto.accessToken.trim();
+    // O `subscribed_apps` e a busca do lead exigem um PAGE access token. O que
+    // o usuário cola costuma ser um token de usuário/System User — então
+    // trocamos por um token da página (`GET /{page}?fields=access_token`).
+    // Se a troca falhar (já é um page token, ou sem permissão), usamos o que
+    // veio.
+    const token = await this.resolvePageToken(pageId, provided);
     const saved = await this.prisma.leadAdsPage.upsert({
       where: { pageId },
       create: {
@@ -268,6 +274,34 @@ export class LeadAdsService {
     // salva e devolvemos o motivo pra UI.
     const subscription = await this.subscribeLeadgen(pageId, token);
     return { ...saved, subscription };
+  }
+
+  /**
+   * Troca um token de usuário/System User pelo token DA PÁGINA. Se já for um
+   * page token (ou a troca falhar), devolve o token original.
+   */
+  private async resolvePageToken(
+    pageId: string,
+    token: string,
+  ): Promise<string> {
+    try {
+      const { data } = await axios.get(
+        `https://graph.facebook.com/${this.apiVersion}/${pageId}`,
+        { params: { fields: 'access_token', access_token: token }, timeout: 20000 },
+      );
+      const pageToken = data?.access_token;
+      if (typeof pageToken === 'string' && pageToken.length > 0) {
+        this.logger.log(`Lead Ads: page token derivado para a página ${pageId}`);
+        return pageToken;
+      }
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+      this.logger.warn(
+        `Lead Ads: não foi possível derivar page token da página ${pageId} (${msg}); usando token original`,
+      );
+    }
+    return token;
   }
 
   /** POST /{page}/subscribed_apps?subscribed_fields=leadgen (best-effort). */

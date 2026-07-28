@@ -8,10 +8,11 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentOrg } from '../../common/decorators';
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
 import { LeadAdsService } from './lead-ads.service';
@@ -32,9 +33,15 @@ export class LeadAdsController {
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
-  ): string {
+    @Res() res: Response,
+  ): void {
     const result = this.service.verify(mode, token, challenge);
-    return result ?? 'forbidden';
+    // A Meta exige o challenge CRU no corpo (sem wrapper JSON do interceptor).
+    if (result === null) {
+      res.status(403).send('Forbidden');
+      return;
+    }
+    res.status(200).send(result);
   }
 
   @Post('webhooks/meta/leadads')

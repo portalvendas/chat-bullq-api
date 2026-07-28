@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Headers,
+  Logger,
   Param,
   Post,
   Query,
@@ -24,6 +25,7 @@ import { LeadAdsService } from './lead-ads.service';
 @ApiTags('Lead Ads')
 @Controller()
 export class LeadAdsController {
+  private readonly logger = new Logger(LeadAdsController.name);
   constructor(private readonly service: LeadAdsService) {}
 
   // ─── Webhook (público) ─────────────────────────
@@ -54,10 +56,17 @@ export class LeadAdsController {
     const ok = this.service.validateSignature(req.rawBody, signature);
     if (!ok) {
       // Assinatura inválida — não processa, mas responde 200 pra Meta não
-      // ficar reentregando (o log registra o descarte).
+      // ficar reentregando. Logamos pra diagnóstico (ex.: META_APP_SECRET
+      // ausente/errado, ou rawBody indisponível).
+      this.logger.warn(
+        `Lead Ads webhook: assinatura inválida ou ausente (temSig=${!!signature}, temRawBody=${!!req.rawBody}). Evento descartado.`,
+      );
       return { received: false };
     }
     const changes = this.service.extractLeadgenChanges(body);
+    this.logger.log(
+      `Lead Ads webhook: recebido com assinatura válida — ${changes.length} evento(s) leadgen`,
+    );
     // Processa em background; responde rápido pra Meta.
     for (const change of changes) {
       void this.service.processLead(change);

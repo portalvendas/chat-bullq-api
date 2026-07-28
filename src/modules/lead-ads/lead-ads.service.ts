@@ -242,23 +242,61 @@ export class LeadAdsService {
     dto: { pageId: string; pageName?: string; accessToken: string },
   ) {
     const pageId = String(dto.pageId).trim();
-    return this.prisma.leadAdsPage.upsert({
+    const token = dto.accessToken.trim();
+    const saved = await this.prisma.leadAdsPage.upsert({
       where: { pageId },
       create: {
         organizationId,
         pageId,
         pageName: dto.pageName ?? null,
-        accessToken: dto.accessToken.trim(),
+        accessToken: token,
         active: true,
       },
       update: {
         organizationId,
         pageName: dto.pageName ?? null,
-        accessToken: dto.accessToken.trim(),
+        accessToken: token,
         active: true,
       },
       select: { id: true, pageId: true, pageName: true, active: true },
     });
+
+    // Ao conectar a página, já assinamos o app no campo `leadgen` dessa
+    // página (equivale ao POST /{page}/subscribed_apps do Graph API). Assim
+    // o usuário não precisa rodar isso à mão no Explorer. Best-effort: se
+    // falhar (ex.: token sem pages_manage_metadata), a conexão continua
+    // salva e devolvemos o motivo pra UI.
+    const subscription = await this.subscribeLeadgen(pageId, token);
+    return { ...saved, subscription };
+  }
+
+  /** POST /{page}/subscribed_apps?subscribed_fields=leadgen (best-effort). */
+  private async subscribeLeadgen(
+    pageId: string,
+    accessToken: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${this.apiVersion}/${pageId}/subscribed_apps`,
+        null,
+        {
+          params: { subscribed_fields: 'leadgen', access_token: accessToken },
+          timeout: 20000,
+        },
+      );
+      const ok = data?.success === true;
+      if (ok) {
+        this.logger.log(`Lead Ads: página ${pageId} assinada em leadgen`);
+      }
+      return { ok, error: ok ? undefined : 'resposta sem success=true' };
+    } catch (err: any) {
+      const error =
+        err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+      this.logger.warn(
+        `Lead Ads: falha ao assinar leadgen da página ${pageId}: ${error}`,
+      );
+      return { ok: false, error };
+    }
   }
 
   async removePage(organizationId: string, id: string) {

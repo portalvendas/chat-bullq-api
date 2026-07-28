@@ -92,20 +92,104 @@ export class MarketplaceOrdersService {
     return out;
   }
 
+  private static readonly SHOPEE_PAID_STATUS = new Set([
+    'READY_TO_SHIP',
+    'PROCESSED',
+    'SHIPPED',
+    'TO_CONFIRM_RECEIVE',
+    'COMPLETED',
+  ]);
+
   /**
-   * Shopee: TODO — implementar via /api/v2/order/get_order_list (status
-   * COMPLETED/READY_TO_SHIP) + /api/v2/order/get_order_detail p/ buyer_user_id
-   * e total_amount. Sandbox não tem pedidos ainda, então por ora devolve vazio
-   * (a estrutura de cruzamento já funciona; só falta a fonte de pedidos).
+   * Shopee: get_order_list (janela de 14 dias, máx da API é 15) → order_sn;
+   * depois get_order_detail (lotes de 50) pedindo buyer_user_id/total_amount.
+   * Indexa por `buyer_user_id` (== from_id do chat). Só conta pedidos "pagos"
+   * (READY_TO_SHIP/PROCESSED/SHIPPED/TO_CONFIRM_RECEIVE/COMPLETED).
+   *
+   * NOTA: nomes de campo (buyer_user_id, total_amount, order_status) e os
+   * status válidos precisam ser confirmados no sandbox com uma loja conectada.
    */
   private async fetchShopee(
     channel: Channel,
   ): Promise<Map<string, MarketplaceOrder>> {
-    // Mantém a assinatura pronta; validar campos no sandbox antes de ligar.
-    void this.shopeeHttp;
-    this.logger.debug(
-      `Shopee canal ${channel.id}: busca de pedidos ainda não habilitada (Fase 2)`,
-    );
-    return new Map();
+    const out = new Map<string, MarketplaceOrder>();
+    const cfg = (channel.config ?? {}) as Record<string, any>;
+    if (!cfg.shopId || !cfg.accessToken) {
+      this.logger.debug(`Shopee canal ${channel.id} não conectado — sem pedidos`);
+      return out;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - 14 * 24 * 60 * 60;
+
+    try {
+      // 1) Coleta os order_sn da janela (paginado por cursor).
+      const orderSns: string[] = [];
+      let cursor = '';
+      let guard = 0;
+      do {
+        const res = await this.shopeeHttp.get(
+          channel,
+          '/api/v2/order/get_order_list',
+          {
+            time_range_field: 'create_time',
+            time_from: from,
+            time_to: now,
+            page_size: 100,
+            cursor,
+          },
+        );
+        const r = res?.response ?? {};
+        for (const o of Array.isArray(r.order_list) ? r.order_list : []) {
+          if (o?.order_sn) orderSns.push(String(o.order_sn));
+        }
+        cursor = r.next_cursor ?? '';
+        if (!r.more || !cursor) break;
+      } while (++guard < 20 && orderSns.length < 500);
+
+      // 2) Detalhe em lotes de 50 pra pegar comprador + valor.
+      for (let i = 0; i < orderSns.length; i += 50) {
+        const batch = orderSns.slice(i, i + 50);
+        const res = await this.shopeeHttp.get(
+          channel,
+          '/api/v2/order/get_order_detail',
+          {
+            order_sn_list: batch.join(','),
+            response_optional_fields:
+              'buyer_user_id,buyer_username,total_amount,order_status',
+          },
+        );
+        const list = res?.response?.order_list;
+        for (const o of Array.isArray(list) ? list : []) {
+          const buyerId = o?.buyer_user_id != null ? String(o.buyer_user_id) : '';
+          if (!buyerId) continue;
+          if (
+            o?.order_status &&
+            !MarketplaceOrdersService.SHOPEE_PAID_STATUS.has(o.order_status)
+          ) {
+            continue;
+          }
+          if (out.has(buyerId)) continue; // mantém o mais recente (ordem da API)
+          out.set(buyerId, {
+            orderId: String(o.order_sn),
+            buyerId,
+            buyerNickname: o.buyer_username,
+            total: Number(o.total_amount ?? 0),
+            currency: 'BRL',
+            dateCreated: o.create_time
+              ? new Date(Number(o.create_time) * 1000).toISOString()
+              : undefined,
+          });
+        }
+      }
+      this.logger.log(
+        `Shopee canal ${channel.id}: ${out.size} compradores com pedido pago`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `Falha ao buscar pedidos Shopee (canal ${channel.id}): ${err?.message ?? err}`,
+      );
+    }
+    return out;
   }
 }

@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -31,8 +32,14 @@ export class PipelinesController {
 
   @Get()
   @ApiOperation({ summary: 'List pipelines for current org' })
-  list(@CurrentOrg('id') orgId: string) {
-    return this.service.listPipelines(orgId);
+  list(
+    @CurrentOrg('id') orgId: string,
+    @Query('includeArchived') includeArchived?: string,
+  ) {
+    return this.service.listPipelines(
+      orgId,
+      includeArchived === 'true' || includeArchived === '1',
+    );
   }
 
   @Post()
@@ -90,6 +97,18 @@ export class PipelinesController {
     @CurrentOrg('id') orgId: string,
   ) {
     return this.service.listCardsByConversation(conversationId, orgId);
+  }
+
+  @Get('cards/:cardId')
+  @ApiOperation({
+    summary:
+      'Get a single card with the FULL contact (email, tracking/UTM metadata, tags) for the lead-enrichment panel.',
+  })
+  getCard(
+    @Param('cardId') cardId: string,
+    @CurrentOrg('id') orgId: string,
+  ) {
+    return this.service.getCard(cardId, orgId);
   }
 
   @Post(':id/cards')

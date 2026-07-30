@@ -35,10 +35,16 @@ export class PipelinesService {
 
   // ─── Pipelines ─────────────────────────────────
 
-  async listPipelines(organizationId: string) {
+  async listPipelines(organizationId: string, includeArchived = false) {
     return this.prisma.pipeline.findMany({
-      where: { organizationId, archived: false },
-      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+      // includeArchived=true traz também os funis desativados (arquivados),
+      // usado pela tela de gestão para permitir REATIVAR. O padrão continua
+      // ocultando arquivados (comportamento do board/inbox).
+      where: {
+        organizationId,
+        ...(includeArchived ? {} : { archived: false }),
+      },
+      orderBy: [{ archived: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
       include: {
         stages: { orderBy: { order: 'asc' } },
         _count: { select: { cards: true } },
@@ -55,7 +61,9 @@ export class PipelinesService {
       }),
       this.prisma.card.findMany({
         where: { pipelineId },
-        orderBy: { order: 'asc' },
+        // Ordenação do board: mais novo → mais antigo (paridade com Kommo).
+        // O drag-and-drop só move entre etapas; dentro da coluna a data manda.
+        orderBy: { createdAt: 'desc' },
         include: {
           contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
@@ -624,6 +632,59 @@ export class PipelinesService {
         },
       },
     });
+  }
+
+  /**
+   * Card único com o CONTATO COMPLETO para o painel de enriquecimento do
+   * lead (data, fonte, e-mail, tracking/UTM, tags). Diferente do board (que
+   * traz só id/name/phone/avatar por performance), aqui hidratamos email,
+   * notes, metadata (onde vive tracking) e as tags do contato.
+   *
+   * Exemplo de saída (resumido):
+   * {
+   *   id, title, status, createdAt, metadata: { source, tracking, raw },
+   *   stage: { id, name, type }, conversation: { channel: { type } },
+   *   contact: { id, name, phone, email, metadata: { tracking: {...} },
+   *             tags: [{ id, name, color }] }
+   * }
+   */
+  async getCard(cardId: string, organizationId: string) {
+    const card = await this.prisma.card.findUnique({
+      where: { id: cardId },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            avatarUrl: true,
+            notes: true,
+            metadata: true,
+            createdAt: true,
+            tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+          },
+        },
+        assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+        stage: { select: { id: true, name: true, type: true, color: true } },
+        conversation: {
+          select: {
+            id: true,
+            channelId: true,
+            channel: { select: { id: true, type: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!card || card.organizationId !== organizationId) {
+      throw new NotFoundException('Card not found');
+    }
+    // Achata as tags (join table) pra facilitar a vida do frontend.
+    const tags = (card.contact?.tags ?? []).map((t) => t.tag);
+    return {
+      ...card,
+      contact: card.contact ? { ...card.contact, tags } : null,
+    };
   }
 
   // ─── helpers ───────────────────────────────────

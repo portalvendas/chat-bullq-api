@@ -17,6 +17,41 @@ import {
   UpsertStageDto,
 } from './dto/pipeline.dto';
 
+/** Contexto de origem do lead usado pelo roteamento origem→funil/etapa. */
+export interface RoutingCtx {
+  channelId?: string | null;
+  channelType?: string | null;
+  leadSource?: string | null; // ex.: landing_page, facebook_leadads
+  utmSource?: string | null;
+  leadAdsPageId?: string | null;
+}
+
+interface RoutingTarget {
+  pipelineId: string;
+  stageId?: string;
+}
+interface RoutingException extends RoutingTarget {
+  id?: string;
+  kind: 'CHANNEL' | 'LEADADS_PAGE' | 'UTM_SOURCE';
+  value: string;
+  label?: string;
+}
+interface LeadRouting {
+  byType: Record<string, RoutingTarget>;
+  exceptions: RoutingException[];
+}
+
+/** Tipos de origem suportados no roteamento por TIPO. */
+export const ORIGIN_TYPES = [
+  'MERCADO_LIVRE',
+  'SHOPEE',
+  'WHATSAPP',
+  'INSTAGRAM',
+  'TELEGRAM',
+  'LANDING_PAGE',
+  'FACEBOOK_LEADADS',
+] as const;
+
 const DEFAULT_STAGES: UpsertStageDto[] = [
   { name: 'Novo', color: 'zinc', type: 'NORMAL', order: 0 },
   { name: 'Em qualificação', color: 'blue', type: 'NORMAL', order: 1 },
@@ -511,15 +546,140 @@ export class PipelinesService {
     });
   }
 
+  // ─── Roteamento origem → funil/etapa ───────────
+
+  private normalizeStr(s: unknown): string {
+    return String(s ?? '').trim().toLowerCase();
+  }
+
+  /** Deriva o TIPO de origem a partir do canal/lead source. */
+  private originTypeFrom(
+    channelType?: string | null,
+    leadSource?: string | null,
+  ): string | null {
+    const ls = this.normalizeStr(leadSource);
+    if (ls.includes('landing') || ls === 'lp') return 'LANDING_PAGE';
+    if (ls.includes('leadads') || ls.includes('facebook_lead'))
+      return 'FACEBOOK_LEADADS';
+    const ct = String(channelType ?? '').toUpperCase();
+    if (ct.includes('WHATSAPP') || ct.includes('ZAPPFY') || ct.includes('ZAPI'))
+      return 'WHATSAPP';
+    if (ct.includes('INSTAGRAM')) return 'INSTAGRAM';
+    if (ct.includes('TELEGRAM')) return 'TELEGRAM';
+    if (ct.includes('MERCADO')) return 'MERCADO_LIVRE';
+    if (ct.includes('SHOPEE')) return 'SHOPEE';
+    return null;
+  }
+
+  /** Lê a config de roteamento salva em organization.settings.leadRouting. */
+  async getLeadRouting(organizationId: string): Promise<LeadRouting> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { settings: true },
+    });
+    const settings = (org?.settings ?? {}) as any;
+    const r = settings.leadRouting ?? {};
+    return {
+      byType: r.byType ?? {},
+      exceptions: Array.isArray(r.exceptions) ? r.exceptions : [],
+    };
+  }
+
+  /**
+   * Resolve o funil/etapa destino a partir da origem do lead. Ordem:
+   * 1) exceções (canal específico / página Lead Ads / utm_source)
+   * 2) regra por TIPO de origem
+   * Valida que o pipeline existe, não está arquivado e a etapa é dele.
+   * Retorna null se não houver regra válida (→ o chamador usa o padrão).
+   */
+  private async resolveByRouting(
+    organizationId: string,
+    ctx: RoutingCtx,
+  ): Promise<{ pipelineId: string; stageId: string } | null> {
+    const routing = await this.getLeadRouting(organizationId);
+
+    let channelType = ctx.channelType ?? null;
+    if (!channelType && ctx.channelId) {
+      const ch = await this.prisma.channel.findUnique({
+        where: { id: ctx.channelId },
+        select: { type: true },
+      });
+      channelType = ch?.type ?? null;
+    }
+
+    let target: RoutingTarget | undefined;
+    for (const ex of routing.exceptions) {
+      if (!ex?.pipelineId) continue;
+      if (ex.kind === 'CHANNEL' && ctx.channelId && ex.value === ctx.channelId) {
+        target = ex;
+        break;
+      }
+      if (
+        ex.kind === 'LEADADS_PAGE' &&
+        ctx.leadAdsPageId &&
+        ex.value === ctx.leadAdsPageId
+      ) {
+        target = ex;
+        break;
+      }
+      if (
+        ex.kind === 'UTM_SOURCE' &&
+        ctx.utmSource &&
+        this.normalizeStr(ex.value) === this.normalizeStr(ctx.utmSource)
+      ) {
+        target = ex;
+        break;
+      }
+    }
+
+    if (!target) {
+      const ot = this.originTypeFrom(channelType, ctx.leadSource);
+      if (ot && routing.byType[ot]?.pipelineId) target = routing.byType[ot];
+    }
+    if (!target?.pipelineId) return null;
+
+    const pipeline = await this.prisma.pipeline.findFirst({
+      where: { id: target.pipelineId, organizationId, archived: false },
+      include: { stages: { orderBy: { order: 'asc' } } },
+    });
+    if (!pipeline || pipeline.stages.length === 0) return null;
+    const stage =
+      (target.stageId &&
+        pipeline.stages.find((s) => s.id === target!.stageId)) ||
+      pipeline.stages[0];
+    return { pipelineId: pipeline.id, stageId: stage.id };
+  }
+
+  /** Alvo de entrada: roteamento por origem → senão pipeline padrão (1ª etapa). */
+  private async pickEntryTarget(
+    organizationId: string,
+    ctx?: RoutingCtx,
+  ): Promise<{ pipelineId: string; stageId: string } | null> {
+    if (ctx) {
+      const routed = await this.resolveByRouting(organizationId, ctx);
+      if (routed) return routed;
+    }
+    const pipeline = await this.prisma.pipeline.findFirst({
+      where: { organizationId, archived: false },
+      orderBy: [{ isDefault: 'desc' }, { order: 'asc' }],
+      include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
+    });
+    if (!pipeline || pipeline.stages.length === 0) return null;
+    return { pipelineId: pipeline.id, stageId: pipeline.stages[0].id };
+  }
+
   /**
    * Cria um card na etapa de entrada para um CONTATO (sem conversa) — usado
-   * por fontes como Facebook Leads Ads. Dedupe por card aberto do contato.
+   * por fontes como Facebook Leads Ads e Landing Page. Roteia por origem
+   * (ctx) quando configurado; senão cai no pipeline padrão. Dedupe por card
+   * aberto do contato.
    */
   async createEntryCardForContact(
     organizationId: string,
     contactId: string,
     title: string,
     metadata?: Record<string, any>,
+    ctx?: RoutingCtx,
   ) {
     const contactCard = await this.prisma.card.findFirst({
       where: { organizationId, contactId, status: 'OPEN' },
@@ -527,21 +687,16 @@ export class PipelinesService {
     });
     if (contactCard) return null;
 
-    const pipeline = await this.prisma.pipeline.findFirst({
-      where: { organizationId, archived: false },
-      orderBy: [{ isDefault: 'desc' }, { order: 'asc' }],
-      include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
-    });
-    if (!pipeline || pipeline.stages.length === 0) return null;
-    const stage = pipeline.stages[0];
+    const target = await this.pickEntryTarget(organizationId, ctx);
+    if (!target) return null;
     const count = await this.prisma.card.count({
-      where: { pipelineId: pipeline.id, stageId: stage.id },
+      where: { pipelineId: target.pipelineId, stageId: target.stageId },
     });
     const card = await this.prisma.card.create({
       data: {
         organizationId,
-        pipelineId: pipeline.id,
-        stageId: stage.id,
+        pipelineId: target.pipelineId,
+        stageId: target.stageId,
         title: title?.trim() || 'Novo lead',
         contactId,
         order: count,
@@ -562,6 +717,7 @@ export class PipelinesService {
     conversationId: string,
     contactId: string | null,
     title: string,
+    ctx?: RoutingCtx,
   ) {
     const existing = await this.prisma.card.findFirst({
       where: { conversationId },
@@ -579,22 +735,18 @@ export class PipelinesService {
       if (contactCard) return null;
     }
 
-    const pipeline = await this.prisma.pipeline.findFirst({
-      where: { organizationId, archived: false },
-      orderBy: [{ isDefault: 'desc' }, { order: 'asc' }],
-      include: { stages: { orderBy: { order: 'asc' }, take: 1 } },
-    });
-    if (!pipeline || pipeline.stages.length === 0) return null;
-    const stage = pipeline.stages[0];
+    // Roteia por origem (canal) quando configurado; senão pipeline padrão.
+    const target = await this.pickEntryTarget(organizationId, ctx);
+    if (!target) return null;
 
     const count = await this.prisma.card.count({
-      where: { pipelineId: pipeline.id, stageId: stage.id },
+      where: { pipelineId: target.pipelineId, stageId: target.stageId },
     });
     const card = await this.prisma.card.create({
       data: {
         organizationId,
-        pipelineId: pipeline.id,
-        stageId: stage.id,
+        pipelineId: target.pipelineId,
+        stageId: target.stageId,
         title: title?.trim() || 'Novo lead',
         contactId: contactId ?? null,
         conversationId,
@@ -685,6 +837,75 @@ export class PipelinesService {
       ...card,
       contact: card.contact ? { ...card.contact, tags } : null,
     };
+  }
+
+  /** Salva a config de roteamento (valida pipelines/etapas da org). */
+  async saveRouting(organizationId: string, dto: LeadRouting) {
+    const byType = dto?.byType ?? {};
+    const exceptions = Array.isArray(dto?.exceptions) ? dto.exceptions : [];
+
+    const pipelineIds = new Set<string>();
+    for (const t of Object.values(byType)) if (t?.pipelineId) pipelineIds.add(t.pipelineId);
+    for (const e of exceptions) if (e?.pipelineId) pipelineIds.add(e.pipelineId);
+
+    if (pipelineIds.size > 0) {
+      const found = await this.prisma.pipeline.findMany({
+        where: { id: { in: Array.from(pipelineIds) }, organizationId },
+        include: { stages: { select: { id: true } } },
+      });
+      const map = new Map(found.map((p) => [p.id, new Set(p.stages.map((s) => s.id))]));
+      const check = (t?: RoutingTarget) => {
+        if (!t?.pipelineId) return;
+        if (!map.has(t.pipelineId))
+          throw new BadRequestException('Funil inválido no roteamento');
+        if (t.stageId && !map.get(t.pipelineId)!.has(t.stageId))
+          throw new BadRequestException('Etapa inválida pro funil escolhido');
+      };
+      for (const t of Object.values(byType)) check(t);
+      for (const e of exceptions) check(e);
+    }
+
+    const clean: LeadRouting = {
+      byType,
+      exceptions: exceptions
+        .filter((e) => e?.kind && e?.value && e?.pipelineId)
+        .map((e, i) => ({
+          id: e.id ?? `ex_${Date.now()}_${i}`,
+          kind: e.kind,
+          value: e.value,
+          pipelineId: e.pipelineId,
+          stageId: e.stageId,
+          label: e.label,
+        })),
+    };
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { settings: true },
+    });
+    const settings = { ...((org?.settings as any) ?? {}), leadRouting: clean };
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { settings: settings as any },
+    });
+    return clean;
+  }
+
+  /** Opções para a UI de roteamento: canais e páginas Lead Ads (exceções). */
+  async getRoutingOptions(organizationId: string) {
+    const [channels, leadAdsPages] = await this.prisma.$transaction([
+      this.prisma.channel.findMany({
+        where: { organizationId, deletedAt: null },
+        select: { id: true, type: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.leadAdsPage.findMany({
+        where: { organizationId },
+        select: { pageId: true, pageName: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    return { types: ORIGIN_TYPES, channels, leadAdsPages };
   }
 
   // ─── helpers ───────────────────────────────────

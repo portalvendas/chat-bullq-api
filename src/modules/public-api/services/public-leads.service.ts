@@ -121,6 +121,8 @@ export class PublicLeadsService {
       contact.id,
       name || phone || email || 'Lead',
       { source, tracking, raw: body },
+      // Roteamento por origem: LP usa leadSource + utm_source.
+      { leadSource: source, utmSource: (tracking as any)?.utm_source ?? null },
     );
 
     this.logger.log(

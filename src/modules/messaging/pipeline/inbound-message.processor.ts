@@ -198,6 +198,8 @@ export class InboundMessageProcessor extends WorkerHost {
             conversationId,
             contactId,
             message.contactName ?? message.contactPhone ?? 'Novo lead',
+            // Roteamento por origem: usa o canal da conversa (tipo + exceção).
+            { channelId },
           )
           .catch((err) =>
             this.logger.warn(

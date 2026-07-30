@@ -137,6 +137,8 @@ export class LeadAdsService {
           campaignName: data?.campaign_name,
           fields: fields.raw,
         },
+        // Roteamento por origem: tipo FACEBOOK_LEADADS + exceção por página.
+        { leadSource: 'facebook_leadads', leadAdsPageId: page.pageId },
       );
       this.logger.log(
         `Lead Ads: lead ${change.leadgenId} → contato ${contact.id} (org ${page.organizationId})`,

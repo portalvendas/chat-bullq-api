@@ -51,6 +51,26 @@ export class PipelinesController {
     return this.service.createPipeline(orgId, dto);
   }
 
+  // ─── Roteamento origem → funil/etapa ──────────
+
+  @Get('routing')
+  @ApiOperation({ summary: 'Get lead routing config (origin → pipeline/stage)' })
+  getRouting(@CurrentOrg('id') orgId: string) {
+    return this.service.getLeadRouting(orgId);
+  }
+
+  @Get('routing/options')
+  @ApiOperation({ summary: 'Options for routing UI (channels + lead-ads pages)' })
+  routingOptions(@CurrentOrg('id') orgId: string) {
+    return this.service.getRoutingOptions(orgId);
+  }
+
+  @Put('routing')
+  @ApiOperation({ summary: 'Save lead routing config' })
+  saveRouting(@CurrentOrg('id') orgId: string, @Body() body: any) {
+    return this.service.saveRouting(orgId, body);
+  }
+
   @Get(':id/board')
   @ApiOperation({ summary: 'Get full kanban board (stages + cards by stage)' })
   board(@Param('id') id: string, @CurrentOrg('id') orgId: string) {

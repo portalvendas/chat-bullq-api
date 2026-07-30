@@ -26,17 +26,17 @@ export interface RoutingCtx {
   leadAdsPageId?: string | null;
 }
 
-interface RoutingTarget {
+export interface RoutingTarget {
   pipelineId: string;
   stageId?: string;
 }
-interface RoutingException extends RoutingTarget {
+export interface RoutingException extends RoutingTarget {
   id?: string;
   kind: 'CHANNEL' | 'LEADADS_PAGE' | 'UTM_SOURCE';
   value: string;
   label?: string;
 }
-interface LeadRouting {
+export interface LeadRouting {
   byType: Record<string, RoutingTarget>;
   exceptions: RoutingException[];
 }

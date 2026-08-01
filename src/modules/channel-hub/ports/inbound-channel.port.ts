@@ -35,6 +35,15 @@ export interface InboundChannelPort {
    */
   matchesChannel(channel: Channel, locator: ChannelLocator): boolean;
 
+  /**
+   * Optional LOOSER match usado só como rede de segurança, quando o
+   * `matchesChannel` estrito não achou nenhum canal. Ex.: WA Official casa por
+   * WABA (businessAccountId) ignorando o phoneNumberId — resgata um canal cujo
+   * `config.phoneNumberId` está errado. Só é consultado no fallback (nunca no
+   * primeiro passo), então não duplica roteamento no caso normal.
+   */
+  matchesChannelFallback?(channel: Channel, locator: ChannelLocator): boolean;
+
   validateWebhook(
     headers: Record<string, string>,
     rawBody: Buffer,

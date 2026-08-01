@@ -203,7 +203,7 @@ export class ChannelsService {
     dto: UpdateChannelDto,
     callerUserOrganizationId?: string,
   ) {
-    await this.findOne(id, organizationId);
+    const existing = await this.findOne(id, organizationId);
 
     // Visibility é tratado por caminho separado pra garantir auto-grant.
     const { visibility, ...rest } = dto;
@@ -216,10 +216,23 @@ export class ChannelsService {
       );
     }
 
-    if (Object.keys(rest).length === 0) {
-      return this.repository.findById(id);
+    const updated =
+      Object.keys(rest).length === 0
+        ? await this.repository.findById(id)
+        : await this.repository.update(id, rest);
+
+    // Re-inscreve o app na WABA quando as credenciais do WA Oficial mudam
+    // (token/WABA). O subscribe é idempotente; antes só rodava na CRIAÇÃO, então
+    // editar o canal não re-inscrevia e os webhooks não eram entregues.
+    if (existing?.type === ChannelType.WHATSAPP_OFFICIAL && rest.config) {
+      this.subscribeWaOfficialApp(id).catch((err) =>
+        this.logger.warn(
+          `WA Official re-subscribe failed for channel ${id}: ${err.message}`,
+        ),
+      );
     }
-    return this.repository.update(id, rest);
+
+    return updated;
   }
 
   /**

@@ -61,6 +61,20 @@ export class WhatsAppOfficialInboundAdapter implements InboundChannelPort {
     return false;
   }
 
+  /**
+   * Fallback: casa só pela WABA (businessAccountId), ignorando o phoneNumberId.
+   * Usado pelo gateway apenas quando o match estrito não achou canal — resgata
+   * mensagens quando o `config.phoneNumberId` do canal está errado.
+   */
+  matchesChannelFallback(channel: Channel, locator: ChannelLocator): boolean {
+    const config = (channel.config ?? {}) as Record<string, any>;
+    return !!(
+      locator.businessAccountId &&
+      config.businessAccountId &&
+      String(config.businessAccountId) === locator.businessAccountId
+    );
+  }
+
   validateWebhook(
     headers: Record<string, string>,
     rawBody: Buffer,

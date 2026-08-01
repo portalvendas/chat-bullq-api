@@ -80,6 +80,24 @@ export class WebhookGatewayController {
       }
     }
 
+    // Rede de segurança: se nada casou no match estrito e o adapter oferece um
+    // match mais frouxo (ex.: WA Official por WABA), tenta de novo. Evita perder
+    // mensagens quando o phoneNumberId do canal está errado.
+    if (matchedChannels.length === 0 && adapter.matchesChannelFallback) {
+      for (const locator of locators) {
+        const channel = await this.channelsService.resolveByLocator(
+          channelType,
+          (c) => adapter.matchesChannelFallback!(c as Channel, locator),
+        );
+        if (channel && !matchedChannels.some((m) => m.id === channel.id)) {
+          matchedChannels.push(channel);
+          this.logger.warn(
+            `Webhook roteado por FALLBACK (WABA) → canal ${channel.id} (${channelType}). Confira config.phoneNumberId do canal.`,
+          );
+        }
+      }
+    }
+
     if (matchedChannels.length === 0) {
       // Persist for audit even if we can't route — helps debug misconfigured channels.
       await this.webhookEvents

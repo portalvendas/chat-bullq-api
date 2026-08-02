@@ -111,6 +111,7 @@ export class ImportsService {
       contactsCreated: 0,
       contactsUpdated: 0,
       cardsCreated: 0,
+      cardsUpdated: 0,
       cardsSkipped: 0,
       stagesCreated,
       errors: [] as Array<{ row: number; error: string }>,
@@ -123,21 +124,6 @@ export class ImportsService {
         const phone = normalizePhone(r.phone);
         const email = r.email?.trim() || null;
         const name = (r.contactName || r.title || '')?.trim() || null;
-
-        // Dedupe de card por kommo_id.
-        if (r.externalId) {
-          const dup = await this.prisma.card.findFirst({
-            where: {
-              organizationId,
-              metadata: { path: ['kommo_id'], equals: String(r.externalId) },
-            },
-            select: { id: true },
-          });
-          if (dup) {
-            summary.cardsSkipped++;
-            continue;
-          }
-        }
 
         // Upsert de contato por telefone → email.
         let contact = phone
@@ -196,47 +182,121 @@ export class ImportsService {
           });
         }
 
-        // Resolve etapa + status.
+        // Resolve etapa + status + valor.
         const stage =
           stageByName.get((r.stageName ?? '').trim().toLowerCase()) ?? firstStage;
         const status = normStatus(r.status);
+        const title = (r.title || name || 'Lead').toString().slice(0, 200);
         const value =
           r.value === null || r.value === undefined || r.value === ''
             ? null
             : Number(r.value);
+        const numValue = Number.isFinite(value as number)
+          ? (value as number)
+          : null;
+        const closedReason = r.closedReason?.trim() || null;
+        const custom = (r.custom ?? {}) as Record<string, any>;
 
-        const count = await this.prisma.card.count({
-          where: { pipelineId: pipeline.id, stageId: stage.id },
-        });
-        await this.prisma.card.create({
-          data: {
-            organizationId,
-            pipelineId: pipeline.id,
-            stageId: stage.id,
-            title: (r.title || name || 'Lead').toString().slice(0, 200),
-            status,
-            value: Number.isFinite(value as number) ? (value as any) : null,
-            closedReason: r.closedReason?.trim() || null,
-            closedAt: status !== 'OPEN' ? new Date() : null,
-            contactId: contact.id,
-            order: count,
-            ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
-            metadata: {
-              source: 'import_kommo',
-              ...(r.externalId ? { kommo_id: String(r.externalId) } : {}),
-              tracking,
-              custom: r.custom ?? {},
-            } as any,
-          },
-        });
-        summary.cardsCreated++;
+        // Acha o card existente do MESMO lead: 1) por kommo_id; 2) senão, o
+        // card do mesmo contato neste pipeline. Isso garante nunca duplicar.
+        let existing = r.externalId
+          ? await this.prisma.card.findFirst({
+              where: {
+                organizationId,
+                metadata: { path: ['kommo_id'], equals: String(r.externalId) },
+              },
+            })
+          : null;
+        if (!existing) {
+          existing = await this.prisma.card.findFirst({
+            where: {
+              organizationId,
+              pipelineId: pipeline.id,
+              contactId: contact.id,
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
+
+        if (existing) {
+          // ENRIQUECE só o que mudou — nunca sobrescreve com vazio, nunca duplica.
+          const meta = (existing.metadata as Record<string, any>) ?? {};
+          const patch: Record<string, any> = {};
+          if (r.title && title !== existing.title) patch.title = title;
+          if (numValue !== null && Number(existing.value ?? NaN) !== numValue)
+            patch.value = numValue as any;
+          if (r.status && status !== existing.status) {
+            patch.status = status;
+            patch.closedAt =
+              status !== 'OPEN' ? existing.closedAt ?? new Date() : null;
+          }
+          if (r.stageName && stage.id !== existing.stageId) {
+            patch.stageId = stage.id;
+            const c = await this.prisma.card.count({
+              where: { pipelineId: pipeline.id, stageId: stage.id },
+            });
+            patch.order = c;
+          }
+          if (closedReason && closedReason !== existing.closedReason)
+            patch.closedReason = closedReason;
+          // Merge de metadata (tracking + custom): adiciona chaves novas sem
+          // perder as existentes.
+          const mergedTracking = { ...(meta.tracking ?? {}), ...tracking };
+          const mergedCustom = { ...(meta.custom ?? {}), ...custom };
+          const newMeta = {
+            ...meta,
+            source: meta.source ?? 'import_kommo',
+            ...(r.externalId ? { kommo_id: String(r.externalId) } : {}),
+            tracking: mergedTracking,
+            custom: mergedCustom,
+          };
+          const metaChanged =
+            JSON.stringify(newMeta) !== JSON.stringify(meta);
+          if (metaChanged) patch.metadata = newMeta as any;
+
+          if (Object.keys(patch).length === 0) {
+            summary.cardsSkipped++;
+          } else {
+            await this.prisma.card.update({
+              where: { id: existing.id },
+              data: patch,
+            });
+            summary.cardsUpdated++;
+          }
+        } else {
+          const count = await this.prisma.card.count({
+            where: { pipelineId: pipeline.id, stageId: stage.id },
+          });
+          await this.prisma.card.create({
+            data: {
+              organizationId,
+              pipelineId: pipeline.id,
+              stageId: stage.id,
+              title,
+              status,
+              value: numValue as any,
+              closedReason,
+              closedAt: status !== 'OPEN' ? new Date() : null,
+              contactId: contact.id,
+              order: count,
+              ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
+              metadata: {
+                source: 'import_kommo',
+                ...(r.externalId ? { kommo_id: String(r.externalId) } : {}),
+                tracking,
+                custom,
+              } as any,
+            },
+          });
+          summary.cardsCreated++;
+        }
       } catch (err: any) {
         summary.errors.push({ row: i, error: err?.message ?? String(err) });
       }
     }
 
     this.logger.log(
-      `Import Kommo (org ${organizationId}): +${summary.cardsCreated} cards, ${summary.cardsSkipped} skip, +${summary.stagesCreated} etapas, ${summary.errors.length} erros`,
+      `Import Kommo (org ${organizationId}): +${summary.cardsCreated} cards, ~${summary.cardsUpdated} enriquecidos, ${summary.cardsSkipped} sem mudança, +${summary.stagesCreated} etapas, ${summary.errors.length} erros`,
     );
     return summary;
   }

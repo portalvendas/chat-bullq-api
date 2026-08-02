@@ -99,17 +99,30 @@ export class InstagramHttpClient {
     limit = 50,
   ): Promise<{ data: any[]; nextCursor?: string }> {
     const client = this.createClient(channel);
-    const params: Record<string, any> = {
-      fields: 'id,created_time,from,to,message,attachments,shares,story,reactions',
-      limit,
-    };
-    if (cursor) params.after = cursor;
+
+    // IMPORTANTE: no Instagram Login API (graph.instagram.com) a edge
+    // `/{conversation-id}/messages` NÃO existe — retorna
+    // "[#100] Tried accessing nonexisting field (messages)". As mensagens
+    // precisam ser lidas por *field expansion* no nó da conversa:
+    //   GET /{conversation-id}?fields=messages.limit(N).after(CURSOR){...}
+    // A paginação também vem aninhada em `data.messages.paging`.
+    const subfields =
+      'id,created_time,from,to,message,attachments,shares,story';
+    const modifiers = [`limit(${limit})`];
+    if (cursor) modifiers.push(`after(${cursor})`);
+    const messagesField = `messages.${modifiers.join('.')}{${subfields}}`;
 
     try {
-      const { data } = await client.get(`/${conversationId}/messages`, { params });
+      const { data } = await client.get(`/${conversationId}`, {
+        params: { fields: messagesField },
+      });
+      const conn = data?.messages ?? {};
       return {
-        data: data?.data ?? [],
-        nextCursor: data?.paging?.cursors?.after && data?.paging?.next ? data.paging.cursors.after : undefined,
+        data: conn.data ?? [],
+        nextCursor:
+          conn.paging?.cursors?.after && conn.paging?.next
+            ? conn.paging.cursors.after
+            : undefined,
       };
     } catch (err: any) {
       throw this.wrapGraphError(err, 'listConversationMessages');

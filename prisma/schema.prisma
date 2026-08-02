@@ -199,6 +199,7 @@ model Organization {
   notifications Notification[]
   invitations   Invitation[]
   apiKeys       ApiKey[]
+  customFields  CustomField[]
   aiAgents      AiAgent[]
   aiTools       AiTool[]
   aiSkills      AiSkill[]
@@ -1307,6 +1308,40 @@ enum CardStatus {
   OPEN // ainda em movimento entre stages
   WON // fechou ganho
   LOST // fechou perdido
+}
+
+/// A qual entidade o campo personalizado pertence.
+enum CustomFieldEntity {
+  CONTACT
+  CARD
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+}
+
+/// Definição de campo personalizado por organização. O VALOR de cada campo
+/// é gravado no metadata da entidade em `metadata.custom[key]` (não há tabela
+/// de valores). Esta tabela só descreve label/tipo/ordem pra render e import.
+model CustomField {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  entity         CustomFieldEntity @default(CARD)
+  /// slug estável (a-z0-9_) usado como chave em metadata.custom[key].
+  key            String
+  label          String
+  type           CustomFieldType   @default(TEXT)
+  order          Int               @default(0)
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, entity, key])
+  @@index([organizationId])
+  @@map("custom_fields")
 }
 
 model Pipeline {

@@ -72,9 +72,20 @@ export class PipelinesController {
   }
 
   @Get(':id/board')
-  @ApiOperation({ summary: 'Get full kanban board (stages + cards by stage)' })
-  board(@Param('id') id: string, @CurrentOrg('id') orgId: string) {
-    return this.service.getBoard(id, orgId);
+  @ApiOperation({
+    summary:
+      'Get full kanban board (stages + cards by stage). Optional from/to filter by lead received date (card.createdAt).',
+  })
+  board(
+    @Param('id') id: string,
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getBoard(id, orgId, {
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined,
+    });
   }
 
   @Patch(':id')

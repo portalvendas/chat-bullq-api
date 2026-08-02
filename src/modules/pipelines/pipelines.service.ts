@@ -87,15 +87,31 @@ export class PipelinesService {
     });
   }
 
-  async getBoard(pipelineId: string, organizationId: string) {
+  async getBoard(
+    pipelineId: string,
+    organizationId: string,
+    opts?: { from?: Date; to?: Date },
+  ) {
     const pipeline = await this.assertPipeline(pipelineId, organizationId);
+    // Filtro por DATA DE RECEBIMENTO do lead (card.createdAt — na importação
+    // recebe a data original do Kommo). Aplicado só aos cards; as etapas
+    // (colunas) sempre aparecem.
+    const createdAtFilter =
+      opts?.from || opts?.to
+        ? {
+            createdAt: {
+              ...(opts.from ? { gte: opts.from } : {}),
+              ...(opts.to ? { lte: opts.to } : {}),
+            },
+          }
+        : {};
     const [stages, cards] = await this.prisma.$transaction([
       this.prisma.pipelineStage.findMany({
         where: { pipelineId },
         orderBy: { order: 'asc' },
       }),
       this.prisma.card.findMany({
-        where: { pipelineId },
+        where: { pipelineId, ...createdAtFilter },
         // Ordenação do board: mais novo → mais antigo (paridade com Kommo).
         // O drag-and-drop só move entre etapas; dentro da coluna a data manda.
         orderBy: { createdAt: 'desc' },

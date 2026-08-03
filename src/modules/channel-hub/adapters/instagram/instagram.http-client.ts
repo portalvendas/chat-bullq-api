@@ -68,6 +68,32 @@ export class InstagramHttpClient {
     }
   }
 
+  /**
+   * Resposta privada (private reply) a um COMENTÁRIO: abre uma DM com quem
+   * comentou. Usa `recipient: { comment_id }` em vez de `{ id }`. O Meta
+   * permite UMA private reply por comentário e dentro de ~7 dias; fora disso
+   * a Graph API retorna erro (capturado pelo chamador).
+   *
+   * Payload enviado:
+   *   { recipient: { comment_id }, message: { text } }
+   */
+  async sendPrivateReply(
+    channel: Channel,
+    commentId: string,
+    text: string,
+  ): Promise<any> {
+    const client = this.createClient(channel);
+    try {
+      const { data } = await client.post('/me/messages', {
+        recipient: { comment_id: commentId },
+        message: { text },
+      });
+      return data;
+    } catch (err: any) {
+      throw this.wrapGraphError(err, 'sendPrivateReply');
+    }
+  }
+
   async listConversations(
     channel: Channel,
     cursor?: string,

@@ -112,6 +112,22 @@ export class InstagramInboundAdapter implements InboundChannelPort {
             }
           }
         }
+
+        // Comentários chegam em `entry.changes[field=comments]` (não em
+        // `messaging`). Cada comentário vira uma mensagem de conversa, com
+        // marcador `comment.id` pra permitir a resposta privada.
+        const changes = entry?.changes || [];
+        for (const change of changes) {
+          if (change?.field === 'comments' && change?.value) {
+            const normalized = this.mapper.normalizeComment(
+              change.value,
+              expectedId,
+            );
+            if (normalized && !normalized.isEcho) {
+              result.messages.push(normalized);
+            }
+          }
+        }
       }
     } catch (error: any) {
       this.logger.error(`Failed to parse Instagram webhook: ${error.message}`);

@@ -77,6 +77,49 @@ export class InstagramMessageMapper {
     return undefined;
   }
 
+  /**
+   * Normaliza um COMENTÁRIO do Instagram (`entry.changes[field=comments].value`)
+   * como uma mensagem de conversa. O contato é quem comentou; o texto é o
+   * comentário. Marca `comment.id` pra permitir a resposta privada (private
+   * reply) e usa um externalMessageId prefixado pra não colidir com mids de DM.
+   *
+   * Payload de exemplo (value):
+   *   { id, text, from: { id, username }, media: { id }, parent_id? }
+   */
+  normalizeComment(
+    value: Record<string, any>,
+    businessId?: string,
+  ): NormalizedInboundMessage | null {
+    const commentId = value?.id;
+    const fromId = value?.from?.id;
+    if (!commentId || !fromId) return null;
+
+    // Comentário feito pela própria conta (ou resposta nossa) → echo: não
+    // reprocessa como inbound do cliente.
+    const isEcho = businessId ? String(fromId) === String(businessId) : false;
+    const username = value?.from?.username
+      ? String(value.from.username)
+      : undefined;
+
+    return {
+      externalMessageId: `ig-comment:${commentId}`,
+      externalContactId: String(fromId),
+      contactName: username,
+      channelType: ChannelType.INSTAGRAM,
+      timestamp: value?.timestamp ? new Date(value.timestamp) : new Date(),
+      type: MessageContentType.TEXT,
+      content: { text: value?.text ? String(value.text) : '[comentário]' },
+      isEcho,
+      senderName: username,
+      comment: {
+        id: String(commentId),
+        mediaId: value?.media?.id ? String(value.media.id) : undefined,
+        parentId: value?.parent_id ? String(value.parent_id) : undefined,
+      },
+      rawPayload: value,
+    };
+  }
+
   normalizeStatus(messaging: Record<string, any>): StatusUpdate | null {
     const delivery = messaging.delivery;
     if (!delivery?.mids?.length) return null;

@@ -77,6 +77,12 @@ export interface NormalizedInboundMessage {
   isGroup?: boolean;
   isEcho?: boolean;
   senderName?: string;
+  /**
+   * Presente quando a mensagem, na verdade, é um COMENTÁRIO (ex.: Instagram
+   * `entry.changes[field=comments]`), não uma DM. Permite ao processor
+   * disparar uma resposta privada (private reply) via `comment.id`.
+   */
+  comment?: { id: string; mediaId?: string; parentId?: string };
   rawPayload: unknown;
 }
 

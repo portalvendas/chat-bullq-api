@@ -119,7 +119,7 @@ export class InboundMessageProcessor extends WorkerHost {
     }
 
     if (job.name === 'process-ig-comment') {
-      const d = job.data as {
+      const d = job.data as unknown as {
         channelId: string;
         organizationId: string;
         comment: NormalizedComment;

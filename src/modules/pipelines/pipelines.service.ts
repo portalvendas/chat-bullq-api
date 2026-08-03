@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CardStatus, PipelineStageType } from '@prisma/client';
@@ -52,6 +53,23 @@ export const ORIGIN_TYPES = [
   'FACEBOOK_LEADADS',
 ] as const;
 
+/**
+ * Auto-tag por FONTE do lead, aplicado na ENTRADA (substitui a cadência
+ * "Add Tag", que era inviável como fluxo — o motor não tem nó de condição).
+ * Deriva-se o tipo de origem (canal/leadSource) e aplica-se a tag correspondente
+ * no contato, de forma idempotente. Para ajustar os nomes das tags, edite só
+ * este mapa. Origem sem entrada aqui → nenhuma tag é aplicada.
+ */
+const SOURCE_TAG_MAP: Record<string, string> = {
+  INSTAGRAM: 'Instagram (comentário/DM)',
+  WHATSAPP: 'Direto no WhatsApp',
+  FACEBOOK_LEADADS: 'FormulárioFacebook',
+  LANDING_PAGE: 'Landing Page',
+  MERCADO_LIVRE: 'Mercado Livre',
+  SHOPEE: 'Shopee',
+  TELEGRAM: 'Telegram',
+};
+
 const DEFAULT_STAGES: UpsertStageDto[] = [
   { name: 'Novo', color: 'zinc', type: 'NORMAL', order: 0 },
   { name: 'Em qualificação', color: 'blue', type: 'NORMAL', order: 1 },
@@ -62,11 +80,54 @@ const DEFAULT_STAGES: UpsertStageDto[] = [
 
 @Injectable()
 export class PipelinesService {
+  private readonly logger = new Logger(PipelinesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly cadences: CadencesService,
   ) {}
+
+  /**
+   * Aplica a tag de FONTE do lead no contato (idempotente, best-effort).
+   * Chamado na criação do card de entrada. Nunca lança — falha aqui não pode
+   * derrubar o fluxo de intake do lead.
+   */
+  private async applySourceTag(
+    organizationId: string,
+    contactId: string | null,
+    ctx?: RoutingCtx,
+  ): Promise<void> {
+    if (!contactId || !ctx) return;
+    try {
+      let channelType = ctx.channelType ?? null;
+      if (!channelType && ctx.channelId) {
+        const ch = await this.prisma.channel.findUnique({
+          where: { id: ctx.channelId },
+          select: { type: true },
+        });
+        channelType = ch?.type ?? null;
+      }
+      const originType = this.originTypeFrom(channelType, ctx.leadSource);
+      const tagName = originType ? SOURCE_TAG_MAP[originType] : null;
+      if (!tagName) return;
+
+      const tag = await this.prisma.tag.upsert({
+        where: { organizationId_name: { organizationId, name: tagName } },
+        update: {},
+        create: { organizationId, name: tagName },
+      });
+      await this.prisma.contactTag.upsert({
+        where: { contactId_tagId: { contactId, tagId: tag.id } },
+        update: {},
+        create: { contactId, tagId: tag.id },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `applySourceTag falhou (org=${organizationId}, contact=${contactId}): ${err?.message}`,
+      );
+    }
+  }
 
   // ─── Pipelines ─────────────────────────────────
 
@@ -719,6 +780,7 @@ export class PipelinesService {
         metadata: (metadata ?? {}) as any,
       },
     });
+    await this.applySourceTag(organizationId, contactId, ctx);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });
     return card;
   }
@@ -769,6 +831,7 @@ export class PipelinesService {
         order: count,
       },
     });
+    await this.applySourceTag(organizationId, contactId, ctx);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });
     return card;
   }

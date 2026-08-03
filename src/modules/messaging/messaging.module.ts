@@ -5,6 +5,7 @@ import { RatingsModule } from '../ratings/ratings.module';
 import { AiAgentsModule } from '../ai-agents/ai-agents.module';
 import { WatchdogModule } from '../routing/watchdog/watchdog.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
+import { InstagramCommentsModule } from '../instagram-comments/instagram-comments.module';
 import { IdempotencyService } from './pipeline/idempotency.service';
 import { ContactResolverService } from './pipeline/contact-resolver.service';
 import { ConversationResolverService } from './pipeline/conversation-resolver.service';
@@ -37,6 +38,7 @@ import { ContactsRepository } from './contacts/contacts.repository';
     AiAgentsModule,
     WatchdogModule,
     PipelinesModule,
+    InstagramCommentsModule,
   ],
   controllers: [ConversationsController, MessagesController, ContactsController],
   providers: [

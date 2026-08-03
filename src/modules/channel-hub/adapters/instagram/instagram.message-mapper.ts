@@ -3,6 +3,7 @@ import { ChannelType } from '@prisma/client';
 import {
   NormalizedInboundMessage,
   NormalizedOutboundMessage,
+  NormalizedComment,
   MessageContentType,
   StatusUpdate,
   TemplateButton,
@@ -78,44 +79,39 @@ export class InstagramMessageMapper {
   }
 
   /**
-   * Normaliza um COMENTÁRIO do Instagram (`entry.changes[field=comments].value`)
-   * como uma mensagem de conversa. O contato é quem comentou; o texto é o
-   * comentário. Marca `comment.id` pra permitir a resposta privada (private
-   * reply) e usa um externalMessageId prefixado pra não colidir com mids de DM.
+   * Normaliza um COMENTÁRIO do Instagram (`entry.changes[field=comments].value`).
+   * Retorna null pra comentários da própria conta (echo). O comentário NÃO
+   * entra no inbox — é persistido à parte (ver InstagramCommentsService).
    *
    * Payload de exemplo (value):
-   *   { id, text, from: { id, username }, media: { id }, parent_id? }
+   *   { id, text, from: { id, username }, media: { id, ad_id? }, parent_id? }
    */
   normalizeComment(
     value: Record<string, any>,
     businessId?: string,
-  ): NormalizedInboundMessage | null {
+  ): NormalizedComment | null {
     const commentId = value?.id;
     const fromId = value?.from?.id;
     if (!commentId || !fromId) return null;
 
-    // Comentário feito pela própria conta (ou resposta nossa) → echo: não
-    // reprocessa como inbound do cliente.
-    const isEcho = businessId ? String(fromId) === String(businessId) : false;
-    const username = value?.from?.username
-      ? String(value.from.username)
-      : undefined;
+    // Comentário feito pela própria conta (ou resposta nossa) → echo: ignora.
+    if (businessId && String(fromId) === String(businessId)) return null;
 
     return {
-      externalMessageId: `ig-comment:${commentId}`,
-      externalContactId: String(fromId),
-      contactName: username,
-      channelType: ChannelType.INSTAGRAM,
+      externalCommentId: String(commentId),
+      parentCommentId: value?.parent_id ? String(value.parent_id) : undefined,
+      mediaId: value?.media?.id ? String(value.media.id) : undefined,
+      adId: value?.media?.ad_id
+        ? String(value.media.ad_id)
+        : value?.ad_id
+          ? String(value.ad_id)
+          : undefined,
+      fromExternalId: String(fromId),
+      fromUsername: value?.from?.username
+        ? String(value.from.username)
+        : undefined,
+      text: value?.text ? String(value.text) : '',
       timestamp: value?.timestamp ? new Date(value.timestamp) : new Date(),
-      type: MessageContentType.TEXT,
-      content: { text: value?.text ? String(value.text) : '[comentário]' },
-      isEcho,
-      senderName: username,
-      comment: {
-        id: String(commentId),
-        mediaId: value?.media?.id ? String(value.media.id) : undefined,
-        parentId: value?.parent_id ? String(value.parent_id) : undefined,
-      },
       rawPayload: value,
     };
   }

@@ -172,6 +172,28 @@ export class WebhookGatewayController {
           },
         );
       }
+
+      // Comentários (Instagram) — processados FORA do inbox, num handler próprio.
+      for (const comment of parseResult.comments ?? []) {
+        await this.inboundQueue.add(
+          'process-ig-comment',
+          {
+            channelId: channel.id,
+            organizationId: channel.organizationId,
+            webhookEventId: eventId ?? undefined,
+            comment,
+          },
+          {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
+            removeOnComplete: true,
+            removeOnFail: false,
+          },
+        );
+        this.logger.log(
+          `Enqueued IG comment: ${comment.externalCommentId} → channel ${channel.id}`,
+        );
+      }
     }
 
     return res.status(200).json({ status: 'ok' });

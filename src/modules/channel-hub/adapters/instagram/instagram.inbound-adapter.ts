@@ -70,6 +70,7 @@ export class InstagramInboundAdapter implements InboundChannelPort {
       messages: [],
       statuses: [],
       errors: [],
+      comments: [],
     };
 
     try {
@@ -114,8 +115,7 @@ export class InstagramInboundAdapter implements InboundChannelPort {
         }
 
         // Comentários chegam em `entry.changes[field=comments]` (não em
-        // `messaging`). Cada comentário vira uma mensagem de conversa, com
-        // marcador `comment.id` pra permitir a resposta privada.
+        // `messaging`). Roteados pra FORA do inbox: vão em `result.comments`.
         const changes = entry?.changes || [];
         for (const change of changes) {
           if (change?.field === 'comments' && change?.value) {
@@ -123,8 +123,8 @@ export class InstagramInboundAdapter implements InboundChannelPort {
               change.value,
               expectedId,
             );
-            if (normalized && !normalized.isEcho) {
-              result.messages.push(normalized);
+            if (normalized) {
+              result.comments!.push(normalized);
             }
           }
         }

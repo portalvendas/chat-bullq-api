@@ -212,6 +212,7 @@ model Organization {
   cadences       Cadence[]
   whatsappTemplates WhatsappTemplate[]
   leadAdsPages   LeadAdsPage[]
+  instagramComments InstagramComment[]
 
   @@map("organizations")
 }
@@ -1342,6 +1343,40 @@ model CustomField {
   @@unique([organizationId, entity, key])
   @@index([organizationId])
   @@map("custom_fields")
+}
+
+/// Comentários do Instagram (posts/anúncios). Ficam FORA do inbox — vivem numa
+/// página própria. Enriquecidos com os dados da mídia (post/anúncio) comentada.
+model InstagramComment {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  channelId         String   @map("channel_id")
+  externalCommentId String   @map("external_comment_id")
+  parentCommentId   String?  @map("parent_comment_id")
+  fromExternalId    String   @map("from_external_id")
+  fromUsername      String?  @map("from_username")
+  text              String
+  /// Mídia (post/anúncio) onde o comentário foi feito.
+  mediaId           String?  @map("media_id")
+  mediaCaption      String?  @map("media_caption")
+  mediaPermalink    String?  @map("media_permalink")
+  mediaUrl          String?  @map("media_url")
+  mediaType         String?  @map("media_type")
+  adId              String?  @map("ad_id")
+  /// Estado das ações tomadas.
+  dmSent            Boolean  @default(false) @map("dm_sent")
+  repliedPublic     Boolean  @default(false) @map("replied_public")
+  convertedCardId   String?  @map("converted_card_id")
+  contactId         String?  @map("contact_id")
+  status            String   @default("NEW")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, externalCommentId])
+  @@index([organizationId, createdAt])
+  @@map("instagram_comments")
 }
 
 model Pipeline {

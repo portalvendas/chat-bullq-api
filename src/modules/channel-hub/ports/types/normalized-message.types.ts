@@ -77,13 +77,24 @@ export interface NormalizedInboundMessage {
   isGroup?: boolean;
   isEcho?: boolean;
   senderName?: string;
-  /**
-   * Presente quando a mensagem, na verdade, é um COMENTÁRIO (ex.: Instagram
-   * `entry.changes[field=comments]`), não uma DM. Permite ao processor
-   * disparar uma resposta privada (private reply) via `comment.id`.
-   */
-  comment?: { id: string; mediaId?: string; parentId?: string };
   rawPayload: unknown;
+}
+
+/**
+ * COMENTÁRIO (ex.: Instagram `entry.changes[field=comments]`). Fica FORA do
+ * fluxo de mensagens/inbox — é persistido em `instagram_comments` e vive numa
+ * página própria. `externalCommentId` é usado pra responder (público ou DM).
+ */
+export interface NormalizedComment {
+  externalCommentId: string;
+  parentCommentId?: string;
+  mediaId?: string;
+  adId?: string;
+  fromExternalId: string;
+  fromUsername?: string;
+  text: string;
+  timestamp: Date;
+  rawPayload?: unknown;
 }
 
 export interface NormalizedOutboundMessage {
@@ -119,6 +130,8 @@ export interface WebhookParseResult {
   messages: NormalizedInboundMessage[];
   statuses: StatusUpdate[];
   errors: WebhookError[];
+  /** Comentários (Instagram) — roteados pra fora do inbox. */
+  comments?: NormalizedComment[];
 }
 
 export interface WebhookError {

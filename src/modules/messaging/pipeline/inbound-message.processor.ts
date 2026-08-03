@@ -8,7 +8,8 @@ import { ConversationResolverService } from './conversation-resolver.service';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import { NormalizedInboundMessage, StatusUpdate } from '../../channel-hub/ports/types';
 import { InstagramContactEnricherService } from '../../channel-hub/adapters/instagram/instagram-contact-enricher.service';
-import { InstagramHttpClient } from '../../channel-hub/adapters/instagram/instagram.http-client';
+import { InstagramCommentsService } from '../../instagram-comments/instagram-comments.service';
+import { NormalizedComment } from '../../channel-hub/ports/types';
 import { ZappfyContactEnricherService } from '../../channel-hub/adapters/zappfy/zappfy-contact-enricher.service';
 import { WebhookEventsService } from '../../channel-hub/webhook-events.service';
 import { AgentRouterService } from '../../ai-agents/router/agent-router.service';
@@ -59,11 +60,6 @@ interface StatusJobData {
  */
 const AGENT_DEBOUNCE_MS = 10_000;
 
-/** Texto padrão da resposta privada (auto-DM) a um comentário no Instagram.
- *  Sobrescrevível por canal em `channel.config.commentAutoReplyText`. */
-const DEFAULT_IG_COMMENT_AUTOREPLY =
-  'Oi! Vi seu comentário 💛 Te chamei aqui no direct pra te ajudar melhor. 😊';
-
 /**
  * Message types that should NEVER trigger an agent run. REACTION (the
  * thumbs-up etc) and SYSTEM events have no actionable content — making
@@ -102,7 +98,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly conversationResolver: ConversationResolverService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly instagramEnricher: InstagramContactEnricherService,
-    private readonly instagramHttp: InstagramHttpClient,
+    private readonly instagramComments: InstagramCommentsService,
     private readonly zappfyEnricher: ZappfyContactEnricherService,
     private readonly webhookEvents: WebhookEventsService,
     private readonly agentRouter: AgentRouterService,
@@ -117,33 +113,22 @@ export class InboundMessageProcessor extends WorkerHost {
     super();
   }
 
-  /**
-   * Envia a resposta privada (auto-DM) a um comentário do Instagram. Carrega
-   * o canal pra ler o texto configurado (`config.commentAutoReplyText`) e cai
-   * no default quando ausente. Isolado num método pra manter o process() limpo.
-   */
-  private async sendInstagramPrivateReply(
-    channelId: string,
-    commentId: string,
-  ): Promise<void> {
-    const channel = await this.prisma.channel.findUnique({
-      where: { id: channelId },
-    });
-    if (!channel) return;
-    const cfg = (channel.config ?? {}) as Record<string, any>;
-    const text =
-      (typeof cfg.commentAutoReplyText === 'string' &&
-        cfg.commentAutoReplyText.trim()) ||
-      DEFAULT_IG_COMMENT_AUTOREPLY;
-    await this.instagramHttp.sendPrivateReply(channel, commentId, text);
-    this.logger.log(
-      `Instagram private reply enviada (comment=${commentId}, channel=${channelId})`,
-    );
-  }
-
   async process(job: Job<InboundJobData | StatusJobData>): Promise<any> {
     if (job.name === 'process-status') {
       return this.processStatus(job.data as StatusJobData);
+    }
+
+    if (job.name === 'process-ig-comment') {
+      const d = job.data as {
+        channelId: string;
+        organizationId: string;
+        comment: NormalizedComment;
+      };
+      return this.instagramComments.ingest(
+        d.organizationId,
+        d.channelId,
+        d.comment,
+      );
     }
 
     const { channelId, organizationId, message, webhookEventId } =
@@ -250,23 +235,6 @@ export class InboundMessageProcessor extends WorkerHost {
               `applySourceTag falhou (contact ${contactId}): ${err?.message ?? err}`,
             ),
           );
-      }
-
-      // Comentário do Instagram: dispara UMA resposta privada (auto-DM),
-      // abrindo uma DM com quem comentou. O texto vem de
-      // channel.config.commentAutoReplyText (fallback abaixo). Best-effort —
-      // o Meta permite 1 private reply por comentário; erros são logados.
-      if (
-        message.comment?.id &&
-        !message.isEcho &&
-        message.channelType === ChannelType.INSTAGRAM
-      ) {
-        const commentId = message.comment.id;
-        this.sendInstagramPrivateReply(channelId, commentId).catch((err) =>
-          this.logger.warn(
-            `private reply falhou (comment ${commentId}): ${err?.message ?? err}`,
-          ),
-        );
       }
 
       const isEcho = !!message.isEcho;

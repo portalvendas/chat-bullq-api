@@ -28,6 +28,7 @@ import { WhatsappTemplatesModule } from './modules/whatsapp-templates/whatsapp-t
 import { LeadAdsModule } from './modules/lead-ads/lead-ads.module';
 import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module';
 import { ImportsModule } from './modules/imports/imports.module';
+import { InstagramCommentsModule } from './modules/instagram-comments/instagram-comments.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
 // via skill HTTP getProductPitch + CatalogSyncService. Tabela `products`
@@ -77,6 +78,7 @@ import redisConfig from './config/redis.config';
     LeadAdsModule,
     CustomFieldsModule,
     ImportsModule,
+    InstagramCommentsModule,
   ],
 })
 export class AppModule {}

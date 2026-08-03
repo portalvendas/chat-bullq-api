@@ -228,6 +228,45 @@ export class InstagramHttpClient {
     }
   }
 
+  /**
+   * Dados da mídia (post/anúncio) onde um comentário foi feito.
+   * GET /{media-id}?fields=... — funciona pra mídia da própria conta.
+   */
+  async getMediaDetails(channel: Channel, mediaId: string): Promise<any> {
+    const client = this.createClient(channel);
+    try {
+      const { data } = await client.get(`/${mediaId}`, {
+        params: {
+          fields:
+            'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp',
+        },
+      });
+      return data;
+    } catch (err: any) {
+      throw this.wrapGraphError(err, 'getMediaDetails');
+    }
+  }
+
+  /**
+   * Resposta PÚBLICA a um comentário (aparece no próprio post).
+   * POST /{comment-id}/replies { message }. Requer instagram_business_manage_comments.
+   */
+  async replyToComment(
+    channel: Channel,
+    commentId: string,
+    text: string,
+  ): Promise<any> {
+    const client = this.createClient(channel);
+    try {
+      const { data } = await client.post(`/${commentId}/replies`, {
+        message: text,
+      });
+      return data;
+    } catch (err: any) {
+      throw this.wrapGraphError(err, 'replyToComment');
+    }
+  }
+
   async downloadMedia(url: string): Promise<Buffer> {
     const response = await axios.get(url, {
       responseType: 'arraybuffer',

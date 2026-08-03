@@ -90,10 +90,11 @@ export class PipelinesService {
 
   /**
    * Aplica a tag de FONTE do lead no contato (idempotente, best-effort).
-   * Chamado na criação do card de entrada. Nunca lança — falha aqui não pode
-   * derrubar o fluxo de intake do lead.
+   * Read-first: se o contato já tem a tag, não escreve nada — pode ser
+   * chamado em todo inbound sem custo de escrita. Nunca lança — falha aqui
+   * não pode derrubar o intake nem o processamento da mensagem.
    */
-  private async applySourceTag(
+  async applySourceTag(
     organizationId: string,
     contactId: string | null,
     ctx?: RoutingCtx,
@@ -112,16 +113,25 @@ export class PipelinesService {
       const tagName = originType ? SOURCE_TAG_MAP[originType] : null;
       if (!tagName) return;
 
-      const tag = await this.prisma.tag.upsert({
-        where: { organizationId_name: { organizationId, name: tagName } },
-        update: {},
-        create: { organizationId, name: tagName },
+      let tag = await this.prisma.tag.findFirst({
+        where: { organizationId, name: tagName },
+        select: { id: true },
       });
-      await this.prisma.contactTag.upsert({
+      if (!tag) {
+        tag = await this.prisma.tag.create({
+          data: { organizationId, name: tagName },
+          select: { id: true },
+        });
+      }
+      const link = await this.prisma.contactTag.findUnique({
         where: { contactId_tagId: { contactId, tagId: tag.id } },
-        update: {},
-        create: { contactId, tagId: tag.id },
+        select: { contactId: true },
       });
+      if (!link) {
+        await this.prisma.contactTag.create({
+          data: { contactId, tagId: tag.id },
+        });
+      }
     } catch (err: any) {
       this.logger.warn(
         `applySourceTag falhou (org=${organizationId}, contact=${contactId}): ${err?.message}`,

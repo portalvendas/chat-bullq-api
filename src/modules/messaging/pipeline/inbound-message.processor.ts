@@ -208,6 +208,19 @@ export class InboundMessageProcessor extends WorkerHost {
           );
       }
 
+      // Auto-tag por FONTE: aplica em TODO inbound humano (não só na criação do
+      // card), de forma read-first/idempotente. Garante a tag também em leads
+      // recorrentes e "cura" casos onde o card foi criado sem a tag.
+      if (!message.isEcho && !message.isGroup && contactId) {
+        this.pipelines
+          .applySourceTag(organizationId, contactId, { channelId })
+          .catch((err) =>
+            this.logger.warn(
+              `applySourceTag falhou (contact ${contactId}): ${err?.message ?? err}`,
+            ),
+          );
+      }
+
       const isEcho = !!message.isEcho;
       const direction = isEcho
         ? MessageDirection.OUTBOUND

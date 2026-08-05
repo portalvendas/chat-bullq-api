@@ -41,6 +41,27 @@ function normalizePhone(v: unknown): string | null {
   return digits.length >= 6 ? digits : null;
 }
 
+/**
+ * Data de criação do card no import: usa r.createdAt; se vier vazio (ex.: o
+ * leitor de planilha não mapeou a coluna "Criado em" — acontece quando o
+ * cabeçalho vem em formato de data), cai na MENOR data ISO encontrada nos
+ * campos custom (que no Kommo são Criado/Atualizado/Fechado — a menor é a de
+ * criação). Evita que a base importada fique toda com a data do import.
+ */
+function resolveCreatedAt(r: ImportLeadRow): Date | undefined {
+  if (r.createdAt) {
+    const d = new Date(r.createdAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  let min: number | undefined;
+  for (const v of Object.values(r.custom ?? {})) {
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) continue;
+    const t = Date.parse(v);
+    if (!isNaN(t) && (min === undefined || t < min)) min = t;
+  }
+  return min !== undefined ? new Date(min) : undefined;
+}
+
 function normStatus(s?: string | null): CardStatus {
   const v = String(s ?? '').trim().toLowerCase();
   if (v === 'won' || v.includes('ganho') || v.includes('venda')) return CardStatus.WON;
@@ -279,7 +300,10 @@ export class ImportsService {
               closedAt: status !== 'OPEN' ? new Date() : null,
               contactId: contact.id,
               order: count,
-              ...(r.createdAt ? { createdAt: new Date(r.createdAt) } : {}),
+              ...((): { createdAt?: Date } => {
+                const c = resolveCreatedAt(r);
+                return c ? { createdAt: c } : {};
+              })(),
               metadata: {
                 source: 'import_kommo',
                 ...(r.externalId ? { kommo_id: String(r.externalId) } : {}),

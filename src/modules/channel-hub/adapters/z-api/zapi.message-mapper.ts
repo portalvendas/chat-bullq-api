@@ -23,22 +23,42 @@ export class ZApiMessageMapper {
       return null;
     }
 
-    const phone = String(event.phone ?? '').replace(/\D/g, '');
-    if (!phone) return null;
-
     const isGroup = event.isGroup === true;
     const isEcho = event.fromMe === true;
 
+    // ── Dedup por LID ──────────────────────────────────────────────
+    // O WhatsApp esconde o número do cliente atrás de um LID. No Z-API:
+    //   - inbound do cliente: phone = número real  + chatLid = LID
+    //   - echo/broadcast:     phone = <LID>@lid    + chatLid = LID
+    // O `chatLid` é o ÚNICO id estável nos dois sentidos, então é ele a
+    // chave do contato (senão inbound e outbound viram contatos/cards
+    // separados). Grupo continua chaveado pelo id do grupo (phone).
+    const rawPhone = String(event.phone ?? '');
+    const phoneIsLid = /@lid$/i.test(rawPhone);
+    const phoneDigits = rawPhone.replace(/\D/g, '');
+    const lidDigits = event.chatLid
+      ? String(event.chatLid).replace(/\D/g, '')
+      : '';
+
+    const externalContactId = isGroup ? phoneDigits : lidDigits || phoneDigits;
+    if (!externalContactId) return null;
+
+    // Número real só quando o phone NÃO é um LID (mensagem do cliente).
+    const realPhone = !isGroup && !phoneIsLid ? phoneDigits : undefined;
+    const looksLikeLid = (s: unknown) => !!s && /@lid$/i.test(String(s));
+
     return {
       externalMessageId: String(event.messageId ?? ''),
-      externalContactId: phone,
-      // Em eco (fromMe) o senderName somos nós — cai no chatName.
+      externalContactId,
+      // Nunca nomeia o contato com um LID. Em eco (fromMe) o remetente
+      // somos nós → não sobrescreve o nome (undefined preserva o existente).
       contactName: isGroup
         ? event.chatName
         : isEcho
-          ? event.chatName
-          : event.senderName || event.chatName,
-      contactPhone: isGroup ? undefined : phone,
+          ? undefined
+          : event.senderName ||
+            (looksLikeLid(event.chatName) ? undefined : event.chatName),
+      contactPhone: isGroup ? undefined : realPhone,
       contactAvatarUrl: event.senderPhoto || event.photo || undefined,
       channelType: ChannelType.WHATSAPP_ZAPI,
       timestamp: event.momment ? new Date(Number(event.momment)) : new Date(),

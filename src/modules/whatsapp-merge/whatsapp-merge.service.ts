@@ -9,7 +9,7 @@ interface MergePair {
   absorbedContactId: string; // contato do LID (echoes/broadcast)
 }
 
-interface MergeSummary {
+export interface MergeSummary {
   channels: number;
   pairsFound: number;
   merged: number;

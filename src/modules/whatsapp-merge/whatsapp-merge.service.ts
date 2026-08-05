@@ -164,15 +164,19 @@ export class WhatsappMergeService {
         data: { contactId: A },
       });
 
-      // Tags do contato B → A (ignora as que já existem)
+      // Tags do contato B → A. IMPORTANTE: nada de .catch() dentro da transação —
+      // no Postgres, qualquer erro (ex.: tag duplicada) ABORTA a transação
+      // inteira (25P02) e o resto do merge falha. createMany+skipDuplicates
+      // evita a colisão sem gerar erro.
       const bTags = await tx.contactTag.findMany({
         where: { contactId: B },
         select: { tagId: true },
       });
-      for (const { tagId } of bTags) {
-        await tx.contactTag
-          .create({ data: { contactId: A, tagId } })
-          .catch(() => undefined);
+      if (bTags.length) {
+        await tx.contactTag.createMany({
+          data: bTags.map((t) => ({ contactId: A, tagId: t.tagId })),
+          skipDuplicates: true,
+        });
       }
       await tx.contactTag.deleteMany({ where: { contactId: B } });
 

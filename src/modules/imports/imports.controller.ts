@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentOrg } from '../../common/decorators';
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
@@ -18,5 +18,20 @@ export class ImportsController {
   })
   importLeads(@CurrentOrg('id') orgId: string, @Body() dto: ImportLeadsDto) {
     return this.service.importLeads(orgId, dto);
+  }
+
+  @Post('backfill-dates')
+  @ApiOperation({
+    summary:
+      'Corrige a data dos cards importados do Kommo (usa a "Criado em" guardada no metadata). execute=false = prévia.',
+  })
+  backfillDates(
+    @CurrentOrg('id') orgId: string,
+    @Query('execute') execute?: string,
+  ) {
+    return this.service.backfillImportedDates(
+      orgId,
+      execute === 'true' || execute === '1',
+    );
   }
 }

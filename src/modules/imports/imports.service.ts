@@ -79,6 +79,60 @@ export class ImportsService {
   ) {}
 
   /**
+   * Corrige a data (createdAt) dos cards importados do Kommo que ficaram com a
+   * data da IMPORTAÇÃO, usando a MENOR data ISO guardada em metadata.custom
+   * (que no Kommo é a "Criado em"). execute=false = prévia (nada muda).
+   */
+  async backfillImportedDates(organizationId: string, execute: boolean) {
+    const preview = await this.prisma.$queryRaw<
+      { corrigiveis: number; data_min: Date | null; data_max: Date | null }[]
+    >`
+      with sub as (
+        select id, created_at, (
+          select min(v::timestamptz)
+          from jsonb_each_text(metadata->'custom') as x(k, v)
+          where v ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}'
+        ) as min_iso
+        from cards
+        where organization_id = ${organizationId}
+          and metadata->>'source' = 'import_kommo'
+      )
+      select count(*)::int as corrigiveis, min(min_iso) as data_min, max(min_iso) as data_max
+      from sub
+      where min_iso is not null and min_iso < created_at
+    `;
+
+    let atualizados = 0;
+    if (execute) {
+      atualizados = await this.prisma.$executeRaw`
+        update cards c
+        set created_at = sub.min_iso
+        from (
+          select id, created_at, (
+            select min(v::timestamptz)
+            from jsonb_each_text(metadata->'custom') as x(k, v)
+            where v ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}'
+          ) as min_iso
+          from cards
+          where organization_id = ${organizationId}
+            and metadata->>'source' = 'import_kommo'
+        ) sub
+        where c.id = sub.id
+          and sub.min_iso is not null
+          and sub.min_iso < c.created_at
+      `;
+    }
+
+    const p = preview[0];
+    return {
+      corrigiveis: Number(p?.corrigiveis ?? 0),
+      dataMin: p?.data_min ?? null,
+      dataMax: p?.data_max ?? null,
+      atualizados,
+    };
+  }
+
+  /**
    * Importa uma leva de leads (contato + card) num pipeline. Idempotente:
    * dedupe de contato por telefone/email e de card por metadata.kommo_id
    * (externalId). Cria etapas e campos personalizados que faltarem.

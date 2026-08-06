@@ -187,7 +187,22 @@ export class PipelinesService {
         // O drag-and-drop só move entre etapas; dentro da coluna a data manda.
         orderBy: { createdAt: 'desc' },
         include: {
-          contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
+          contact: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              avatarUrl: true,
+              // Conversa mais recente do contato — pra abrir o chat direto da
+              // CAPA do card, inclusive nos importados (que não têm conversa
+              // própria). take:1 mantém o payload leve.
+              conversations: {
+                select: { id: true, channel: { select: { type: true } } },
+                orderBy: { lastMessageAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
           // Channel comes via the linked conversation — the kanban card UI
           // surfaces the icon (Zappfy/Meta/Instagram) so the operator can

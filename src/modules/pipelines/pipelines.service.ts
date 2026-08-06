@@ -904,6 +904,19 @@ export class PipelinesService {
             metadata: true,
             createdAt: true,
             tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+            // Todas as conversas do contato (qualquer canal de texto) pra
+            // permitir abrir o chat ativo direto do card — útil sobretudo em
+            // cards importados, que nascem sem conversationId.
+            conversations: {
+              select: {
+                id: true,
+                status: true,
+                lastMessageAt: true,
+                channel: { select: { id: true, type: true, name: true } },
+              },
+              orderBy: { lastMessageAt: 'desc' },
+              take: 10,
+            },
           },
         },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },

@@ -782,6 +782,7 @@ export class PipelinesService {
     title: string,
     metadata?: Record<string, any>,
     ctx?: RoutingCtx,
+    extra?: { description?: string | null; value?: number | null },
   ) {
     const contactCard = await this.prisma.card.findFirst({
       where: { organizationId, contactId, status: 'OPEN' },
@@ -802,6 +803,8 @@ export class PipelinesService {
         title: title?.trim() || 'Novo lead',
         contactId,
         order: count,
+        ...(extra?.description ? { description: extra.description } : {}),
+        ...(extra?.value != null ? { value: extra.value as any } : {}),
         metadata: (metadata ?? {}) as any,
       },
     });

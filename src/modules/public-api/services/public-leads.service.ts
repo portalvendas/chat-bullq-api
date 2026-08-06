@@ -76,6 +76,15 @@ export class PublicLeadsService {
     return t;
   }
 
+  private normalizeValue(v: any): number | null {
+    if (v === undefined || v === null || v === '') return null;
+    const n =
+      typeof v === 'number'
+        ? v
+        : parseFloat(String(v).replace(/[^\d,.-]/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
   async ingest(
     organizationId: string,
     body: Record<string, any>,
@@ -84,6 +93,7 @@ export class PublicLeadsService {
     contactId: string;
     cardId: string | null;
     deduped: boolean;
+    updated: boolean;
   }> {
     const name =
       this.pick(body, [
@@ -109,6 +119,26 @@ export class PublicLeadsService {
       this.pick(body, ['source', 'origem', 'lead_source']) ?? 'landing_page';
     const tracking = this.extractTracking(body);
 
+    // Campos do CARD (antes ignorados): descrição, valor e título explícito.
+    const description =
+      this.pick(body, [
+        'description',
+        'descricao',
+        'descrição',
+        'observacao',
+        'observação',
+        'obs',
+        'notes',
+        'mensagem',
+        'message',
+      ]) ?? null;
+    const value = this.normalizeValue(
+      this.pick(body, ['value', 'valor', 'amount', 'price', 'preco', 'preço']),
+    );
+    const explicitTitle =
+      this.pick(body, ['title', 'titulo', 'título']) ?? null;
+    const title = explicitTitle || name || phone || email || 'Lead';
+
     const contact = await this.findOrCreateContact(
       organizationId,
       { name, phone, email },
@@ -119,21 +149,59 @@ export class PublicLeadsService {
     const card = await this.pipelines.createEntryCardForContact(
       organizationId,
       contact.id,
-      name || phone || email || 'Lead',
+      title,
       { source, tracking, raw: body },
       // Roteamento por origem: LP usa leadSource + utm_source.
       { leadSource: source, utmSource: (tracking as any)?.utm_source ?? null },
+      { description, value },
     );
 
+    // DEDUP = UPSERT: se o contato já tinha um card ABERTO, ENRIQUECE ele
+    // (descrição/valor/título quando vierem + merge de tracking) em vez de
+    // ignorar. Assim o 2º disparo (payload completo) atualiza o card do 1º
+    // (parcial) — não precisa esperar/racing.
+    let updated = false;
+    let cardId = card?.id ?? null;
+    if (!card) {
+      const existing = await this.prisma.card.findFirst({
+        where: { organizationId, contactId: contact.id, status: 'OPEN' },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existing) {
+        const patch: Record<string, any> = {};
+        if (description && !existing.description) patch.description = description;
+        if (value != null && (existing.value == null || Number(existing.value) === 0))
+          patch.value = value as any;
+        if (explicitTitle && explicitTitle !== existing.title)
+          patch.title = explicitTitle;
+        const meta = (existing.metadata as Record<string, any>) ?? {};
+        patch.metadata = {
+          ...meta,
+          source: meta.source ?? source,
+          tracking: { ...(meta.tracking ?? {}), ...tracking },
+          raw: body,
+        };
+        await this.prisma.card.update({
+          where: { id: existing.id },
+          data: patch,
+        });
+        cardId = existing.id;
+        updated = true;
+      }
+    }
+
     this.logger.log(
-      `Public lead: contato ${contact.id} (org ${organizationId}, origem ${source})${card ? ` → card ${card.id}` : ' (card já existia)'}`,
+      `Public lead: contato ${contact.id} (org ${organizationId}, origem ${source}) → ${
+        card ? `card ${card.id}` : updated ? `card ${cardId} atualizado` : 'card já existia'
+      }`,
     );
 
     return {
       ok: true,
       contactId: contact.id,
-      cardId: card?.id ?? null,
+      cardId,
       deduped: !card,
+      updated,
     };
   }
 

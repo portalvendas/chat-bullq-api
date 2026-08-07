@@ -76,6 +76,47 @@ export class PublicLeadsService {
     return t;
   }
 
+  /** Normaliza a temperatura do lead; se ausente, deriva do score
+   *  (>=70 Quente, >=40 Morno, <40 Frio). Retorna 'Quente'|'Morno'|'Frio'. */
+  private resolveTemperature(
+    raw: any,
+    score: number | null,
+  ): 'Quente' | 'Morno' | 'Frio' | null {
+    const s = String(raw ?? '').trim().toLowerCase();
+    if (s.includes('quente') || s === 'hot') return 'Quente';
+    if (s.includes('morno') || s.includes('warm')) return 'Morno';
+    if (s.includes('frio') || s === 'cold') return 'Frio';
+    if (score == null) return null;
+    if (score >= 70) return 'Quente';
+    if (score >= 40) return 'Morno';
+    return 'Frio';
+  }
+
+  /** Aplica a tag de temperatura no contato (aparece também no WhatsApp).
+   *  Idempotente, best-effort. */
+  private async applyTemperatureTag(
+    organizationId: string,
+    contactId: string,
+    temperature: string | null,
+  ): Promise<void> {
+    if (!temperature) return;
+    const name = `Lead ${temperature}`;
+    try {
+      const tag = await this.prisma.tag.upsert({
+        where: { organizationId_name: { organizationId, name } },
+        update: {},
+        create: { organizationId, name },
+      });
+      await this.prisma.contactTag.upsert({
+        where: { contactId_tagId: { contactId, tagId: tag.id } },
+        update: {},
+        create: { contactId, tagId: tag.id },
+      });
+    } catch (err: any) {
+      this.logger.warn(`applyTemperatureTag falhou: ${err?.message}`);
+    }
+  }
+
   private normalizeValue(v: any): number | null {
     if (v === undefined || v === null || v === '') return null;
     const n =
@@ -132,9 +173,29 @@ export class PublicLeadsService {
         'mensagem',
         'message',
       ]) ?? null;
-    const value = this.normalizeValue(
-      this.pick(body, ['value', 'valor', 'amount', 'price', 'preco', 'preço']),
+    // Lead score / temperatura (LP manda `lead_score` + `lead_temperatura`).
+    const leadScore = this.normalizeValue(
+      this.pick(body, ['lead_score', 'leadscore', 'leadScore', 'score']),
     );
+    const temperature = this.resolveTemperature(
+      this.pick(body, [
+        'lead_temperatura',
+        'temperatura',
+        'temperature',
+        'lead_temperature',
+      ]),
+      leadScore,
+    );
+
+    // VALOR do card: quando há lead_score, o campo `valor` do payload é o
+    // SCORE (não uma proposta) → deixa o Valor ZERADO pra receber propostas
+    // futuras. Sem lead_score, mantém o comportamento normal (valor monetário).
+    const value =
+      leadScore != null
+        ? null
+        : this.normalizeValue(
+            this.pick(body, ['value', 'valor', 'amount', 'price', 'preco', 'preço']),
+          );
     const explicitTitle =
       this.pick(body, ['title', 'titulo', 'título']) ?? null;
     const title = explicitTitle || name || phone || email || 'Lead';
@@ -146,11 +207,22 @@ export class PublicLeadsService {
       tracking,
     );
 
+    // Tag de temperatura no contato (aparece no card E no WhatsApp do lead).
+    await this.applyTemperatureTag(organizationId, contact.id, temperature);
+
+    const cardMeta: Record<string, any> = {
+      source,
+      tracking,
+      raw: body,
+      ...(leadScore != null ? { leadScore } : {}),
+      ...(temperature ? { leadTemperature: temperature } : {}),
+    };
+
     const card = await this.pipelines.createEntryCardForContact(
       organizationId,
       contact.id,
       title,
-      { source, tracking, raw: body },
+      cardMeta,
       // Roteamento por origem: LP usa leadSource + utm_source.
       { leadSource: source, utmSource: (tracking as any)?.utm_source ?? null },
       { description, value },
@@ -172,6 +244,13 @@ export class PublicLeadsService {
         if (description && !existing.description) patch.description = description;
         if (value != null && (existing.value == null || Number(existing.value) === 0))
           patch.value = value as any;
+        // Corrige o Valor que tinha sido preenchido com o score.
+        if (
+          leadScore != null &&
+          existing.value != null &&
+          Number(existing.value) === leadScore
+        )
+          patch.value = 0 as any;
         if (explicitTitle && explicitTitle !== existing.title)
           patch.title = explicitTitle;
         const meta = (existing.metadata as Record<string, any>) ?? {};
@@ -180,6 +259,8 @@ export class PublicLeadsService {
           source: meta.source ?? source,
           tracking: { ...(meta.tracking ?? {}), ...tracking },
           raw: body,
+          ...(leadScore != null ? { leadScore } : {}),
+          ...(temperature ? { leadTemperature: temperature } : {}),
         };
         await this.prisma.card.update({
           where: { id: existing.id },

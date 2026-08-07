@@ -1,7 +1,10 @@
 {
-  "0": "WhatsappMergeController",
+  "0": "PipelinesController",
   "1": "WhatsappMergeService",
-  "2": "whatsapp-merge.module.ts",
-  "3": ".run",
-  "4": "whatsapp-merge.service.ts"
+  "2": "PipelinesService",
+  "3": "ApiOperation",
+  "4": "Body",
+  "5": "pipelines.service.ts",
+  "6": ".update",
+  "7": ".upsertStages"
 }

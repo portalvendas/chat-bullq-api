@@ -67,6 +67,47 @@ export class ContactResolverService {
           };
         }
 
+        // Unificação por TELEFONE: se já existe um contato com esse número
+        // (ex.: veio antes pela Landing Page / Facebook / Instagram, ou é o
+        // WhatsApp chegando depois do card do formulário), anexa ESTE canal a
+        // ele em vez de criar um contato novo — assim WhatsApp + card do lead
+        // ficam no MESMO contato. Só cruza quando temos telefone real.
+        if (message.contactPhone) {
+          const byPhone = await this.prisma.contact.findFirst({
+            where: { organizationId, phone: message.contactPhone },
+            select: { id: true, name: true, phone: true },
+          });
+          if (byPhone) {
+            const cc = await this.prisma.contactChannel.create({
+              data: {
+                contactId: byPhone.id,
+                channelId,
+                externalId: message.externalContactId,
+                profileName: message.contactName,
+                profileAvatarUrl: message.contactAvatarUrl,
+              },
+            });
+            await this.applyProfileUpdates(
+              {
+                id: cc.id,
+                profileName: cc.profileName,
+                profileAvatarUrl: cc.profileAvatarUrl,
+                contactId: byPhone.id,
+                contact: { name: byPhone.name, phone: byPhone.phone },
+              },
+              message,
+            );
+            this.logger.log(
+              `Contato unificado por telefone: canal ${channelId} anexado ao contato ${byPhone.id} (${message.contactPhone})`,
+            );
+            return {
+              contactId: byPhone.id,
+              contactChannelId: cc.id,
+              isNew: false,
+            };
+          }
+        }
+
         const contact = await this.prisma.contact.create({
           data: {
             organizationId,

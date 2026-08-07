@@ -140,6 +140,84 @@ export class ImportsService {
    * Projetado pra ser chamado em lotes (o frontend fatia o XLSX), então
    * garantir campos/etapas a cada chamada é barato e idempotente.
    */
+  /**
+   * Corrige cards da LP cujo `Valor` foi preenchido com o LEAD SCORE: zera o
+   * valor, grava leadScore/temperatura no metadata e aplica a tag de
+   * temperatura (Lead Quente/Morno/Frio) no contato — que aparece no WhatsApp.
+   * execute=false = prévia.
+   */
+  async backfillLeadScore(organizationId: string, execute: boolean) {
+    const pre = await this.prisma.$queryRaw<
+      { corrigiveis: number; valor_ajustar: number; contatos: number }[]
+    >`
+      select
+        count(*) filter (where metadata->'raw' ? 'lead_score'
+          and metadata->'raw'->>'lead_score' ~ '^[0-9]+$')::int as corrigiveis,
+        count(*) filter (where value is not null
+          and metadata->'raw'->>'lead_score' ~ '^[0-9]+$'
+          and value::numeric = (metadata->'raw'->>'lead_score')::numeric)::int as valor_ajustar,
+        count(distinct contact_id) filter (where contact_id is not null
+          and metadata->'raw' ? 'lead_score')::int as contatos
+      from cards where organization_id = ${organizationId}
+    `;
+
+    let atualizados = 0;
+    let tagsAplicadas = 0;
+    if (execute) {
+      atualizados = await this.prisma.$executeRaw`
+        update cards c set
+          value = case when c.value is not null
+            and c.value::numeric = (c.metadata->'raw'->>'lead_score')::numeric
+            then 0 else c.value end,
+          metadata = c.metadata || jsonb_build_object(
+            'leadScore', (c.metadata->'raw'->>'lead_score')::numeric,
+            'leadTemperature', coalesce(nullif(trim(c.metadata->'raw'->>'lead_temperatura'), ''),
+              case when (c.metadata->'raw'->>'lead_score')::numeric >= 70 then 'Quente'
+                   when (c.metadata->'raw'->>'lead_score')::numeric >= 40 then 'Morno'
+                   else 'Frio' end))
+        where c.organization_id = ${organizationId}
+          and c.metadata->'raw' ? 'lead_score'
+          and c.metadata->'raw'->>'lead_score' ~ '^[0-9]+$'
+      `;
+      await this.prisma.$executeRaw`
+        insert into tags (id, organization_id, name, color)
+        select distinct 'tagtmp_'||c.organization_id||'_'||lower(t.temp),
+          c.organization_id, 'Lead '||t.temp, '#6B7280'
+        from cards c cross join lateral (values (
+          case when (c.metadata->'raw'->>'lead_score')::numeric >= 70 then 'Quente'
+               when (c.metadata->'raw'->>'lead_score')::numeric >= 40 then 'Morno'
+               else 'Frio' end)) t(temp)
+        where c.organization_id = ${organizationId}
+          and c.metadata->'raw' ? 'lead_score'
+          and c.metadata->'raw'->>'lead_score' ~ '^[0-9]+$'
+        on conflict (organization_id, name) do nothing
+      `;
+      tagsAplicadas = await this.prisma.$executeRaw`
+        insert into contact_tags (contact_id, tag_id)
+        select distinct c.contact_id, tg.id
+        from cards c cross join lateral (values (
+          case when (c.metadata->'raw'->>'lead_score')::numeric >= 70 then 'Quente'
+               when (c.metadata->'raw'->>'lead_score')::numeric >= 40 then 'Morno'
+               else 'Frio' end)) t(temp)
+        join tags tg on tg.organization_id = c.organization_id and tg.name = 'Lead '||t.temp
+        where c.organization_id = ${organizationId}
+          and c.contact_id is not null
+          and c.metadata->'raw' ? 'lead_score'
+          and c.metadata->'raw'->>'lead_score' ~ '^[0-9]+$'
+        on conflict (contact_id, tag_id) do nothing
+      `;
+    }
+
+    const p = pre[0];
+    return {
+      corrigiveis: Number(p?.corrigiveis ?? 0),
+      valorAjustar: Number(p?.valor_ajustar ?? 0),
+      contatos: Number(p?.contatos ?? 0),
+      atualizados,
+      tagsAplicadas,
+    };
+  }
+
   async importLeads(organizationId: string, dto: ImportLeadsDto) {
     if (!dto?.pipelineId) throw new BadRequestException('pipelineId é obrigatório');
     const rows = Array.isArray(dto.rows) ? dto.rows : [];

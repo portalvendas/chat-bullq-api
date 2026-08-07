@@ -34,4 +34,19 @@ export class ImportsController {
       execute === 'true' || execute === '1',
     );
   }
+
+  @Post('backfill-leadscore')
+  @ApiOperation({
+    summary:
+      'Corrige cards da LP cujo Valor recebeu o lead score: zera Valor, grava leadScore/temperatura + tag de temperatura no contato. execute=false = prévia.',
+  })
+  backfillLeadScore(
+    @CurrentOrg('id') orgId: string,
+    @Query('execute') execute?: string,
+  ) {
+    return this.service.backfillLeadScore(
+      orgId,
+      execute === 'true' || execute === '1',
+    );
+  }
 }

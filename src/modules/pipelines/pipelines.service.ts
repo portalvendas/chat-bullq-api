@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { CardStatus, PipelineStageType } from '@prisma/client';
+import { CardStatus, ConversationStatus, PipelineStageType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
@@ -957,6 +957,119 @@ export class PipelinesService {
       ...card,
       contact: card.contact ? { ...card.contact, tags } : null,
     };
+  }
+
+  /**
+   * "Iniciar WhatsApp" a partir de um card: liga o lead (LP/FB/IG com telefone)
+   * a um canal de WhatsApp ESCOLHIDO pelo vendedor. Cria o ContactChannel pelo
+   * telefone (se faltar) + a conversa, e vincula o card à conversa. A partir
+   * daí o vendedor manda mensagem e os follow-ups disparam por esse número.
+   */
+  async startWhatsappConversation(
+    organizationId: string,
+    cardId: string,
+    channelId: string,
+  ): Promise<{ conversationId: string }> {
+    const card = await this.prisma.card.findFirst({
+      where: { id: cardId, organizationId },
+      include: { contact: { select: { id: true, name: true, phone: true } } },
+    });
+    if (!card?.contact) throw new NotFoundException('Card/contato não encontrado');
+    const phone = card.contact.phone?.replace(/\D/g, '');
+    if (!phone) throw new BadRequestException('Contato sem telefone válido');
+
+    const channel = await this.prisma.channel.findFirst({
+      where: {
+        id: channelId,
+        organizationId,
+        type: {
+          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
+        },
+      },
+      select: { id: true },
+    });
+    if (!channel) throw new BadRequestException('Canal de WhatsApp inválido');
+
+    // ContactChannel: reusa qualquer canal do contato nessa conexão; senão cria
+    // chaveado pelo telefone (o LID chega quando o cliente responder — o
+    // resolvedor unifica por telefone).
+    let cc = await this.prisma.contactChannel.findFirst({
+      where: { contactId: card.contact.id, channelId },
+      select: { id: true },
+    });
+    if (!cc) {
+      cc = await this.prisma.contactChannel.create({
+        data: {
+          contactId: card.contact.id,
+          channelId,
+          externalId: phone,
+          profileName: card.contact.name,
+        },
+        select: { id: true },
+      });
+    }
+
+    // Conversa: reusa a aberta; senão cria uma nova (PENDING).
+    let conv = await this.prisma.conversation.findFirst({
+      where: {
+        organizationId,
+        channelId,
+        contactId: card.contact.id,
+        status: {
+          in: [
+            ConversationStatus.PENDING,
+            ConversationStatus.OPEN,
+            ConversationStatus.BOT,
+            ConversationStatus.WAITING,
+          ],
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (!conv) {
+      const protocol = `${new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      conv = await this.prisma.conversation.create({
+        data: {
+          organizationId,
+          channelId,
+          contactId: card.contact.id,
+          status: ConversationStatus.PENDING,
+          protocol,
+          isGroup: false,
+        },
+        select: { id: true },
+      });
+    }
+
+    // Vincula o card à conversa (some o botão e aparece o chat na capa).
+    await this.prisma.card.update({
+      where: { id: card.id },
+      data: { conversationId: conv.id },
+    });
+    this.realtime.emitToOrg(organizationId, 'conversation:updated', {
+      conversationId: conv.id,
+    });
+    return { conversationId: conv.id };
+  }
+
+  /** Canais de WhatsApp ativos da org — pro seletor de "Iniciar WhatsApp". */
+  async listWhatsappChannels(organizationId: string) {
+    return this.prisma.channel.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+        type: {
+          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
+        },
+      },
+      select: { id: true, name: true, type: true },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 
   /** Salva a config de roteamento (valida pipelines/etapas da org). */

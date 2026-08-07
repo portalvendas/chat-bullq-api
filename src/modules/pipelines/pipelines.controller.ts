@@ -59,6 +59,25 @@ export class PipelinesController {
     return this.service.getLeadRouting(orgId);
   }
 
+  @Get('whatsapp-channels')
+  @ApiOperation({ summary: 'Canais de WhatsApp ativos (pro "Iniciar WhatsApp" no card)' })
+  whatsappChannels(@CurrentOrg('id') orgId: string) {
+    return this.service.listWhatsappChannels(orgId);
+  }
+
+  @Post('cards/:cardId/start-whatsapp')
+  @ApiOperation({
+    summary:
+      'Liga o lead do card a um canal de WhatsApp escolhido (cria conversa pelo telefone) pra o vendedor contatar e follow-ups dispararem.',
+  })
+  startWhatsapp(
+    @Param('cardId') cardId: string,
+    @CurrentOrg('id') orgId: string,
+    @Body() body: { channelId: string },
+  ) {
+    return this.service.startWhatsappConversation(orgId, cardId, body?.channelId);
+  }
+
   @Get('routing/options')
   @ApiOperation({ summary: 'Options for routing UI (channels + lead-ads pages)' })
   routingOptions(@CurrentOrg('id') orgId: string) {

@@ -297,6 +297,9 @@ export class PipelinesService {
           ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
           ...(dto.archived !== undefined ? { archived: dto.archived } : {}),
           ...(dto.order !== undefined ? { order: dto.order } : {}),
+          ...(dto.inactivityHours !== undefined
+            ? { inactivityHours: dto.inactivityHours }
+            : {}),
         },
       });
     });
@@ -349,6 +352,9 @@ export class PipelinesService {
           color: s.color ?? null,
           type: (s.type ?? 'NORMAL') as PipelineStageType,
           order: s.order ?? i,
+          ...(s.inactivityHours !== undefined
+            ? { inactivityHours: s.inactivityHours }
+            : {}),
         };
         return s.id
           ? tx.pipelineStage.update({ where: { id: s.id }, data })

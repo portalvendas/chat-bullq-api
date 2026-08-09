@@ -98,6 +98,7 @@ enum NotificationType {
   MENTION
   SYSTEM
   AI_TOOL_FAILURE
+  CARD_INACTIVE
 }
 
 // ─── Core: Auth + Multi-tenancy ──────────────────
@@ -1389,6 +1390,8 @@ model Pipeline {
   isDefault      Boolean  @default(false) @map("is_default")
   archived       Boolean  @default(false)
   order          Int      @default(0)
+  // Prazo (horas) sem interação p/ notificar cards deste funil. NULL = desligado.
+  inactivityHours Int?    @map("inactivity_hours")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -1407,6 +1410,8 @@ model PipelineStage {
   color      String?
   type       PipelineStageType @default(NORMAL)
   order      Int               @default(0)
+  // Override do prazo de inatividade p/ esta etapa. NULL = herda do funil.
+  inactivityHours Int?         @map("inactivity_hours")
   createdAt  DateTime          @default(now()) @map("created_at")
 
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)

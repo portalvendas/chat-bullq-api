@@ -8,6 +8,7 @@ import {
   IsString,
   Length,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -33,6 +34,13 @@ export class UpsertStageDto {
   @IsInt()
   @Min(0)
   order?: number;
+
+  // Prazo de inatividade (horas) desta etapa. null = herda do funil.
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(1)
+  inactivityHours?: number | null;
 }
 
 export class CreatePipelineDto {
@@ -93,6 +101,13 @@ export class UpdatePipelineDto {
   @IsInt()
   @Min(0)
   order?: number;
+
+  // Prazo padrão de inatividade (horas) do funil. null = desliga o alerta.
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(1)
+  inactivityHours?: number | null;
 }
 
 export class CreateCardDto {

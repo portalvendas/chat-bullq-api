@@ -45,6 +45,20 @@ export class PendingActionController {
     return this.service.listPending(conversationId);
   }
 
+  @Post('recover-unanswered')
+  @ApiOperation({
+    summary:
+      'Reativa (PENDING) as respostas da IA que EXPIRARAM sem nunca terem sido enviadas e cuja conversa segue sem resposta. Idempotente.',
+  })
+  async recoverUnanswered(): Promise<{
+    scanned: number;
+    resurrected: number;
+    skippedAnswered: number;
+    skippedHasPending: number;
+  }> {
+    return this.service.resurrectUnansweredReplies();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a single pending action by id.' })
   async get(@Param('id') id: string): Promise<PendingAction> {

@@ -15,6 +15,8 @@ import type {
 } from './confirmation.types';
 import { PendingActionStorage } from './pending-action.storage';
 import { PENDING_ACTION_EXECUTOR_QUEUE } from './queue-names';
+import { PrismaService } from '../../../database/prisma.service';
+import { MessageDirection } from '@prisma/client';
 
 /**
  * Service that owns the lifecycle of `PendingAction` records.
@@ -28,8 +30,23 @@ export class PendingActionService {
   private readonly logger = new Logger(PendingActionService.name);
   private readonly DEFAULT_TTL_MIN = 30;
 
+  /**
+   * Sentinela de "nunca expira" — a coluna expires_at é NOT NULL, então em vez
+   * de tornar o campo nullable (migration), usamos uma data absurdamente
+   * distante. `isExpired` compara com Date.now(), então far-future = nunca
+   * expira. Usado nas respostas ao cliente em modo revisão (replyToConversation):
+   * a resposta NÃO pode sumir da fila em silêncio — se sumisse, o cliente
+   * ficaria sem resposta pra sempre. Só sai da fila por aprovar/rejeitar ou por
+   * ser SUPERADA por uma resposta mais nova da mesma conversa (dedup).
+   */
+  private readonly NEVER_EXPIRES_ISO = '9999-12-31T23:59:59.000Z';
+
+  /** Tools cuja resposta é ao cliente e não deve expirar por tempo. */
+  private readonly NON_EXPIRING_TOOLS = new Set(['replyToConversation']);
+
   constructor(
     private readonly storage: PendingActionStorage,
+    private readonly prisma: PrismaService,
     @InjectQueue(PENDING_ACTION_EXECUTOR_QUEUE)
     private readonly executorQueue: Queue,
   ) {}
@@ -60,8 +77,15 @@ export class PendingActionService {
     }
 
     const now = new Date();
+    // Respostas ao cliente (replyToConversation) NUNCA expiram por tempo —
+    // ficam na fila até aprovar/rejeitar (ou serem superadas por uma resposta
+    // mais nova via dedup acima). Demais ações (confirmação de tools
+    // destrutivas) mantêm o TTL padrão de 30 min.
+    const noExpiry = this.NON_EXPIRING_TOOLS.has(input.toolName);
     const ttlMin = input.ttlMinutes ?? this.DEFAULT_TTL_MIN;
-    const expiresAt = new Date(now.getTime() + ttlMin * 60 * 1000);
+    const expiresAtIso = noExpiry
+      ? this.NEVER_EXPIRES_ISO
+      : new Date(now.getTime() + ttlMin * 60 * 1000).toISOString();
 
     const action: PendingAction = {
       id: randomUUID(),
@@ -73,7 +97,7 @@ export class PendingActionService {
       preview: input.preview,
       status: 'PENDING',
       createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: expiresAtIso,
     };
 
     await this.storage.save(action);
@@ -261,6 +285,94 @@ export class PendingActionService {
       }
     }
     return moved;
+  }
+
+  /**
+   * Recupera respostas ao cliente que EXPIRARAM sem nunca terem sido enviadas.
+   *
+   * Contexto: antes as respostas em modo revisão tinham TTL de 30 min; quem não
+   * aprovava a tempo via o card virar EXPIRED e sumir da fila — e o cliente
+   * ficava sem resposta. Este método traz de volta pra fila (PENDING, sem
+   * expiração) SÓ os expirados cuja conversa continua **sem resposta**.
+   *
+   * Regra "sem resposta" = a conversa não tem NENHUMA mensagem OUTBOUND criada
+   * depois do card ter sido gerado. Se houve outbound depois (resposta enviada
+   * por outro caminho, ou um card mais novo aprovado), o expirado é ignorado.
+   *
+   * Idempotente: pode rodar quantas vezes quiser. Por conversa, ressuscita
+   * apenas o card expirado MAIS RECENTE (evita empilhar respostas contraditórias),
+   * e nunca ressuscita se já existir um PENDING pra aquela conversa.
+   *
+   * @returns { scanned, resurrected, conversationsAnswered }
+   */
+  async resurrectUnansweredReplies(): Promise<{
+    scanned: number;
+    resurrected: number;
+    skippedAnswered: number;
+    skippedHasPending: number;
+  }> {
+    const expired = await this.storage.listByStatus('EXPIRED');
+    // Só respostas ao cliente. Já vêm ordenadas por createdAt desc.
+    const replies = expired.filter(
+      (a) => a.toolName === 'replyToConversation',
+    );
+
+    let resurrected = 0;
+    let skippedAnswered = 0;
+    let skippedHasPending = 0;
+    const handledConversations = new Set<string>();
+
+    for (const action of replies) {
+      // Uma vez por conversa — a mais recente (primeira que aparece no desc).
+      if (handledConversations.has(action.conversationId)) continue;
+      handledConversations.add(action.conversationId);
+
+      // Se já existe um PENDING pra essa conversa, não mexe (fluxo novo cuida).
+      const pendingForConv = await this.storage.listByStatus(
+        'PENDING',
+        action.conversationId,
+      );
+      if (pendingForConv.some((p) => p.toolName === 'replyToConversation')) {
+        skippedHasPending++;
+        continue;
+      }
+
+      // "Sem resposta" = nenhuma mensagem OUTBOUND depois do card ter sido gerado.
+      const answeredAfter = await this.prisma.message.findFirst({
+        where: {
+          conversationId: action.conversationId,
+          direction: MessageDirection.OUTBOUND,
+          createdAt: { gt: new Date(action.createdAt) },
+        },
+        select: { id: true },
+      });
+      if (answeredAfter) {
+        skippedAnswered++;
+        continue;
+      }
+
+      // Ressuscita: volta pra fila SEM expiração.
+      action.status = 'PENDING';
+      action.expiresAt = this.NEVER_EXPIRES_ISO;
+      await this.storage.save(action, 'EXPIRED');
+      resurrected++;
+      this.logger.log({
+        msg: 'pending_action_resurrected',
+        id: action.id,
+        conversationId: action.conversationId,
+      });
+    }
+
+    this.logger.log(
+      `Recuperação de respostas: ${resurrected} reativadas, ${skippedAnswered} já respondidas, ${skippedHasPending} já tinham pendente (de ${replies.length} expiradas)`,
+    );
+
+    return {
+      scanned: replies.length,
+      resurrected,
+      skippedAnswered,
+      skippedHasPending,
+    };
   }
 
   private isExpired(action: PendingAction): boolean {

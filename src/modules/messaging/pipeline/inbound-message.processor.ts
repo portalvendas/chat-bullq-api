@@ -19,6 +19,7 @@ import { OutboxService } from '../../automations/outbox/outbox.service';
 import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { CadencesService } from '../../cadences/cadences.service';
 import { PipelinesService } from '../../pipelines/pipelines.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   AutomationTrigger,
   ChannelType,
@@ -108,6 +109,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly watchdog: WatchdogService,
     private readonly cadences: CadencesService,
     private readonly pipelines: PipelinesService,
+    private readonly notifications: NotificationsService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -305,6 +307,21 @@ export class InboundMessageProcessor extends WorkerHost {
       this.realtimeGateway.emitToConversation(conversationId, 'message:new', {
         message: savedMessage,
       });
+
+      // Notificação de mensagem nova não lida (DM Instagram / WhatsApp / etc.)
+      // — só para mensagens REAIS do cliente (inbound, não-echo). Best-effort:
+      // nunca deixa a notificação derrubar o processamento da mensagem.
+      if (!isEcho && direction === MessageDirection.INBOUND) {
+        this.notifyNewInboundMessage({
+          organizationId,
+          conversationId,
+          channelId,
+          contactId,
+          message,
+        }).catch((err) =>
+          this.logger.warn(`notifyNewInboundMessage falhou: ${err?.message}`),
+        );
+      }
 
       if (
         !isEcho &&
@@ -509,6 +526,109 @@ export class InboundMessageProcessor extends WorkerHost {
       },
     });
     return !!link;
+  }
+
+  /** Rótulo amigável do canal para o título da notificação. */
+  private channelLabel(type?: ChannelType | string | null): string {
+    switch (type) {
+      case ChannelType.INSTAGRAM:
+        return 'Instagram';
+      case ChannelType.WHATSAPP_OFFICIAL:
+      case ChannelType.WHATSAPP_ZAPI:
+        return 'WhatsApp';
+      case ChannelType.MERCADO_LIVRE:
+        return 'Mercado Livre';
+      case ChannelType.SHOPEE:
+        return 'Shopee';
+      default:
+        return 'Mensagem';
+    }
+  }
+
+  /** Prévia curta do conteúdo da mensagem para o corpo da notificação. */
+  private messagePreview(message: NormalizedInboundMessage): string {
+    const content = (message.content ?? {}) as Record<string, any>;
+    const text =
+      typeof content.text === 'string'
+        ? content.text
+        : typeof content.caption === 'string'
+          ? content.caption
+          : null;
+    if (text && text.trim()) {
+      const t = text.trim();
+      return t.length > 120 ? `${t.slice(0, 117)}…` : t;
+    }
+    switch (message.type) {
+      case 'IMAGE':
+        return '📷 Imagem';
+      case 'AUDIO':
+        return '🎤 Áudio';
+      case 'VIDEO':
+        return '🎬 Vídeo';
+      case 'DOCUMENT':
+        return '📎 Documento';
+      case 'STICKER':
+        return '💬 Figurinha';
+      default:
+        return 'Nova mensagem';
+    }
+  }
+
+  /**
+   * Notifica responsável + gestores sobre mensagem nova do cliente.
+   * Throttle por conversa via `metadata.lastNotifiedAt` (90s) pra não
+   * disparar uma notificação por mensagem numa rajada. Não notifica quem
+   * está com a conversa aberta na hora (presence) — evita o alerta redundante
+   * pra quem já está lendo.
+   */
+  private async notifyNewInboundMessage(params: {
+    organizationId: string;
+    conversationId: string;
+    channelId: string;
+    contactId: string;
+    message: NormalizedInboundMessage;
+  }): Promise<void> {
+    const THROTTLE_MS = 90_000;
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: params.conversationId },
+      select: {
+        assignedToId: true,
+        metadata: true,
+        channel: { select: { type: true } },
+        contact: { select: { name: true, phone: true } },
+      },
+    });
+    if (!conv) return;
+
+    const meta = (conv.metadata as Record<string, any>) ?? {};
+    const last = meta.lastNotifiedAt ? new Date(meta.lastNotifiedAt).getTime() : 0;
+    if (Date.now() - last < THROTTLE_MS) return; // rajada — já avisou há pouco
+
+    const label = this.channelLabel(conv.channel?.type);
+    const who = conv.contact?.name || conv.contact?.phone || 'Cliente';
+    const preview = this.messagePreview(params.message);
+
+    await this.notifications.notifyManagersAndUser({
+      organizationId: params.organizationId,
+      responsibleUserId: conv.assignedToId,
+      type: 'NEW_MESSAGE',
+      title: `Nova mensagem no ${label}`,
+      body: `${who}: ${preview}`,
+      data: {
+        kind: 'new_message',
+        conversationId: params.conversationId,
+        channelId: params.channelId,
+        contactId: params.contactId,
+        channelType: conv.channel?.type ?? null,
+      },
+    });
+
+    await this.prisma.conversation.update({
+      where: { id: params.conversationId },
+      data: {
+        metadata: { ...meta, lastNotifiedAt: new Date().toISOString() },
+      },
+    });
   }
 
   /**

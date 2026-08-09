@@ -74,6 +74,45 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * Notifica o RESPONSÁVEL (assignedTo) + os GESTORES (OWNER/ADMIN) da org.
+   * Dedupe automático (se o responsável é gestor, recebe uma vez) e exclui o
+   * ator que gerou o evento (excludeUserId), pra ele não se auto-notificar.
+   */
+  async notifyManagersAndUser(params: {
+    organizationId: string;
+    responsibleUserId?: string | null;
+    excludeUserId?: string | null;
+    type: NotificationType;
+    title: string;
+    body: string;
+    data?: Record<string, any>;
+  }) {
+    const managers = await this.prisma.userOrganization.findMany({
+      where: {
+        organizationId: params.organizationId,
+        role: { in: ['OWNER', 'ADMIN'] },
+      },
+      select: { userId: true },
+    });
+
+    const recipients = new Set<string>(managers.map((m) => m.userId));
+    if (params.responsibleUserId) recipients.add(params.responsibleUserId);
+    if (params.excludeUserId) recipients.delete(params.excludeUserId);
+
+    for (const recipientId of recipients) {
+      await this.notify({
+        recipientId,
+        organizationId: params.organizationId,
+        type: params.type,
+        title: params.title,
+        body: params.body,
+        data: params.data,
+      });
+    }
+    return { delivered: recipients.size };
+  }
+
   async findByUser(userId: string, orgId: string, page: number, limit: number) {
     const skip = (page - 1) * limit;
     const { notifications, total } = await this.repository.findByUser(userId, orgId, skip, limit);

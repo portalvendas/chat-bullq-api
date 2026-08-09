@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { NormalizedInboundMessage } from '../../channel-hub/ports/types';
 import { IdempotencyService } from './idempotency.service';
+import { phoneVariants } from '../../../common/phone.util';
 
 export interface ResolvedContact {
   contactId: string;
@@ -73,8 +74,14 @@ export class ContactResolverService {
         // ele em vez de criar um contato novo — assim WhatsApp + card do lead
         // ficam no MESMO contato. Só cruza quando temos telefone real.
         if (message.contactPhone) {
+          // Match por VARIANTES (cobre o 9º dígito BR e DDI): o número do
+          // WhatsApp às vezes vem sem o 9, e o card do formulário tem o 9.
           const byPhone = await this.prisma.contact.findFirst({
-            where: { organizationId, phone: message.contactPhone },
+            where: {
+              organizationId,
+              phone: { in: phoneVariants(message.contactPhone) },
+            },
+            orderBy: { createdAt: 'asc' },
             select: { id: true, name: true, phone: true },
           });
           if (byPhone) {

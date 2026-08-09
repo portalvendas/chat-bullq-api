@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { PipelinesService } from '../../pipelines/pipelines.service';
+import { phoneVariants } from '../../../common/phone.util';
 
 /**
  * Intake público de leads (ex.: n8n vindo da Landing Page). Recebe QUALQUER
@@ -294,8 +295,11 @@ export class PublicLeadsService {
   ) {
     let contact: any = null;
     if (data.phone) {
+      // Match por VARIANTES (9º dígito BR + DDI): unifica com o contato do
+      // WhatsApp mesmo que o número tenha chegado sem o 9.
       contact = await this.prisma.contact.findFirst({
-        where: { organizationId, phone: data.phone },
+        where: { organizationId, phone: { in: phoneVariants(data.phone) } },
+        orderBy: { createdAt: 'asc' },
       });
     }
     if (!contact && data.email) {

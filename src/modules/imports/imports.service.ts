@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { CardStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { phoneVariants } from '../../common/phone.util';
 import {
   CustomFieldsService,
   CustomFieldInput,
@@ -281,7 +282,8 @@ export class ImportsService {
         // Upsert de contato por telefone → email.
         let contact = phone
           ? await this.prisma.contact.findFirst({
-              where: { organizationId, phone },
+              where: { organizationId, phone: { in: phoneVariants(phone) } },
+              orderBy: { createdAt: 'asc' },
             })
           : null;
         if (!contact && email) {

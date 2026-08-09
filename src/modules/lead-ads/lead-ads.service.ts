@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import axios from 'axios';
 import { PrismaService } from '../../database/prisma.service';
 import { PipelinesService } from '../pipelines/pipelines.service';
+import { phoneVariants } from '../../common/phone.util';
 
 interface LeadgenChange {
   leadgenId: string;
@@ -191,8 +192,10 @@ export class LeadAdsService {
   ) {
     let contact = null as any;
     if (data.phone) {
+      // Match por VARIANTES (9º dígito BR + DDI): unifica com o WhatsApp.
       contact = await this.prisma.contact.findFirst({
-        where: { organizationId, phone: data.phone },
+        where: { organizationId, phone: { in: phoneVariants(data.phone) } },
+        orderBy: { createdAt: 'asc' },
       });
     }
     if (!contact && data.email) {

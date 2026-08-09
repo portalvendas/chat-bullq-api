@@ -53,6 +53,12 @@ export class PendingActionStorage {
         args: action.args as Prisma.InputJsonValue,
         preview: action.preview as unknown as Prisma.InputJsonValue,
         status: action.status,
+        // expiresAt TAMBÉM precisa entrar no update: a recuperação de expirados
+        // (resurrectUnansweredReplies) muda expiresAt pra sentinela "nunca
+        // expira". Sem isto, o registro volta pra PENDING mas mantém a data
+        // antiga (no passado) e o cron o re-expira em até 5min. Nos demais
+        // updates é no-op (grava o mesmo valor lido do banco).
+        expiresAt: new Date(action.expiresAt),
         approvedBy: action.approvedBy ?? null,
         approvedAt: action.approvedAt ? new Date(action.approvedAt) : null,
         rejectedBy: action.rejectedBy ?? null,

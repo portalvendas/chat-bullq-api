@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -71,5 +72,22 @@ export class CadencesController {
     @Body() body: { files: Array<{ name: string; model: any }> },
   ) {
     return this.service.importKommo(orgId, body?.files ?? []);
+  }
+
+  @Post(':id/auto-link-templates')
+  @ApiOperation({
+    summary:
+      'Vincula os nós de mensagem aos templates APROVADOS por similaridade de texto. execute=false (padrão) = prévia; execute=true = aplica.',
+  })
+  autoLinkTemplates(
+    @Param('id') id: string,
+    @CurrentOrg('id') orgId: string,
+    @Query('execute') execute?: string,
+  ) {
+    return this.service.autoLinkTemplates(
+      id,
+      orgId,
+      execute === 'true' || execute === '1',
+    );
   }
 }

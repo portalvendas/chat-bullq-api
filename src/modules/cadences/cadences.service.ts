@@ -238,6 +238,93 @@ export class CadencesService implements OnModuleInit {
    * um run em andamento dessa cadência). Cria o run apontando para o nó de
    * entrada e enfileira o avanço no worker (não bloqueia o caller).
    */
+  /**
+   * Vincula automaticamente os NÓS DE MENSAGEM de um Salesbot aos templates
+   * APROVADOS da org, casando por similaridade de texto (útil pra bots
+   * importados do Kommo, cujos nós têm o mesmo texto dos templates). Assim, fora
+   * da janela de 24h, o nó envia o template certo em vez de ser bloqueado.
+   * execute=false = prévia (não salva).
+   */
+  async autoLinkTemplates(
+    id: string,
+    organizationId: string,
+    execute = false,
+  ): Promise<{
+    total: number;
+    linked: number;
+    execute: boolean;
+    results: Array<{
+      nodeId: string;
+      text: string;
+      template: string | null;
+      score: number;
+    }>;
+  }> {
+    const cadence = await this.get(id, organizationId);
+    const graph = resolveGraph(cadence);
+    const templates = await this.prisma.whatsappTemplate.findMany({
+      where: { organizationId, status: 'APPROVED' },
+      select: { id: true, name: true, bodyText: true },
+    });
+    const norm = (s: string) =>
+      (s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '') // acentos
+        .replace(/\{\{\s*\d+\s*\}\}/g, ' ') // variáveis {{1}}
+        .replace(/[^\p{L}\p{N}]+/gu, ' ') // pontuação/emoji
+        .trim();
+    const tokens = (s: string) => new Set(norm(s).split(' ').filter(Boolean));
+    const sim = (a: Set<string>, b: Set<string>) => {
+      if (a.size === 0 || b.size === 0) return 0;
+      let inter = 0;
+      for (const t of a) if (b.has(t)) inter += 1;
+      return inter / (a.size + b.size - inter); // Jaccard
+    };
+    const tpl = templates.map((t) => ({ ...t, tok: tokens(t.bodyText) }));
+
+    const results: Array<{
+      nodeId: string;
+      text: string;
+      template: string | null;
+      score: number;
+    }> = [];
+    for (const node of graph.nodes) {
+      if (node.type !== 'message' || !node.text?.trim()) continue;
+      const nt = tokens(node.text);
+      let best: (typeof tpl)[number] | null = null;
+      let bestScore = 0;
+      for (const t of tpl) {
+        const sc = sim(nt, t.tok);
+        if (sc > bestScore) {
+          bestScore = sc;
+          best = t;
+        }
+      }
+      const matched = best && bestScore >= 0.6 ? best : null;
+      if (matched && execute) node.templateId = matched.id;
+      results.push({
+        nodeId: node.id,
+        text: node.text.slice(0, 60),
+        template: matched ? matched.name : null,
+        score: Math.round(bestScore * 100) / 100,
+      });
+    }
+
+    if (execute) {
+      await this.prisma.cadence.update({
+        where: { id },
+        data: { graph: graph as any },
+      });
+    }
+    return {
+      total: results.length,
+      linked: results.filter((r) => r.template).length,
+      execute,
+      results,
+    };
+  }
+
   async start(
     id: string,
     organizationId: string,

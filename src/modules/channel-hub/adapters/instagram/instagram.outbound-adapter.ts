@@ -21,12 +21,52 @@ export class InstagramOutboundAdapter implements OutboundChannelPort {
     message: NormalizedOutboundMessage,
   ): Promise<SendResult> {
     const payload = this.mapper.denormalize(message, contactExternalId);
-    const response = await this.httpClient.sendMessage(channel, payload);
 
-    return {
-      externalId: response?.message_id || '',
-      providerResponse: response,
-    };
+    try {
+      const response = await this.httpClient.sendMessage(channel, payload);
+      return {
+        externalId: response?.message_id || '',
+        providerResponse: response,
+      };
+    } catch (err: any) {
+      // Fora da janela padrão de 24h (cliente falou por último há >24h), a Meta
+      // recusa com [#10] subcode 2534022 "outside of allowed window". Nesse
+      // caso — e SÓ nesse — reenviamos como HUMAN_AGENT: a tag estende a janela
+      // pra 7 dias quando é um ATENDENTE respondendo. Vale pra texto e mídia.
+      //
+      // Requer a feature "Human Agent" aprovada no app da Meta; sem ela, o
+      // retry falha de novo (permissão/janela) e o erro sobe como antes —
+      // sem regressão. Só re-tenta 1x, pra não entrar em loop.
+      if (!this.isOutsideWindowError(err)) throw err;
+
+      this.logger.warn(
+        `IG fora da janela de 24h — reenviando como HUMAN_AGENT (janela de 7 dias): ${err?.message ?? err}`,
+      );
+      const taggedPayload = {
+        ...payload,
+        messaging_type: 'MESSAGE_TAG',
+        tag: 'HUMAN_AGENT',
+      };
+      const response = await this.httpClient.sendMessage(channel, taggedPayload);
+      return {
+        externalId: response?.message_id || '',
+        providerResponse: response,
+      };
+    }
+  }
+
+  /**
+   * Detecta o erro de "fora da janela de mensagens" do Instagram/Meta.
+   * O http-client embrulha o erro da Graph API numa Error cujo `message`
+   * carrega o código/subcódigo, ex.:
+   *   "Meta Graph API: [#10] This message is sent outside of allowed window. (subcode 2534022)"
+   */
+  private isOutsideWindowError(err: any): boolean {
+    const msg = String(err?.message ?? '');
+    return (
+      msg.includes('2534022') ||
+      /outside of allowed window/i.test(msg)
+    );
   }
 
   async sendTypingIndicator(

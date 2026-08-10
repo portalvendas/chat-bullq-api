@@ -265,8 +265,8 @@
     "semantic_hash": ""
   },
   "src/app.module.ts": {
-    "mtime": 1785958157.2344024,
-    "ast_hash": "f0279a9b494d65c16734ff27f57be0b5",
+    "mtime": 1786364931.3611782,
+    "ast_hash": "bed19214916e9d0bb4207d741fb00429",
     "semantic_hash": ""
   },
   "src/common/decorators/current-channel-access.decorator.ts": {
@@ -1065,8 +1065,8 @@
     "semantic_hash": ""
   },
   "src/modules/cadences/cadences.controller.ts": {
-    "mtime": 1786329042.2903378,
-    "ast_hash": "4e054076f0070f6dc80a25d4a570a914",
+    "mtime": 1786366366.9162407,
+    "ast_hash": "d9cb291d764a978ace8de6b6e31761c5",
     "semantic_hash": ""
   },
   "src/modules/cadences/cadences.graph.ts": {
@@ -1085,8 +1085,8 @@
     "semantic_hash": ""
   },
   "src/modules/cadences/cadences.service.ts": {
-    "mtime": 1786331466.0296633,
-    "ast_hash": "48d3d0b494851af1b3f24c3896810a90",
+    "mtime": 1786366358.9449906,
+    "ast_hash": "f665bba1094fe3a42e649c92f11c3ef6",
     "semantic_hash": ""
   },
   "src/modules/cadences/kommo-import.ts": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts": {
-    "mtime": 1785957960.533944,
-    "ast_hash": "8fea38b2fdc5991362687ab1045faadc",
+    "mtime": 1786371366.785407,
+    "ast_hash": "a0f9ed9dfd53ee22f87a1333ab4988b3",
     "semantic_hash": ""
   },
   "src/modules/channel-hub/adapters/z-api/zapi.module.ts": {
@@ -1695,8 +1695,8 @@
     "semantic_hash": ""
   },
   "src/modules/messaging/conversations/conversations.controller.ts": {
-    "mtime": 1784472457.748699,
-    "ast_hash": "354e76dc32227f0dce8d3b80572b198b",
+    "mtime": 1786365526.0215452,
+    "ast_hash": "b9e9d994b6b4d7d030955b90fb73b319",
     "semantic_hash": ""
   },
   "src/modules/messaging/conversations/conversations.repository.ts": {
@@ -1705,8 +1705,8 @@
     "semantic_hash": ""
   },
   "src/modules/messaging/conversations/conversations.service.ts": {
-    "mtime": 1784515432.261221,
-    "ast_hash": "2510f22aefff3c956244f1c25d10b9fb",
+    "mtime": 1786365510.1487534,
+    "ast_hash": "1779286e48c649bb7ee0c819efb44a4b",
     "semantic_hash": ""
   },
   "src/modules/messaging/conversations/dto/update-conversation.dto.ts": {
@@ -1780,8 +1780,8 @@
     "semantic_hash": ""
   },
   "src/modules/messaging/pipeline/inbound-message.processor.ts": {
-    "mtime": 1786313798.032249,
-    "ast_hash": "ef42d6545ea3047efb75de68a7c82783",
+    "mtime": 1786371420.8436134,
+    "ast_hash": "0c97e06fdeaea15430a69c0ad9f12fbf",
     "semantic_hash": ""
   },
   "src/modules/messaging/pipeline/outbound-message.processor.ts": {
@@ -1840,8 +1840,8 @@
     "semantic_hash": ""
   },
   "src/modules/organizations/organizations.repository.ts": {
-    "mtime": 1781632677.126001,
-    "ast_hash": "4cdf1784065b5d6aa9a068a3de79b522",
+    "mtime": 1786364958.911049,
+    "ast_hash": "ce32580a08195a50b0794a2c7fd0acb7",
     "semantic_hash": ""
   },
   "src/modules/organizations/organizations.service.ts": {
@@ -2212,6 +2212,51 @@
   "prisma/migrations/20260809230000_cadence_channel_filter/migration.sql": {
     "mtime": 1786327365.3280163,
     "ast_hash": "a7e601fa1727481e95e8bdfed4687da9",
+    "semantic_hash": ""
+  },
+  "prisma/migrations/20260810000000_permission_groups/migration.sql": {
+    "mtime": 1786364823.9984953,
+    "ast_hash": "391156357d6f5ff2d048c1c1f32d7131",
+    "semantic_hash": ""
+  },
+  "src/modules/permission-groups/permission-groups.constants.ts": {
+    "mtime": 1786364856.907408,
+    "ast_hash": "e355869a77584170482887ae61d9fd1a",
+    "semantic_hash": ""
+  },
+  "src/modules/permission-groups/permission-groups.controller.ts": {
+    "mtime": 1786364911.2884345,
+    "ast_hash": "d3bdd19ae0264eaf785a826c324d0000",
+    "semantic_hash": ""
+  },
+  "src/modules/permission-groups/permission-groups.module.ts": {
+    "mtime": 1786364918.0936491,
+    "ast_hash": "474241b80211827436386989852cb197",
+    "semantic_hash": ""
+  },
+  "src/modules/permission-groups/permission-groups.service.ts": {
+    "mtime": 1786364883.5740418,
+    "ast_hash": "9bbf147a7a8f8d7815429553537c79bc",
+    "semantic_hash": ""
+  },
+  "src/modules/whatsapp-window/whatsapp-window.cron.service.ts": {
+    "mtime": 1786363735.5684624,
+    "ast_hash": "c9d684f722fd1fb8877b66a45c04b223",
+    "semantic_hash": ""
+  },
+  "src/modules/whatsapp-window/whatsapp-window.module.ts": {
+    "mtime": 1786363742.8700893,
+    "ast_hash": "ae5f107c89fc9252a1e72f22c6148098",
+    "semantic_hash": ""
+  },
+  "src/modules/whatsapp-window/whatsapp-window.processor.ts": {
+    "mtime": 1786363726.17767,
+    "ast_hash": "6113f6d5a48821972c084160b5e31a4f",
+    "semantic_hash": ""
+  },
+  "src/modules/whatsapp-window/whatsapp-window.service.ts": {
+    "mtime": 1786363720.0976772,
+    "ast_hash": "c8cf792598c7e6bcbb3c9d19a038ea4f",
     "semantic_hash": ""
   }
 }

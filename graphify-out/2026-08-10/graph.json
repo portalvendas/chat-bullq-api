@@ -4,235 +4,257 @@
   "graph": {},
   "nodes": [
     {
-      "label": "pipeline.dto.ts",
+      "label": "cadences.graph.ts",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "pipeline.dto.ts"
+      "id": "src_modules_cadences_cadences_graph",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "cadences.graph.ts"
     },
     {
-      "label": "UpsertStageDto",
+      "label": "GraphNodeType",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
-      "source_location": "L16",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L34",
       "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "upsertstagedto"
+      "id": "src_modules_cadences_cadences_graph_graphnodetype",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "graphnodetype"
     },
     {
-      "label": "IsOptional",
+      "label": "NodeHandle",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L35",
       "_origin": "ast",
-      "id": "isoptional",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isoptional"
+      "id": "src_modules_cadences_cadences_graph_nodehandle",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "nodehandle"
     },
     {
-      "label": "IsString",
+      "label": "ActionKind",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L36",
       "_origin": "ast",
-      "id": "isstring",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isstring"
+      "id": "src_modules_cadences_cadences_graph_actionkind",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": "actionkind"
     },
     {
-      "label": "Length",
+      "label": "GraphNode",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L38",
       "_origin": "ast",
-      "id": "length",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "length"
+      "id": "src_modules_cadences_cadences_graph_graphnode",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "graphnode"
     },
     {
-      "label": "IsIn",
+      "label": "GraphEdge",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L62",
       "_origin": "ast",
-      "id": "isin",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isin"
+      "id": "src_modules_cadences_cadences_graph_graphedge",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "graphedge"
     },
     {
-      "label": "IsInt",
+      "label": "WorkflowGraph",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L69",
       "_origin": "ast",
-      "id": "isint",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isint"
+      "id": "src_modules_cadences_cadences_graph_workflowgraph",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "workflowgraph"
     },
     {
-      "label": "Min",
+      "label": "LinearStep",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L75",
       "_origin": "ast",
-      "id": "min",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "min"
+      "id": "src_modules_cadences_cadences_graph_linearstep",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "linearstep"
     },
     {
-      "label": "ValidateIf",
+      "label": "normalizeSteps()",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L81",
       "_origin": "ast",
-      "id": "validateif",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "validateif"
+      "id": "src_modules_cadences_cadences_graph_normalizesteps",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "normalizesteps()"
     },
     {
-      "label": "CreatePipelineDto",
+      "label": "CadenceLike",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
-      "source_location": "L46",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L104",
       "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "createpipelinedto"
+      "id": "src_modules_cadences_cadences_graph_cadencelike",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "cadencelike"
     },
     {
-      "label": "IsBoolean",
+      "label": "isGraph()",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L111",
       "_origin": "ast",
-      "id": "isboolean",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isboolean"
+      "id": "src_modules_cadences_cadences_graph_isgraph",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "isgraph()"
     },
     {
-      "label": "IsArray",
+      "label": "resolveGraph()",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L125",
       "_origin": "ast",
-      "id": "isarray",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isarray"
+      "id": "src_modules_cadences_cadences_graph_resolvegraph",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "resolvegraph()"
     },
     {
-      "label": "ValidateNested",
+      "label": "nodeById()",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L159",
       "_origin": "ast",
-      "id": "validatenested",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "validatenested"
+      "id": "src_modules_cadences_cadences_graph_nodebyid",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": "nodebyid()"
     },
     {
-      "label": "Type",
+      "label": "startNode()",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L165",
       "_origin": "ast",
-      "id": "type",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "type"
+      "id": "src_modules_cadences_cadences_graph_startnode",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "startnode()"
     },
     {
-      "label": "UpdatePipelineDto",
+      "label": "edgeTarget()",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
-      "source_location": "L74",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L170",
       "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "updatepipelinedto"
+      "id": "src_modules_cadences_cadences_graph_edgetarget",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": "edgetarget()"
     },
     {
-      "label": "CreateCardDto",
+      "label": "shiftIntoBusinessHours()",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
-      "source_location": "L113",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L192",
       "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "createcarddto"
+      "id": "src_modules_cadences_cadences_graph_shiftintobusinesshours",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "shiftintobusinesshours()"
     },
     {
-      "label": "IsNumber",
+      "label": "cadences.service.ts",
       "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "isnumber",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "isnumber"
-    },
-    {
-      "label": "UpdateCardDto",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
-      "source_location": "L150",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "updatecarddto"
-    },
-    {
-      "label": "MoveCardDto",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
-      "source_location": "L185",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
-      "norm_label": "movecarddto"
-    },
-    {
-      "label": "pipeline-inactivity.cron.service.ts",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
+      "source_file": "src/modules/cadences/cadences.service.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_cron_service",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipeline-inactivity.cron.service.ts"
+      "id": "src_modules_cadences_cadences_service",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "cadences.service.ts"
     },
     {
-      "label": "PipelineInactivityCronService",
+      "label": "WorkflowStep",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
-      "source_location": "L18",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L30",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipelineinactivitycronservice"
+      "id": "src_modules_cadences_cadences_service_workflowstep",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "workflowstep"
+    },
+    {
+      "label": "LegacyStep",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L35",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_legacystep",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "legacystep"
+    },
+    {
+      "label": "CadenceOnEnd",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L39",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadenceonend",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "cadenceonend"
+    },
+    {
+      "label": "CadenceInput",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L44",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadenceinput",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "cadenceinput"
+    },
+    {
+      "label": "RUNNABLE",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L59",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_runnable",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": "runnable"
+    },
+    {
+      "label": "CadencesService",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L69",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": "cadencesservice"
     },
     {
       "label": "Injectable",
@@ -240,9 +262,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_ts_injectable",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
+      "id": "injectable",
+      "community": 1,
+      "community_name": "WhatsappMergeService",
       "norm_label": "injectable"
     },
     {
@@ -257,235 +279,499 @@
       "norm_label": "injectqueue"
     },
     {
-      "label": ".constructor()",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
-      "source_location": "L21",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_constructor",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": ".constructor()"
-    },
-    {
       "label": ".onModuleInit()",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
-      "source_location": "L25",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L77",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_onmoduleinit",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_onmoduleinit",
+      "community": 9,
+      "community_name": "CadencesService",
       "norm_label": ".onmoduleinit()"
     },
     {
-      "label": "pipeline-inactivity.processor.ts",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_processor",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipeline-inactivity.processor.ts"
-    },
-    {
-      "label": "PIPELINE_INACTIVITY_QUEUE",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
-      "source_location": "L8",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipeline_inactivity_queue"
-    },
-    {
-      "label": "PIPELINE_INACTIVITY_SCAN_JOB",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
-      "source_location": "L9",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_scan_job",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipeline_inactivity_scan_job"
-    },
-    {
-      "label": "PipelineInactivityProcessor",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
-      "source_location": "L24",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipelineinactivityprocessor"
-    },
-    {
-      "label": "Processor",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "id": "processor",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "processor"
-    },
-    {
       "label": ".constructor()",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
-      "source_location": "L28",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L93",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_constructor",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_constructor",
       "community": 0,
       "community_name": "pipelines.module.ts",
       "norm_label": ".constructor()"
     },
     {
-      "label": ".process()",
+      "label": ".list()",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
-      "source_location": "L35",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L100",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_process",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": ".process()"
+      "id": "src_modules_cadences_cadences_service_cadencesservice_list",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".list()"
     },
     {
-      "label": "pipelines.module.ts",
+      "label": ".get()",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.module.ts",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L108",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_get",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".get()"
+    },
+    {
+      "label": ".create()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L116",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_create",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".create()"
+    },
+    {
+      "label": ".update()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L135",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".update()"
+    },
+    {
+      "label": ".remove()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L159",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_remove",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".remove()"
+    },
+    {
+      "label": ".importKommo()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L169",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_importkommo",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".importkommo()"
+    },
+    {
+      "label": ".autoLinkTemplates()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L248",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_autolinktemplates",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".autolinktemplates()"
+    },
+    {
+      "label": ".start()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L328",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".start()"
+    },
+    {
+      "label": ".onTagAdded()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L380",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_ontagadded",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".ontagadded()"
+    },
+    {
+      "label": ".onStageEntered()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L408",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_onstageentered",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".onstageentered()"
+    },
+    {
+      "label": ".scanInactivity()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L437",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_scaninactivity",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".scaninactivity()"
+    },
+    {
+      "label": ".enqueueAdvance()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L476",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_enqueueadvance",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".enqueueadvance()"
+    },
+    {
+      "label": ".scheduleTimeout()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L490",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_scheduletimeout",
+      "community": 8,
+      "community_name": "cadences.graph.ts",
+      "norm_label": ".scheduletimeout()"
+    },
+    {
+      "label": ".advance()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L512",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".advance()"
+    },
+    {
+      "label": ".onTimeout()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L596",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".ontimeout()"
+    },
+    {
+      "label": ".onCustomerReply()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L625",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".oncustomerreply()"
+    },
+    {
+      "label": ".runStep()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L658",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".runstep()"
+    },
+    {
+      "label": ".applyAction()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L721",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_applyaction",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".applyaction()"
+    },
+    {
+      "label": ".finish()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L733",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".finish()"
+    },
+    {
+      "label": ".sendMessage()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L752",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_sendmessage",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".sendmessage()"
+    },
+    {
+      "label": ".toMetaName()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L910",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_tometaname",
+      "community": 9,
+      "community_name": "CadencesService",
+      "norm_label": ".tometaname()"
+    },
+    {
+      "label": ".applyOnEnd()",
+      "file_type": "code",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L922",
+      "_origin": "ast",
+      "id": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "community": 10,
+      "community_name": ".advance",
+      "norm_label": ".applyonend()"
+    },
+    {
+      "label": "pipeline.dto.ts",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_module",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipelines.module.ts"
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "pipeline.dto.ts",
+      "id": "src_modules_pipelines_dto_pipeline_dto"
     },
     {
-      "label": "PipelinesModule",
+      "label": "UpsertStageDto",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.module.ts",
-      "source_location": "L27",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
+      "source_location": "L16",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_module_pipelinesmodule",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "pipelinesmodule"
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "upsertstagedto",
+      "id": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto"
     },
     {
-      "label": "Module",
+      "label": "IsOptional",
       "file_type": "code",
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "module",
-      "community": 0,
-      "community_name": "pipelines.module.ts",
-      "norm_label": "module"
-    },
-    {
-      "label": "pipelines.service.ts",
-      "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "pipelines.service.ts"
+      "norm_label": "isoptional",
+      "id": "isoptional"
     },
     {
-      "label": "RoutingCtx",
+      "label": "IsString",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L22",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_routingctx",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "routingctx"
+      "norm_label": "isstring",
+      "id": "isstring"
     },
     {
-      "label": "RoutingTarget",
+      "label": "Length",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L30",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_routingtarget",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "routingtarget"
+      "norm_label": "length",
+      "id": "length"
     },
     {
-      "label": "RoutingException",
+      "label": "IsIn",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L34",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_routingexception",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "routingexception"
+      "norm_label": "isin",
+      "id": "isin"
     },
     {
-      "label": "LeadRouting",
+      "label": "IsInt",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L40",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_leadrouting",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "leadrouting"
+      "norm_label": "isint",
+      "id": "isint"
     },
     {
-      "label": "ORIGIN_TYPES",
+      "label": "Min",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "min",
+      "id": "min"
+    },
+    {
+      "label": "ValidateIf",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "validateif",
+      "id": "validateif"
+    },
+    {
+      "label": "CreatePipelineDto",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
       "source_location": "L46",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_origin_types",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "origin_types"
+      "norm_label": "createpipelinedto",
+      "id": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto"
     },
     {
-      "label": "SOURCE_TAG_MAP",
+      "label": "IsBoolean",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L63",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_source_tag_map",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "source_tag_map"
+      "norm_label": "isboolean",
+      "id": "isboolean"
     },
     {
-      "label": "DEFAULT_STAGES",
+      "label": "IsArray",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L73",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_default_stages",
       "community": 5,
       "community_name": "pipelines.service.ts",
-      "norm_label": "default_stages"
+      "norm_label": "isarray",
+      "id": "isarray"
     },
     {
-      "label": "PipelinesService",
+      "label": "ValidateNested",
       "file_type": "code",
-      "source_file": "src/modules/pipelines/pipelines.service.ts",
-      "source_location": "L82",
+      "source_file": "",
+      "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "community": 2,
-      "community_name": "PipelinesService",
-      "norm_label": "pipelinesservice"
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "validatenested",
+      "id": "validatenested"
+    },
+    {
+      "label": "Type",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "type",
+      "id": "type"
+    },
+    {
+      "label": "UpdatePipelineDto",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
+      "source_location": "L74",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "updatepipelinedto",
+      "id": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto"
+    },
+    {
+      "label": "CreateCardDto",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
+      "source_location": "L113",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "createcarddto",
+      "id": "src_modules_pipelines_dto_pipeline_dto_createcarddto"
+    },
+    {
+      "label": "IsNumber",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "isnumber",
+      "id": "isnumber"
+    },
+    {
+      "label": "UpdateCardDto",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
+      "source_location": "L150",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "updatecarddto",
+      "id": "src_modules_pipelines_dto_pipeline_dto_updatecarddto"
+    },
+    {
+      "label": "MoveCardDto",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
+      "source_location": "L185",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "movecarddto",
+      "id": "src_modules_pipelines_dto_pipeline_dto_movecarddto"
+    },
+    {
+      "label": "pipeline-inactivity.cron.service.ts",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipeline-inactivity.cron.service.ts",
+      "id": "src_modules_pipelines_pipeline_inactivity_cron_service"
+    },
+    {
+      "label": "PipelineInactivityCronService",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
+      "source_location": "L18",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipelineinactivitycronservice",
+      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice"
     },
     {
       "label": "Injectable",
@@ -493,10 +779,252 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_ts_injectable",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "injectable",
+      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_ts_injectable"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
+      "source_location": "L21",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": ".constructor()",
+      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_constructor"
+    },
+    {
+      "label": ".onModuleInit()",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
+      "source_location": "L25",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": ".onmoduleinit()",
+      "id": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_onmoduleinit"
+    },
+    {
+      "label": "pipeline-inactivity.processor.ts",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipeline-inactivity.processor.ts",
+      "id": "src_modules_pipelines_pipeline_inactivity_processor"
+    },
+    {
+      "label": "PIPELINE_INACTIVITY_QUEUE",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
+      "source_location": "L8",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipeline_inactivity_queue",
+      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue"
+    },
+    {
+      "label": "PIPELINE_INACTIVITY_SCAN_JOB",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
+      "source_location": "L9",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipeline_inactivity_scan_job",
+      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_scan_job"
+    },
+    {
+      "label": "PipelineInactivityProcessor",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
+      "source_location": "L24",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipelineinactivityprocessor",
+      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor"
+    },
+    {
+      "label": "Processor",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "processor",
+      "id": "processor"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
+      "source_location": "L28",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": ".constructor()",
+      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_constructor"
+    },
+    {
+      "label": ".process()",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.processor.ts",
+      "source_location": "L35",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": ".process()",
+      "id": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_process"
+    },
+    {
+      "label": "pipelines.module.ts",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.module.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipelines.module.ts",
+      "id": "src_modules_pipelines_pipelines_module"
+    },
+    {
+      "label": "PipelinesModule",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.module.ts",
+      "source_location": "L27",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "pipelinesmodule",
+      "id": "src_modules_pipelines_pipelines_module_pipelinesmodule"
+    },
+    {
+      "label": "Module",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 0,
+      "community_name": "pipelines.module.ts",
+      "norm_label": "module",
+      "id": "module"
+    },
+    {
+      "label": "pipelines.service.ts",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "pipelines.service.ts",
+      "id": "src_modules_pipelines_pipelines_service"
+    },
+    {
+      "label": "RoutingCtx",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L22",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "routingctx",
+      "id": "src_modules_pipelines_pipelines_service_routingctx"
+    },
+    {
+      "label": "RoutingTarget",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L30",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "routingtarget",
+      "id": "src_modules_pipelines_pipelines_service_routingtarget"
+    },
+    {
+      "label": "RoutingException",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L34",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "routingexception",
+      "id": "src_modules_pipelines_pipelines_service_routingexception"
+    },
+    {
+      "label": "LeadRouting",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L40",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "leadrouting",
+      "id": "src_modules_pipelines_pipelines_service_leadrouting"
+    },
+    {
+      "label": "ORIGIN_TYPES",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L46",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "origin_types",
+      "id": "src_modules_pipelines_pipelines_service_origin_types"
+    },
+    {
+      "label": "SOURCE_TAG_MAP",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L63",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "source_tag_map",
+      "id": "src_modules_pipelines_pipelines_service_source_tag_map"
+    },
+    {
+      "label": "DEFAULT_STAGES",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L73",
+      "_origin": "ast",
+      "community": 5,
+      "community_name": "pipelines.service.ts",
+      "norm_label": "default_stages",
+      "id": "src_modules_pipelines_pipelines_service_default_stages"
+    },
+    {
+      "label": "PipelinesService",
+      "file_type": "code",
+      "source_file": "src/modules/pipelines/pipelines.service.ts",
+      "source_location": "L82",
+      "_origin": "ast",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": "injectable"
+      "norm_label": "pipelinesservice",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice"
+    },
+    {
+      "label": "Injectable",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast",
+      "community": 2,
+      "community_name": "PipelinesService",
+      "norm_label": "injectable",
+      "id": "src_modules_pipelines_pipelines_service_ts_injectable"
     },
     {
       "label": ".constructor()",
@@ -504,10 +1032,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L85",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_constructor",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".constructor()"
+      "norm_label": ".constructor()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_constructor"
     },
     {
       "label": ".applySourceTag()",
@@ -515,10 +1043,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L97",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".applysourcetag()"
+      "norm_label": ".applysourcetag()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag"
     },
     {
       "label": ".listPipelines()",
@@ -526,10 +1054,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L144",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listpipelines",
       "community": 3,
       "community_name": "ApiOperation",
-      "norm_label": ".listpipelines()"
+      "norm_label": ".listpipelines()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listpipelines"
     },
     {
       "label": ".getBoard()",
@@ -537,10 +1065,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L161",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getboard",
-      "community": 2,
-      "community_name": "PipelinesService",
-      "norm_label": ".getboard()"
+      "community": 3,
+      "community_name": "ApiOperation",
+      "norm_label": ".getboard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getboard"
     },
     {
       "label": ".createPipeline()",
@@ -548,10 +1076,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L230",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createpipeline",
       "community": 4,
       "community_name": "Body",
-      "norm_label": ".createpipeline()"
+      "norm_label": ".createpipeline()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createpipeline"
     },
     {
       "label": ".updatePipeline()",
@@ -559,10 +1087,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L274",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline",
       "community": 6,
-      "community_name": "Param",
-      "norm_label": ".updatepipeline()"
+      "community_name": ".update",
+      "norm_label": ".updatepipeline()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline"
     },
     {
       "label": ".removePipeline()",
@@ -570,10 +1098,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L308",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_removepipeline",
-      "community": 2,
-      "community_name": "PipelinesService",
-      "norm_label": ".removepipeline()"
+      "community": 7,
+      "community_name": ".upsertStages",
+      "norm_label": ".removepipeline()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_removepipeline"
     },
     {
       "label": ".upsertStages()",
@@ -581,10 +1109,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L315",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages",
       "community": 7,
       "community_name": ".upsertStages",
-      "norm_label": ".upsertstages()"
+      "norm_label": ".upsertstages()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages"
     },
     {
       "label": ".createCard()",
@@ -592,10 +1120,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L376",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard",
-      "community": 4,
-      "community_name": "Body",
-      "norm_label": ".createcard()"
+      "community": 7,
+      "community_name": ".upsertStages",
+      "norm_label": ".createcard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard"
     },
     {
       "label": ".updateCard()",
@@ -603,10 +1131,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L476",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_updatecard",
       "community": 6,
-      "community_name": "Param",
-      "norm_label": ".updatecard()"
+      "community_name": ".update",
+      "norm_label": ".updatecard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_updatecard"
     },
     {
       "label": ".removeCard()",
@@ -614,10 +1142,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L517",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_removecard",
-      "community": 2,
-      "community_name": "PipelinesService",
-      "norm_label": ".removecard()"
+      "community": 12,
+      "community_name": "Param",
+      "norm_label": ".removecard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_removecard"
     },
     {
       "label": ".moveCard()",
@@ -625,10 +1153,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L535",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_movecard",
       "community": 4,
       "community_name": "Body",
-      "norm_label": ".movecard()"
+      "norm_label": ".movecard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_movecard"
     },
     {
       "label": ".normalizeStr()",
@@ -636,10 +1164,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L659",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".normalizestr()"
+      "norm_label": ".normalizestr()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr"
     },
     {
       "label": ".originTypeFrom()",
@@ -647,10 +1175,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L664",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".origintypefrom()"
+      "norm_label": ".origintypefrom()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom"
     },
     {
       "label": ".getLeadRouting()",
@@ -658,10 +1186,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L683",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getleadrouting",
-      "community": 3,
-      "community_name": "ApiOperation",
-      "norm_label": ".getleadrouting()"
+      "community": 2,
+      "community_name": "PipelinesService",
+      "norm_label": ".getleadrouting()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getleadrouting"
     },
     {
       "label": ".resolveByRouting()",
@@ -669,10 +1197,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L703",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".resolvebyrouting()"
+      "norm_label": ".resolvebyrouting()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting"
     },
     {
       "label": ".pickEntryTarget()",
@@ -680,10 +1208,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L762",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".pickentrytarget()"
+      "norm_label": ".pickentrytarget()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget"
     },
     {
       "label": ".createEntryCardForContact()",
@@ -691,10 +1219,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L785",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createentrycardforcontact",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".createentrycardforcontact()"
+      "norm_label": ".createentrycardforcontact()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createentrycardforcontact"
     },
     {
       "label": ".ensureEntryCard()",
@@ -702,10 +1230,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L827",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_ensureentrycard",
       "community": 2,
       "community_name": "PipelinesService",
-      "norm_label": ".ensureentrycard()"
+      "norm_label": ".ensureentrycard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_ensureentrycard"
     },
     {
       "label": ".listCardsByConversation()",
@@ -713,10 +1241,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L878",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listcardsbyconversation",
-      "community": 6,
-      "community_name": "Param",
-      "norm_label": ".listcardsbyconversation()"
+      "community": 3,
+      "community_name": "ApiOperation",
+      "norm_label": ".listcardsbyconversation()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listcardsbyconversation"
     },
     {
       "label": ".getCard()",
@@ -724,10 +1252,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L916",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getcard",
       "community": 3,
       "community_name": "ApiOperation",
-      "norm_label": ".getcard()"
+      "norm_label": ".getcard()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getcard"
     },
     {
       "label": ".startWhatsappConversation()",
@@ -735,10 +1263,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L974",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_startwhatsappconversation",
       "community": 4,
       "community_name": "Body",
-      "norm_label": ".startwhatsappconversation()"
+      "norm_label": ".startwhatsappconversation()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_startwhatsappconversation"
     },
     {
       "label": ".listWhatsappChannels()",
@@ -746,10 +1274,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1066",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listwhatsappchannels",
       "community": 3,
       "community_name": "ApiOperation",
-      "norm_label": ".listwhatsappchannels()"
+      "norm_label": ".listwhatsappchannels()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listwhatsappchannels"
     },
     {
       "label": ".saveRouting()",
@@ -757,10 +1285,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1082",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_saverouting",
       "community": 7,
       "community_name": ".upsertStages",
-      "norm_label": ".saverouting()"
+      "norm_label": ".saverouting()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_saverouting"
     },
     {
       "label": ".getRoutingOptions()",
@@ -768,10 +1296,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1134",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getroutingoptions",
       "community": 3,
       "community_name": "ApiOperation",
-      "norm_label": ".getroutingoptions()"
+      "norm_label": ".getroutingoptions()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getroutingoptions"
     },
     {
       "label": ".assertPipeline()",
@@ -779,10 +1307,10 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1152",
       "_origin": "ast",
-      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "community": 2,
-      "community_name": "PipelinesService",
-      "norm_label": ".assertpipeline()"
+      "community": 7,
+      "community_name": ".upsertStages",
+      "norm_label": ".assertpipeline()",
+      "id": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "label": "pipelines.controller.ts",
@@ -801,7 +1329,7 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L30",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "pipelinescontroller",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller"
@@ -812,7 +1340,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "apitags",
       "id": "apitags"
@@ -823,7 +1351,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "apibearerauth",
       "id": "apibearerauth"
@@ -834,7 +1362,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "useguards",
       "id": "useguards"
@@ -845,7 +1373,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "controller",
       "id": "controller"
@@ -922,7 +1450,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 6,
+      "community": 12,
       "community_name": "Param",
       "norm_label": "param",
       "id": "param"
@@ -945,7 +1473,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 6,
-      "community_name": "Param",
+      "community_name": ".update",
       "norm_label": "patch",
       "id": "patch"
     },
@@ -955,8 +1483,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 12,
+      "community_name": "Param",
       "norm_label": "delete",
       "id": "delete"
     },
@@ -966,7 +1494,7 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L31",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": ".constructor()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_constructor"
@@ -999,8 +1527,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L58",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "ApiOperation",
+      "community": 2,
+      "community_name": "PipelinesService",
       "norm_label": ".getrouting()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_getrouting"
     },
@@ -1066,7 +1594,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "community": 6,
-      "community_name": "Param",
+      "community_name": ".update",
       "norm_label": ".update()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_update"
     },
@@ -1076,8 +1604,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L122",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 12,
+      "community_name": "Param",
       "norm_label": ".remove()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_remove"
     },
@@ -1098,8 +1626,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L145",
       "_origin": "ast",
-      "community": 6,
-      "community_name": "Param",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".cardsbyconversation()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_cardsbyconversation"
     },
@@ -1132,7 +1660,7 @@
       "source_location": "L176",
       "_origin": "ast",
       "community": 6,
-      "community_name": "Param",
+      "community_name": ".update",
       "norm_label": ".updatecard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_updatecard"
     },
@@ -1142,8 +1670,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L186",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 12,
+      "community_name": "Param",
       "norm_label": ".removecard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_removecard"
     },
@@ -1159,24 +1687,13 @@
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_movecard"
     },
     {
-      "label": "Injectable",
-      "file_type": "code",
-      "source_file": "",
-      "source_location": "",
-      "_origin": "ast",
-      "community": 1,
-      "community_name": "PipelinesController",
-      "norm_label": "injectable",
-      "id": "injectable"
-    },
-    {
       "label": "whatsapp-merge.service.ts",
       "file_type": "code",
       "source_file": "src/modules/whatsapp-merge/whatsapp-merge.service.ts",
       "source_location": "L1",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "whatsapp-merge.service.ts",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service"
     },
@@ -1187,7 +1704,7 @@
       "source_location": "L4",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "mergepair",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_mergepair"
     },
@@ -1198,7 +1715,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "mergesummary",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_mergesummary"
     },
@@ -1209,7 +1726,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "whatsappmergeservice",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice"
     },
@@ -1220,7 +1737,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": ".constructor()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice_constructor"
     },
@@ -1231,7 +1748,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": ".run()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice_run"
     },
@@ -1242,7 +1759,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": ".mergepair()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice_mergepair"
     },
@@ -1253,7 +1770,7 @@
       "source_location": "L217",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": ".dedupecards()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice_dedupecards"
     },
@@ -1264,7 +1781,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "app.module.ts",
       "id": "src_app_module"
     },
@@ -1275,7 +1792,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "appmodule",
       "id": "src_app_module_appmodule"
     },
@@ -1286,7 +1803,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "module",
       "id": "src_app_module_ts_module"
     },
@@ -1297,7 +1814,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "whatsapp-merge.controller.ts",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_controller"
     },
@@ -1307,7 +1824,7 @@
       "source_file": "src/modules/whatsapp-merge/whatsapp-merge.controller.ts",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 1,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "whatsappmergecontroller",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_controller_whatsappmergecontroller"
@@ -1319,7 +1836,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": ".constructor()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_controller_whatsappmergecontroller_constructor"
     },
@@ -1329,8 +1846,8 @@
       "source_file": "src/modules/whatsapp-merge/whatsapp-merge.controller.ts",
       "source_location": "L19",
       "_origin": "ast",
-      "community": 4,
-      "community_name": "Body",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".run()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_controller_whatsappmergecontroller_run"
     },
@@ -1341,7 +1858,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "whatsapp-merge.module.ts",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_module"
     },
@@ -1352,7 +1869,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "whatsappmergemodule",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_module_whatsappmergemodule"
     },
@@ -1363,7 +1880,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 1,
-      "community_name": "PipelinesController",
+      "community_name": "WhatsappMergeService",
       "norm_label": "module",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_module_ts_module"
     }
@@ -1372,13 +1889,1276 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_actionkind",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L104",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_cadencelike",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L170",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_edgetarget",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L62",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_graphedge",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L38",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_graphnode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_graphnodetype",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L111",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_isgraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L75",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_linearstep",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L159",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_nodebyid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_nodehandle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L81",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_normalizesteps",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L125",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L192",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_shiftintobusinesshours",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L165",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_startnode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L69",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph",
+      "target": "src_modules_cadences_cadences_graph_workflowgraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_actionkind",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L721",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_applyaction",
+      "target": "src_modules_cadences_cadences_graph_actionkind",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_graphnode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L490",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_scheduletimeout",
+      "target": "src_modules_cadences_cadences_graph_graphnode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_workflowgraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "field",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L55",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadenceinput",
+      "target": "src_modules_cadences_cadences_graph_workflowgraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L128",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph_resolvegraph",
+      "target": "src_modules_cadences_cadences_graph_normalizesteps",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_normalizesteps",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L668",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "target": "src_modules_cadences_cadences_graph_normalizesteps"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.graph.ts",
+      "source_location": "L126",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_graph_resolvegraph",
+      "target": "src_modules_cadences_cadences_graph_isgraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L527",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L264",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_autolinktemplates",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L635",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L609",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L351",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "target": "src_modules_cadences_cadences_graph_resolvegraph"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_nodebyid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L528",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_graph_nodebyid"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L636",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "target": "src_modules_cadences_cadences_graph_nodebyid"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_startnode",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L352",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "target": "src_modules_cadences_cadences_graph_startnode"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_edgetarget",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L588",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_graph_edgetarget"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L638",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "target": "src_modules_cadences_cadences_graph_edgetarget"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L610",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "target": "src_modules_cadences_cadences_graph_edgetarget"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L16",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_graph_shiftintobusinesshours",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L493",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_scheduletimeout",
+      "target": "src_modules_cadences_cadences_graph_shiftintobusinesshours"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L44",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_service_cadenceinput",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L39",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_service_cadenceonend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L69",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_service_cadencesservice",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_service_legacystep",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L59",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_service_runnable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service",
+      "target": "src_modules_cadences_cadences_service_workflowstep",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L68",
+      "weight": 1.0,
+      "context": "decorator",
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "injectable",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L512",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L721",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyaction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L922",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L248",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_autolinktemplates",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L93",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L116",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_create",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L476",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_enqueueadvance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L733",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L108",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L169",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_importkommo",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L100",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_list",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L625",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L77",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_onmoduleinit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L408",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_onstageentered",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L380",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_ontagadded",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L596",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L159",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_remove",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L658",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L437",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_scaninactivity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L490",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_scheduletimeout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L752",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_sendmessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L328",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L910",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_tometaname",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L135",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/whatsapp-merge/whatsapp-merge.service.ts",
+      "source_location": "L29",
+      "weight": 1.0,
+      "context": "decorator",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice",
+      "target": "injectable"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L96",
+      "weight": 1.0,
+      "context": "decorator",
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_constructor",
+      "target": "injectqueue",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
+      "source_location": "L22",
+      "weight": 1.0,
+      "context": "decorator",
+      "_origin": "ast",
+      "confidence_score": 1.0,
+      "source": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_constructor",
+      "target": "injectqueue"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L263",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_autolinktemplates",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L160",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_remove",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L333",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L136",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_get",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L212",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_importkommo",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_create",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L800",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_sendmessage",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_create",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L360",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_create",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L534",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L952",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L315",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_autolinktemplates",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L738",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L697",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_update",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L424",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_onstageentered",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L396",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_ontagadded",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L465",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_scaninactivity",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L369",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_start",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_enqueueadvance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L550",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_scheduletimeout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L577",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyaction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L540",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L523",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L556",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_sendmessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L641",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L616",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_advance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L612",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L606",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_ontimeout",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L643",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_oncustomerreply",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L693",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyaction",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L670",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L665",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_finish",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L691",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_runstep",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_sendmessage",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L730",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_applyaction",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_applyonend",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "src/modules/cadences/cadences.service.ts",
+      "source_location": "L842",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "src_modules_cadences_cadences_service_cadencesservice_sendmessage",
+      "target": "src_modules_cadences_cadences_service_cadencesservice_tometaname",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "src/modules/pipelines/dto/pipeline.dto.ts",
       "source_location": "L113",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto",
-      "target": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_createcarddto"
     },
     {
       "relation": "contains",
@@ -1387,9 +3167,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto",
-      "target": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto"
     },
     {
       "relation": "contains",
@@ -1398,9 +3178,9 @@
       "source_location": "L185",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto",
-      "target": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_movecarddto"
     },
     {
       "relation": "contains",
@@ -1409,9 +3189,9 @@
       "source_location": "L150",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto",
-      "target": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_updatecarddto"
     },
     {
       "relation": "contains",
@@ -1420,9 +3200,9 @@
       "source_location": "L74",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto",
-      "target": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto"
     },
     {
       "relation": "contains",
@@ -1431,9 +3211,9 @@
       "source_location": "L16",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto",
-      "target": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto"
     },
     {
       "relation": "imports_from",
@@ -1443,9 +3223,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto"
     },
     {
       "relation": "references",
@@ -1455,9 +3235,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "isin",
-      "confidence_score": 1.0
+      "target": "isin"
     },
     {
       "relation": "references",
@@ -1467,9 +3247,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "isint",
-      "confidence_score": 1.0
+      "target": "isint"
     },
     {
       "relation": "references",
@@ -1479,9 +3259,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "isoptional",
-      "confidence_score": 1.0
+      "target": "isoptional"
     },
     {
       "relation": "references",
@@ -1491,9 +3271,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "isstring",
-      "confidence_score": 1.0
+      "target": "isstring"
     },
     {
       "relation": "references",
@@ -1503,9 +3283,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "length",
-      "confidence_score": 1.0
+      "target": "length"
     },
     {
       "relation": "references",
@@ -1515,9 +3295,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "min",
-      "confidence_score": 1.0
+      "target": "min"
     },
     {
       "relation": "references",
@@ -1527,9 +3307,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "target": "validateif",
-      "confidence_score": 1.0
+      "target": "validateif"
     },
     {
       "relation": "imports",
@@ -1539,9 +3319,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto"
     },
     {
       "relation": "references",
@@ -1551,9 +3331,9 @@
       "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages",
-      "target": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_upsertstagedto"
     },
     {
       "relation": "references",
@@ -1563,9 +3343,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "target": "isoptional",
-      "confidence_score": 1.0
+      "target": "isoptional"
     },
     {
       "relation": "references",
@@ -1575,9 +3355,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "isoptional",
-      "confidence_score": 1.0
+      "target": "isoptional"
     },
     {
       "relation": "references",
@@ -1587,9 +3367,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "target": "isoptional",
-      "confidence_score": 1.0
+      "target": "isoptional"
     },
     {
       "relation": "references",
@@ -1599,9 +3379,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "target": "isoptional",
-      "confidence_score": 1.0
+      "target": "isoptional"
     },
     {
       "relation": "references",
@@ -1611,9 +3391,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "isoptional",
-      "confidence_score": 1.0
+      "target": "isoptional"
     },
     {
       "relation": "references",
@@ -1623,9 +3403,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "target": "isstring",
-      "confidence_score": 1.0
+      "target": "isstring"
     },
     {
       "relation": "references",
@@ -1635,9 +3415,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "isstring",
-      "confidence_score": 1.0
+      "target": "isstring"
     },
     {
       "relation": "references",
@@ -1647,9 +3427,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "target": "isstring",
-      "confidence_score": 1.0
+      "target": "isstring"
     },
     {
       "relation": "references",
@@ -1659,9 +3439,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "target": "isstring",
-      "confidence_score": 1.0
+      "target": "isstring"
     },
     {
       "relation": "references",
@@ -1671,9 +3451,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "isstring",
-      "confidence_score": 1.0
+      "target": "isstring"
     },
     {
       "relation": "references",
@@ -1683,9 +3463,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "target": "length",
-      "confidence_score": 1.0
+      "target": "length"
     },
     {
       "relation": "references",
@@ -1695,9 +3475,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "length",
-      "confidence_score": 1.0
+      "target": "length"
     },
     {
       "relation": "references",
@@ -1707,9 +3487,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "target": "length",
-      "confidence_score": 1.0
+      "target": "length"
     },
     {
       "relation": "references",
@@ -1719,9 +3499,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "length",
-      "confidence_score": 1.0
+      "target": "length"
     },
     {
       "relation": "references",
@@ -1731,9 +3511,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "target": "isint",
-      "confidence_score": 1.0
+      "target": "isint"
     },
     {
       "relation": "references",
@@ -1743,9 +3523,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "isint",
-      "confidence_score": 1.0
+      "target": "isint"
     },
     {
       "relation": "references",
@@ -1755,9 +3535,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "target": "min",
-      "confidence_score": 1.0
+      "target": "min"
     },
     {
       "relation": "references",
@@ -1767,9 +3547,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "min",
-      "confidence_score": 1.0
+      "target": "min"
     },
     {
       "relation": "references",
@@ -1779,9 +3559,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "validateif",
-      "confidence_score": 1.0
+      "target": "validateif"
     },
     {
       "relation": "references",
@@ -1791,9 +3571,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "isarray",
-      "confidence_score": 1.0
+      "target": "isarray"
     },
     {
       "relation": "references",
@@ -1803,9 +3583,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "isboolean",
-      "confidence_score": 1.0
+      "target": "isboolean"
     },
     {
       "relation": "references",
@@ -1815,9 +3595,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "type",
-      "confidence_score": 1.0
+      "target": "type"
     },
     {
       "relation": "references",
@@ -1827,9 +3607,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "target": "validatenested",
-      "confidence_score": 1.0
+      "target": "validatenested"
     },
     {
       "relation": "imports",
@@ -1839,9 +3619,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto"
     },
     {
       "relation": "references",
@@ -1851,9 +3631,9 @@
       "source_location": "L230",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_createpipeline",
-      "target": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_createpipelinedto"
     },
     {
       "relation": "references",
@@ -1863,9 +3643,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "target": "isboolean",
-      "confidence_score": 1.0
+      "target": "isboolean"
     },
     {
       "relation": "imports",
@@ -1875,9 +3655,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto"
     },
     {
       "relation": "references",
@@ -1887,9 +3667,9 @@
       "source_location": "L274",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline",
-      "target": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_updatepipelinedto"
     },
     {
       "relation": "references",
@@ -1899,9 +3679,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "target": "isnumber",
-      "confidence_score": 1.0
+      "target": "isnumber"
     },
     {
       "relation": "imports",
@@ -1911,9 +3691,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_createcarddto"
     },
     {
       "relation": "references",
@@ -1923,9 +3703,9 @@
       "source_location": "L376",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard",
-      "target": "src_modules_pipelines_dto_pipeline_dto_createcarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_createcarddto"
     },
     {
       "relation": "references",
@@ -1935,9 +3715,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "target": "isnumber",
-      "confidence_score": 1.0
+      "target": "isnumber"
     },
     {
       "relation": "imports",
@@ -1947,9 +3727,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_updatecarddto"
     },
     {
       "relation": "references",
@@ -1959,9 +3739,9 @@
       "source_location": "L476",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_updatecard",
-      "target": "src_modules_pipelines_dto_pipeline_dto_updatecarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_updatecarddto"
     },
     {
       "relation": "imports",
@@ -1971,9 +3751,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_movecarddto"
     },
     {
       "relation": "references",
@@ -1983,9 +3763,9 @@
       "source_location": "L535",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_movecard",
-      "target": "src_modules_pipelines_dto_pipeline_dto_movecarddto",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_dto_pipeline_dto_movecarddto"
     },
     {
       "relation": "contains",
@@ -1994,9 +3774,9 @@
       "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service",
-      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice"
     },
     {
       "relation": "imports_from",
@@ -2006,9 +3786,9 @@
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor"
     },
     {
       "relation": "imports",
@@ -2018,9 +3798,9 @@
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue"
     },
     {
       "relation": "imports",
@@ -2030,9 +3810,9 @@
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_scan_job",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_scan_job"
     },
     {
       "relation": "imports_from",
@@ -2042,9 +3822,9 @@
       "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipeline_inactivity_cron_service",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_cron_service"
     },
     {
       "relation": "method",
@@ -2053,9 +3833,9 @@
       "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice",
-      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_constructor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_constructor"
     },
     {
       "relation": "method",
@@ -2064,9 +3844,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice",
-      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_onmoduleinit",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_onmoduleinit"
     },
     {
       "relation": "references",
@@ -2076,9 +3856,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice",
-      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_ts_injectable",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_ts_injectable"
     },
     {
       "relation": "imports",
@@ -2088,21 +3868,9 @@
       "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/pipelines/pipeline-inactivity.cron.service.ts",
-      "source_location": "L22",
-      "weight": 1.0,
-      "context": "decorator",
-      "_origin": "ast",
-      "source": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice_constructor",
-      "target": "injectqueue",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_cron_service_pipelineinactivitycronservice"
     },
     {
       "relation": "contains",
@@ -2111,9 +3879,9 @@
       "source_location": "L8",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_processor",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue"
     },
     {
       "relation": "contains",
@@ -2122,9 +3890,9 @@
       "source_location": "L9",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_processor",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_scan_job",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_scan_job"
     },
     {
       "relation": "contains",
@@ -2133,9 +3901,9 @@
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_processor",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor"
     },
     {
       "relation": "imports_from",
@@ -2145,9 +3913,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor"
     },
     {
       "relation": "imports",
@@ -2157,9 +3925,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipeline_inactivity_queue"
     },
     {
       "relation": "references",
@@ -2169,9 +3937,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor",
-      "target": "processor",
-      "confidence_score": 1.0
+      "target": "processor"
     },
     {
       "relation": "method",
@@ -2180,9 +3948,9 @@
       "source_location": "L28",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_constructor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_constructor"
     },
     {
       "relation": "method",
@@ -2191,9 +3959,9 @@
       "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_process",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor_process"
     },
     {
       "relation": "imports",
@@ -2203,9 +3971,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipeline_inactivity_processor_pipelineinactivityprocessor"
     },
     {
       "relation": "imports_from",
@@ -2215,9 +3983,9 @@
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipelines_controller",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_controller"
     },
     {
       "relation": "imports",
@@ -2227,9 +3995,9 @@
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipelines_controller_pipelinescontroller",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_controller_pipelinescontroller"
     },
     {
       "relation": "contains",
@@ -2238,9 +4006,9 @@
       "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipelines_module_pipelinesmodule",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_module_pipelinesmodule"
     },
     {
       "relation": "imports_from",
@@ -2250,9 +4018,9 @@
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipelines_service",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service"
     },
     {
       "relation": "imports",
@@ -2262,9 +4030,9 @@
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice"
     },
     {
       "relation": "references",
@@ -2274,9 +4042,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_module_pipelinesmodule",
-      "target": "module",
-      "confidence_score": 1.0
+      "target": "module"
     },
     {
       "relation": "imports_from",
@@ -2297,9 +4065,9 @@
       "source_location": "L73",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_default_stages",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_default_stages"
     },
     {
       "relation": "contains",
@@ -2308,9 +4076,9 @@
       "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_leadrouting",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_leadrouting"
     },
     {
       "relation": "contains",
@@ -2319,9 +4087,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_origin_types",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_origin_types"
     },
     {
       "relation": "contains",
@@ -2330,9 +4098,9 @@
       "source_location": "L82",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice"
     },
     {
       "relation": "contains",
@@ -2341,9 +4109,9 @@
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_routingctx",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_routingctx"
     },
     {
       "relation": "contains",
@@ -2352,9 +4120,9 @@
       "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_routingexception",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_routingexception"
     },
     {
       "relation": "contains",
@@ -2363,9 +4131,9 @@
       "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_routingtarget",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_routingtarget"
     },
     {
       "relation": "contains",
@@ -2374,9 +4142,9 @@
       "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service",
-      "target": "src_modules_pipelines_pipelines_service_source_tag_map",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_source_tag_map"
     },
     {
       "relation": "inherits",
@@ -2386,9 +4154,9 @@
       "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_routingexception",
-      "target": "src_modules_pipelines_pipelines_service_routingtarget",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_routingtarget"
     },
     {
       "relation": "imports",
@@ -2421,9 +4189,9 @@
       "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag"
     },
     {
       "relation": "method",
@@ -2432,9 +4200,9 @@
       "source_location": "L1152",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "relation": "method",
@@ -2443,9 +4211,9 @@
       "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_constructor",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_constructor"
     },
     {
       "relation": "method",
@@ -2454,9 +4222,9 @@
       "source_location": "L376",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard"
     },
     {
       "relation": "method",
@@ -2465,9 +4233,9 @@
       "source_location": "L785",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_createentrycardforcontact",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_createentrycardforcontact"
     },
     {
       "relation": "method",
@@ -2476,9 +4244,9 @@
       "source_location": "L230",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_createpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_createpipeline"
     },
     {
       "relation": "method",
@@ -2487,9 +4255,9 @@
       "source_location": "L827",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_ensureentrycard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_ensureentrycard"
     },
     {
       "relation": "method",
@@ -2498,9 +4266,9 @@
       "source_location": "L161",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getboard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getboard"
     },
     {
       "relation": "method",
@@ -2509,9 +4277,9 @@
       "source_location": "L916",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getcard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getcard"
     },
     {
       "relation": "method",
@@ -2520,9 +4288,9 @@
       "source_location": "L683",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getleadrouting",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getleadrouting"
     },
     {
       "relation": "method",
@@ -2531,9 +4299,9 @@
       "source_location": "L1134",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getroutingoptions",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getroutingoptions"
     },
     {
       "relation": "method",
@@ -2542,9 +4310,9 @@
       "source_location": "L878",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_listcardsbyconversation",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_listcardsbyconversation"
     },
     {
       "relation": "method",
@@ -2553,9 +4321,9 @@
       "source_location": "L144",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_listpipelines",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_listpipelines"
     },
     {
       "relation": "method",
@@ -2564,9 +4332,9 @@
       "source_location": "L1066",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_listwhatsappchannels",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_listwhatsappchannels"
     },
     {
       "relation": "method",
@@ -2575,9 +4343,9 @@
       "source_location": "L535",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_movecard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_movecard"
     },
     {
       "relation": "method",
@@ -2586,9 +4354,9 @@
       "source_location": "L659",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr"
     },
     {
       "relation": "method",
@@ -2597,9 +4365,9 @@
       "source_location": "L664",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom"
     },
     {
       "relation": "method",
@@ -2608,9 +4376,9 @@
       "source_location": "L762",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget"
     },
     {
       "relation": "method",
@@ -2619,9 +4387,9 @@
       "source_location": "L517",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_removecard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_removecard"
     },
     {
       "relation": "method",
@@ -2630,9 +4398,9 @@
       "source_location": "L308",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_removepipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_removepipeline"
     },
     {
       "relation": "method",
@@ -2641,9 +4409,9 @@
       "source_location": "L703",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting"
     },
     {
       "relation": "method",
@@ -2652,9 +4420,9 @@
       "source_location": "L1082",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_saverouting",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_saverouting"
     },
     {
       "relation": "method",
@@ -2663,9 +4431,9 @@
       "source_location": "L974",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_startwhatsappconversation",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_startwhatsappconversation"
     },
     {
       "relation": "method",
@@ -2674,9 +4442,9 @@
       "source_location": "L476",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_updatecard",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_updatecard"
     },
     {
       "relation": "method",
@@ -2685,9 +4453,9 @@
       "source_location": "L274",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline"
     },
     {
       "relation": "method",
@@ -2696,9 +4464,9 @@
       "source_location": "L315",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages"
     },
     {
       "relation": "references",
@@ -2708,9 +4476,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice",
-      "target": "src_modules_pipelines_pipelines_service_ts_injectable",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_ts_injectable"
     },
     {
       "relation": "calls",
@@ -2720,9 +4488,9 @@
       "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom"
     },
     {
       "relation": "calls",
@@ -2732,9 +4500,9 @@
       "source_location": "L817",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_createentrycardforcontact",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag"
     },
     {
       "relation": "calls",
@@ -2744,9 +4512,9 @@
       "source_location": "L868",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_ensureentrycard",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_applysourcetag"
     },
     {
       "relation": "calls",
@@ -2780,9 +4548,9 @@
       "source_location": "L166",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_getboard",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "relation": "calls",
@@ -2816,9 +4584,9 @@
       "source_location": "L279",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "relation": "calls",
@@ -2840,9 +4608,9 @@
       "source_location": "L309",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_removepipeline",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "relation": "calls",
@@ -2864,9 +4632,9 @@
       "source_location": "L320",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "relation": "calls",
@@ -2888,9 +4656,9 @@
       "source_location": "L381",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
     {
       "relation": "calls",
@@ -2936,9 +4704,9 @@
       "source_location": "L668",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr"
     },
     {
       "relation": "calls",
@@ -2948,9 +4716,9 @@
       "source_location": "L736",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_normalizestr"
     },
     {
       "relation": "calls",
@@ -2960,9 +4728,9 @@
       "source_location": "L744",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_origintypefrom"
     },
     {
       "relation": "calls",
@@ -2984,9 +4752,9 @@
       "source_location": "L707",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getleadrouting",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_getleadrouting"
     },
     {
       "relation": "calls",
@@ -2996,9 +4764,9 @@
       "source_location": "L767",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_resolvebyrouting"
     },
     {
       "relation": "calls",
@@ -3008,9 +4776,9 @@
       "source_location": "L799",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_createentrycardforcontact",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget"
     },
     {
       "relation": "calls",
@@ -3020,9 +4788,9 @@
       "source_location": "L851",
       "weight": 1.0,
       "_origin": "ast",
+      "confidence_score": 1.0,
       "source": "src_modules_pipelines_pipelines_service_pipelinesservice_ensureentrycard",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget",
-      "confidence_score": 1.0
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice_pickentrytarget"
     },
     {
       "relation": "calls",
@@ -4314,18 +6082,6 @@
       "target": "delete"
     },
     {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/whatsapp-merge/whatsapp-merge.service.ts",
-      "source_location": "L29",
-      "weight": 1.0,
-      "context": "decorator",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_whatsapp_merge_whatsapp_merge_service_whatsappmergeservice",
-      "target": "injectable"
-    },
-    {
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -4627,5 +6383,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "a145dc2c671ba91f89cd3f785f23fa356e87ed2f"
+  "built_at_commit": "40354c8a9d32cca8c9c457b8c4582a8d9c7e1bc3"
 }

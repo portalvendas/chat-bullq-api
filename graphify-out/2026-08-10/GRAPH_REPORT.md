@@ -1,86 +1,94 @@
-# Graph Report - chat-bullq-api  (2026-08-09)
+# Graph Report - chat-bullq-api  (2026-08-10)
 
 ## Corpus Check
-- 441 files · ~186,975 words
+- 442 files · ~187,873 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 124 nodes · 278 edges · 8 communities (5 shown, 3 thin omitted)
+- 171 nodes · 385 edges · 13 communities (7 shown, 6 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a145dc2c`
+- Built from commit: `40354c8a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - pipelines.module.ts
-- PipelinesController
+- WhatsappMergeService
 - PipelinesService
 - ApiOperation
 - Body
 - pipelines.service.ts
-- Param
+- .update
 - .upsertStages
+- cadences.graph.ts
+- CadencesService
+- .advance
+- PipelinesController
+- Param
 
 ## God Nodes (most connected - your core abstractions)
 1. `PipelinesService` - 31 edges
-2. `PipelinesController` - 24 edges
-3. `UpsertStageDto` - 10 edges
-4. `CreatePipelineDto` - 10 edges
-5. `UpdatePipelineDto` - 10 edges
-6. `WhatsappMergeService` - 9 edges
-7. `WhatsappMergeController` - 8 edges
-8. `CreateCardDto` - 7 edges
-9. `UpdateCardDto` - 7 edges
-10. `MoveCardDto` - 7 edges
+2. `CadencesService` - 26 edges
+3. `PipelinesController` - 24 edges
+4. `UpsertStageDto` - 10 edges
+5. `CreatePipelineDto` - 10 edges
+6. `UpdatePipelineDto` - 10 edges
+7. `resolveGraph()` - 9 edges
+8. `WhatsappMergeService` - 9 edges
+9. `WhatsappMergeController` - 8 edges
+10. `CreateCardDto` - 7 edges
 
 ## Surprising Connections (you probably didn't know these)
-- None detected - all connections are within the same source files.
+- `CadenceInput` --references--> `WorkflowGraph`  [EXTRACTED]
+  src/modules/cadences/cadences.service.ts → src/modules/cadences/cadences.graph.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (8 total, 3 thin omitted)
+## Communities (13 total, 6 thin omitted)
 
 ### Community 0 - "pipelines.module.ts"
-Cohesion: 0.17
+Cohesion: 0.16
 Nodes (9): InjectQueue, Module, Processor, PipelineInactivityCronService, Injectable, PIPELINE_INACTIVITY_QUEUE, PIPELINE_INACTIVITY_SCAN_JOB, PipelineInactivityProcessor (+1 more)
 
-### Community 1 - "PipelinesController"
-Cohesion: 0.12
-Nodes (14): ApiBearerAuth, ApiTags, Controller, Injectable, AppModule, Module, PipelinesController, WhatsappMergeController (+6 more)
-
-### Community 2 - "PipelinesService"
-Cohesion: 0.21
-Nodes (3): Delete, PipelinesService, Injectable
+### Community 1 - "WhatsappMergeService"
+Cohesion: 0.16
+Nodes (8): Injectable, AppModule, Module, Module, WhatsappMergeModule, MergePair, MergeSummary, WhatsappMergeService
 
 ### Community 3 - "ApiOperation"
-Cohesion: 0.24
+Cohesion: 0.21
 Nodes (4): ApiOperation, CurrentOrg, Get, Query
 
 ### Community 5 - "pipelines.service.ts"
 Cohesion: 0.15
 Nodes (25): IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length (+17 more)
 
+### Community 8 - "cadences.graph.ts"
+Cohesion: 0.15
+Nodes (17): CadenceLike, GraphEdge, GraphNode, GraphNodeType, isGraph(), LinearStep, NodeHandle, normalizeSteps() (+9 more)
+
+### Community 10 - ".advance"
+Cohesion: 0.40
+Nodes (3): ActionKind, edgeTarget(), nodeById()
+
+### Community 11 - "PipelinesController"
+Cohesion: 0.43
+Nodes (6): ApiBearerAuth, ApiTags, Controller, PipelinesController, WhatsappMergeController, UseGuards
+
 ## Knowledge Gaps
-- **7 isolated node(s):** `RoutingCtx`, `LeadRouting`, `ORIGIN_TYPES`, `SOURCE_TAG_MAP`, `DEFAULT_STAGES` (+2 more)
+- **16 isolated node(s):** `GraphNodeType`, `NodeHandle`, `GraphEdge`, `LinearStep`, `CadenceLike` (+11 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `PipelinesController` connect `PipelinesController` to `pipelines.module.ts`, `PipelinesService`, `ApiOperation`, `Body`, `pipelines.service.ts`, `Param`, `.upsertStages`?**
-  _High betweenness centrality (0.321) - this node is a cross-community bridge._
-- **Why does `PipelinesService` connect `PipelinesService` to `pipelines.module.ts`, `PipelinesController`, `ApiOperation`, `Body`, `pipelines.service.ts`, `Param`, `.upsertStages`?**
-  _High betweenness centrality (0.283) - this node is a cross-community bridge._
-- **Why does `WhatsappMergeController` connect `PipelinesController` to `Body`?**
-  _High betweenness centrality (0.175) - this node is a cross-community bridge._
-- **What connects `RoutingCtx`, `LeadRouting`, `ORIGIN_TYPES` to the rest of the system?**
-  _7 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `PipelinesController` be split into smaller, more focused modules?**
-  _Cohesion score 0.12318840579710146 - nodes in this community are weakly interconnected._
+- **Why does `CadencesService` connect `CadencesService` to `cadences.graph.ts`, `WhatsappMergeService`, `.advance`, `pipelines.module.ts`?**
+  _High betweenness centrality (0.427) - this node is a cross-community bridge._
+- **What connects `GraphNodeType`, `NodeHandle`, `GraphEdge` to the rest of the system?**
+  _16 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `pipelines.service.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.1455026455026455 - nodes in this community are weakly interconnected._

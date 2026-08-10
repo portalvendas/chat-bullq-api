@@ -189,7 +189,8 @@ model Organization {
   /// null = usa defaults do código (15, 15, 60, 3).
   watchdogConfig        Json?   @map("watchdog_config")
 
-  members       UserOrganization[]
+  members          UserOrganization[]
+  permissionGroups PermissionGroup[]
   channels      Channel[]
   contacts      Contact[]
   conversations Conversation[]
@@ -226,16 +227,45 @@ model UserOrganization {
   agentStatus    AgentStatus @default(OFFLINE) @map("agent_status")
   maxConcurrent  Int         @default(5) @map("max_concurrent")
   preferences    Json        @default("{}")
+  /// Grupo de permissões (RBAC). NULL = sem grupo (usa defaults do papel).
+  /// Ignorado para OWNER/ADMIN, que têm acesso total.
+  permissionGroupId String?  @map("permission_group_id")
   joinedAt       DateTime    @default(now()) @map("joined_at")
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissionGroup PermissionGroup? @relation(fields: [permissionGroupId], references: [id], onDelete: SetNull)
 
   departmentAgents DepartmentAgent[]
   channelAgents    ChannelAgent[]
 
   @@unique([userId, organizationId])
   @@map("user_organizations")
+}
+
+/// Grupo de permissões (RBAC). Owner/Admin ignoram (acesso total); demais
+/// membros herdam do grupo vinculado.
+model PermissionGroup {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  name           String
+  description    String?
+  /// { <moduleKey>: { view: bool, edit: bool, delete: bool } }
+  modulePerms    Json     @default("{}") @map("module_perms")
+  /// true = enxerga todos os canais; senão só os de channelIds.
+  allChannels    Boolean  @default(true) @map("all_channels")
+  channelIds     Json     @default("[]") @map("channel_ids")
+  /// true = enxerga todos os funis; senão só os de pipelineIds.
+  allPipelines   Boolean  @default(true) @map("all_pipelines")
+  pipelineIds    Json     @default("[]") @map("pipeline_ids")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      UserOrganization[]
+
+  @@unique([organizationId, name])
+  @@map("permission_groups")
 }
 
 // ─── Invitations ────────────────────────────────

@@ -30,6 +30,7 @@ export class OrganizationsRepository {
         user: {
           select: { id: true, name: true, email: true, avatarUrl: true, isActive: true },
         },
+        permissionGroup: { select: { id: true, name: true } },
       },
       orderBy: { joinedAt: 'asc' },
     });

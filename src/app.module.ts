@@ -31,6 +31,7 @@ import { ImportsModule } from './modules/imports/imports.module';
 import { InstagramCommentsModule } from './modules/instagram-comments/instagram-comments.module';
 import { WhatsappMergeModule } from './modules/whatsapp-merge/whatsapp-merge.module';
 import { WhatsappWindowModule } from './modules/whatsapp-window/whatsapp-window.module';
+import { PermissionGroupsModule } from './modules/permission-groups/permission-groups.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
 // via skill HTTP getProductPitch + CatalogSyncService. Tabela `products`
@@ -83,6 +84,7 @@ import redisConfig from './config/redis.config';
     InstagramCommentsModule,
     WhatsappMergeModule,
     WhatsappWindowModule,
+    PermissionGroupsModule,
   ],
 })
 export class AppModule {}

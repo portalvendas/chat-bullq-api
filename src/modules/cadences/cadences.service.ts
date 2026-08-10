@@ -552,12 +552,19 @@ export class CadencesService implements OnModuleInit {
       }
 
       if (node.type === 'message') {
-        if (node.text?.trim() || node.templateId) {
+        if (node.text?.trim() || node.templateId || node.mediaUrl) {
           const res = await this.sendMessage(
             run.conversationId,
             cadence.organizationId,
             node.text ?? '',
             node.templateId,
+            node.mediaUrl
+              ? {
+                  url: node.mediaUrl,
+                  type: node.mediaType,
+                  fileName: node.fileName,
+                }
+              : undefined,
           );
           // Fora da janela de 24h e sem template aprovado → NÃO envia e PARA o
           // bot, pra nunca mandar mensagem livre fora do template (Meta).
@@ -747,6 +754,7 @@ export class CadencesService implements OnModuleInit {
     organizationId: string,
     text: string,
     templateId?: string,
+    media?: { url?: string; type?: 'DOCUMENT' | 'IMAGE'; fileName?: string },
   ): Promise<'sent' | 'blocked' | 'skipped'> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
@@ -769,6 +777,55 @@ export class CadencesService implements OnModuleInit {
       windowOpen =
         !!lastInbound &&
         Date.now() - lastInbound.createdAt.getTime() < 24 * 60 * 60 * 1000;
+    }
+
+    // ANEXO (documento/imagem — ex.: catálogo/PDF). Fora da janela de 24h no
+    // WhatsApp Oficial, mídia livre também é bloqueada pela Meta (exigiria
+    // template com cabeçalho de mídia) → bloqueia. Dentro da janela ou outros
+    // canais, envia o arquivo; `text` vira legenda.
+    if (media?.url) {
+      if (isWhatsAppOfficial && !windowOpen) {
+        this.logger.warn(
+          `Salesbot BLOQUEADO (mídia) na conv ${conversationId}: fora da janela de 24h — anexo NÃO enviado.`,
+        );
+        return 'blocked';
+      }
+      const contentType =
+        media.type === 'IMAGE'
+          ? MessageContentType.IMAGE
+          : MessageContentType.DOCUMENT;
+      const content: Record<string, any> = { mediaUrl: media.url };
+      if (media.fileName) content.fileName = media.fileName;
+      if (text.trim()) content.caption = text.trim();
+      const message = await this.prisma.message.create({
+        data: {
+          conversationId,
+          direction: MessageDirection.OUTBOUND,
+          type: contentType,
+          content,
+          status: MessageStatus.QUEUED,
+          senderId: null,
+          metadata: { source: 'cadence' },
+        },
+      });
+      await this.outbound.add(
+        'send-outbound',
+        {
+          messageId: message.id,
+          channelId: conversation.channelId,
+          contactExternalId: cc.externalId,
+          message: {
+            type: media.type === 'IMAGE' ? 'IMAGE' : 'DOCUMENT',
+            content,
+          },
+        },
+        {
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 2000 },
+          removeOnComplete: true,
+        },
+      );
+      return 'sent';
     }
 
     // FORA da janela de 24h num canal WhatsApp Oficial: a Meta SÓ aceita

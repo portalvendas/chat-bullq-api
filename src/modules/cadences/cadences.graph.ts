@@ -42,6 +42,11 @@ export interface GraphNode {
   text?: string;
   /// Template aprovado (WhatsappTemplate.id) usado quando FORA da janela de 24h.
   templateId?: string;
+  /// Anexo (catálogo/PDF/imagem): URL pública do arquivo. Enviado como
+  /// DOCUMENT/IMAGE dentro da janela de 24h; `text` vira legenda (caption).
+  mediaUrl?: string;
+  mediaType?: 'DOCUMENT' | 'IMAGE';
+  fileName?: string;
   // wait
   delayMinutes?: number;
   untilReply?: boolean;

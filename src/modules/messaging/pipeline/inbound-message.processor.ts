@@ -321,6 +321,12 @@ export class InboundMessageProcessor extends WorkerHost {
         }).catch((err) =>
           this.logger.warn(`notifyNewInboundMessage falhou: ${err?.message}`),
         );
+        // Janela de 24h reabriu → remove a tag "+24h" na hora (best-effort).
+        void this.prisma.conversationTag
+          .deleteMany({
+            where: { conversationId, tag: { name: '+24h' } },
+          })
+          .catch(() => undefined);
       }
 
       if (

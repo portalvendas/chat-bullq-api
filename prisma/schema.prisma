@@ -1554,6 +1554,8 @@ model Cadence {
   triggerValue      String?  @map("trigger_value")
   stopOnReply       Boolean  @default(true) @map("stop_on_reply")
   businessHoursOnly Boolean  @default(false) @map("business_hours_only")
+  /// Origens permitidas: lista de channelIds. Vazio = dispara para TODAS.
+  channelFilter     Json     @default("[]") @map("channel_filter")
   /// [{ delayMinutes, text }] em ordem — formato LINEAR legado (mantido p/ compat)
   steps             Json     @default("[]")
   /// { nodes:[{id,type,...}], edges:[{from,fromHandle,to}] } — grafo do salesbot.

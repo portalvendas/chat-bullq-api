@@ -49,6 +49,8 @@ export interface CadenceInput {
   triggerValue?: string | null;
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
+  /** Origens permitidas (channelIds). Vazio/ausente = todas. */
+  channelFilter?: string[];
   steps?: Array<WorkflowStep | LegacyStep>;
   graph?: WorkflowGraph;
   onEnd?: CadenceOnEnd;
@@ -122,6 +124,7 @@ export class CadencesService implements OnModuleInit {
         triggerValue: dto.triggerValue ?? null,
         stopOnReply: dto.stopOnReply ?? true,
         businessHoursOnly: dto.businessHoursOnly ?? false,
+        channelFilter: (dto.channelFilter ?? []) as any,
         steps: (dto.steps ?? []) as any,
         graph: (dto.graph ?? {}) as any,
         onEnd: (dto.onEnd ?? {}) as any,
@@ -142,6 +145,9 @@ export class CadencesService implements OnModuleInit {
         ...(dto.stopOnReply !== undefined ? { stopOnReply: dto.stopOnReply } : {}),
         ...(dto.businessHoursOnly !== undefined
           ? { businessHoursOnly: dto.businessHoursOnly }
+          : {}),
+        ...(dto.channelFilter !== undefined
+          ? { channelFilter: dto.channelFilter as any }
           : {}),
         ...(dto.steps !== undefined ? { steps: dto.steps as any } : {}),
         ...(dto.graph !== undefined ? { graph: dto.graph as any } : {}),
@@ -239,6 +245,21 @@ export class CadencesService implements OnModuleInit {
   ): Promise<{ started: boolean; reason?: string }> {
     const cadence = await this.get(id, organizationId);
     if (!cadence.active) return { started: false, reason: 'inactive' };
+
+    // Filtro de ORIGEM: se o bot está restrito a canais específicos, só dispara
+    // quando a conversa é de um desses canais. Vazio = todas as origens.
+    const channelFilter = Array.isArray(cadence.channelFilter)
+      ? (cadence.channelFilter as string[])
+      : [];
+    if (channelFilter.length > 0) {
+      const conv = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, organizationId },
+        select: { channelId: true },
+      });
+      if (!conv || !channelFilter.includes(conv.channelId)) {
+        return { started: false, reason: 'channel_filtered' };
+      }
+    }
 
     const graph = resolveGraph(cadence);
     const entry = startNode(graph);
@@ -445,12 +466,18 @@ export class CadencesService implements OnModuleInit {
 
       if (node.type === 'message') {
         if (node.text?.trim() || node.templateId) {
-          await this.sendMessage(
+          const res = await this.sendMessage(
             run.conversationId,
             cadence.organizationId,
             node.text ?? '',
             node.templateId,
           );
+          // Fora da janela de 24h e sem template aprovado → NÃO envia e PARA o
+          // bot, pra nunca mandar mensagem livre fora do template (Meta).
+          if (res === 'blocked') {
+            await this.finish(runId, 'STOPPED', 'outside_24h_no_template');
+            return;
+          }
         }
       } else if (node.type === 'action') {
         await this.applyAction(cadence.organizationId, run.conversationId, {
@@ -633,16 +660,16 @@ export class CadencesService implements OnModuleInit {
     organizationId: string,
     text: string,
     templateId?: string,
-  ) {
+  ): Promise<'sent' | 'blocked' | 'skipped'> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
       include: { channel: true, contact: { include: { channels: true } } },
     });
-    if (!conversation) return;
+    if (!conversation) return 'skipped';
     const cc = conversation.contact.channels.find(
       (x) => x.channelId === conversation.channelId,
     );
-    if (!cc) return;
+    if (!cc) return 'skipped';
 
     const isWhatsAppOfficial = conversation.channel?.type === 'WHATSAPP_OFFICIAL';
     let windowOpen = true;
@@ -657,11 +684,16 @@ export class CadencesService implements OnModuleInit {
         Date.now() - lastInbound.createdAt.getTime() < 24 * 60 * 60 * 1000;
     }
 
-    // FORA da janela num canal WhatsApp → tenta template aprovado.
-    if (isWhatsAppOfficial && !windowOpen && templateId) {
-      const tpl = await this.prisma.whatsappTemplate.findFirst({
-        where: { id: templateId, organizationId },
-      });
+    // FORA da janela de 24h num canal WhatsApp Oficial: a Meta SÓ aceita
+    // template aprovado. Se houver template aprovado, envia; senão, BLOQUEIA
+    // (não manda texto livre, que seria rejeitado/penalizado). O chamador
+    // interrompe o bot ao ver 'blocked'.
+    if (isWhatsAppOfficial && !windowOpen) {
+      const tpl = templateId
+        ? await this.prisma.whatsappTemplate.findFirst({
+            where: { id: templateId, organizationId },
+          })
+        : null;
       if (tpl && tpl.status === 'APPROVED' && (tpl.metaName || tpl.name)) {
         const metaName = tpl.metaName ?? this.toMetaName(tpl.name);
         const message = await this.prisma.message.create({
@@ -692,15 +724,16 @@ export class CadencesService implements OnModuleInit {
             removeOnComplete: true,
           },
         );
-        return;
+        return 'sent';
       }
       this.logger.warn(
-        `Conv ${conversationId} fora da janela de 24h e sem template aprovado — texto livre pode ser bloqueado pela Meta.`,
+        `Salesbot BLOQUEADO na conv ${conversationId}: fora da janela de 24h e sem template aprovado — mensagem NÃO enviada (evita envio fora do template).`,
       );
+      return 'blocked';
     }
 
-    // Texto livre (dentro da janela, outros canais, ou fallback).
-    if (!text.trim()) return;
+    // Texto livre (dentro da janela ou outros canais).
+    if (!text.trim()) return 'skipped';
     const message = await this.prisma.message.create({
       data: {
         conversationId,
@@ -726,6 +759,7 @@ export class CadencesService implements OnModuleInit {
         removeOnComplete: true,
       },
     );
+    return 'sent';
   }
 
   /** Normaliza nome p/ o padrão da Meta (fallback quando falta metaName). */

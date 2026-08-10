@@ -818,4 +818,82 @@ export class ConversationsService {
     );
     return contactChannel?.externalId ?? null;
   }
+
+  /**
+   * Troca o canal de WhatsApp da conversa (ex.: sair do OFICIAL travado pela
+   * janela de 24h e passar pra um Z-API, que manda texto livre sem template).
+   * Garante o contactChannel no canal destino (chaveado pelo telefone) e remove
+   * a tag "+24h" (a janela não se aplica fora do canal oficial).
+   */
+  async switchChannel(
+    organizationId: string,
+    conversationId: string,
+    targetChannelId: string,
+  ): Promise<{ conversationId: string; channelId: string; channelType: string }> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
+      include: { contact: { select: { id: true, name: true, phone: true } } },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    const phone = conv.contact?.phone?.replace(/\D/g, '');
+    if (!conv.contact || !phone) {
+      throw new BadRequestException('Contato sem telefone válido para trocar de canal');
+    }
+
+    const target = await this.prisma.channel.findFirst({
+      where: {
+        id: targetChannelId,
+        organizationId,
+        deletedAt: null,
+        type: {
+          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
+        },
+      },
+      select: { id: true, type: true },
+    });
+    if (!target) throw new BadRequestException('Canal de WhatsApp inválido');
+    if (target.id === conv.channelId) {
+      return { conversationId, channelId: target.id, channelType: target.type };
+    }
+
+    // Garante o contactChannel no canal destino (chaveado pelo telefone).
+    const cc = await this.prisma.contactChannel.findFirst({
+      where: { contactId: conv.contact.id, channelId: target.id },
+      select: { id: true },
+    });
+    if (!cc) {
+      await this.prisma.contactChannel.create({
+        data: {
+          contactId: conv.contact.id,
+          channelId: target.id,
+          externalId: phone,
+          profileName: conv.contact.name,
+        },
+      });
+    }
+
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { channelId: target.id },
+    });
+
+    // A tag +24h é específica do canal OFICIAL — remove ao sair dele.
+    await this.prisma.conversationTag
+      .deleteMany({ where: { conversationId, tag: { name: '+24h' } } })
+      .catch(() => undefined);
+
+    this.realtimeGateway.emitToChannel(target.id, 'conversation:updated', {
+      conversationId,
+      channelId: target.id,
+    });
+    this.realtimeGateway.emitToConversation(conversationId, 'conversation:updated', {
+      conversationId,
+      channelId: target.id,
+    });
+
+    this.logger.log(
+      `Conversa ${conversationId} trocada para canal ${target.id} (${target.type})`,
+    );
+    return { conversationId, channelId: target.id, channelType: target.type };
+  }
 }

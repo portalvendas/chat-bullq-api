@@ -312,6 +312,19 @@ export class ConversationsController {
     return this.service.reopen(id, orgId, userId, access);
   }
 
+  @Post(':id/switch-channel')
+  @ApiOperation({
+    summary:
+      'Troca o canal de WhatsApp da conversa (ex.: do Oficial travado pela janela de 24h para um Z-API que envia texto livre)',
+  })
+  switchChannel(
+    @Param('id') id: string,
+    @CurrentOrg('id') orgId: string,
+    @Body() body: { channelId: string },
+  ) {
+    return this.service.switchChannel(orgId, id, body?.channelId);
+  }
+
   @Post(':id/sync')
   @ApiOperation({
     summary:

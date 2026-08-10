@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ChannelType } from '@prisma/client';
 import {
   NormalizedInboundMessage,
+  NormalizedMessageContent,
   NormalizedOutboundMessage,
   MessageContentType,
   StatusUpdate,
@@ -9,19 +10,20 @@ import {
 
 /**
  * Mapeia payloads do Z-API <-> formato normalizado interno.
- * MVP (Fase 1): apenas TEXTO. Mídia/localização/reação → Fase 2.
+ * Suporta TEXTO e MÍDIA (imagem/vídeo/áudio/documento/figurinha). A URL de
+ * mídia que o Z-API entrega é TEMPORÁRIA (Backblaze `temp-file-download`);
+ * quem a torna durável é o pipeline (baixa + re-hospeda no nosso storage).
  */
 @Injectable()
 export class ZApiMessageMapper {
-  /** Webhook `ReceivedCallback` → mensagem normalizada (só texto no MVP). */
+  /** Webhook `ReceivedCallback` → mensagem normalizada (texto ou mídia). */
   normalizeInbound(event: any): NormalizedInboundMessage | null {
     if (!event || event.type !== 'ReceivedCallback') return null;
 
-    const text: string | undefined = event.text?.message;
-    if (typeof text !== 'string' || text.length === 0) {
-      // MVP texto: ignora mídia e outros tipos por ora.
-      return null;
-    }
+    // Resolve tipo + conteúdo (texto OU mídia). Tipos não suportados
+    // (localização, contato, enquete…) retornam null e são ignorados por ora.
+    const parsed = this.resolveContent(event);
+    if (!parsed) return null;
 
     const isGroup = event.isGroup === true;
     const isEcho = event.fromMe === true;
@@ -62,8 +64,8 @@ export class ZApiMessageMapper {
       contactAvatarUrl: event.senderPhoto || event.photo || undefined,
       channelType: ChannelType.WHATSAPP_ZAPI,
       timestamp: event.momment ? new Date(Number(event.momment)) : new Date(),
-      type: MessageContentType.TEXT,
-      content: { text },
+      type: parsed.type,
+      content: parsed.content,
       // Reply/quote nativo do WhatsApp. No Z-API, o id da msg citada vem no
       // top-level `referenceMessageId` (≠ Cloud API, que usa `context.id`).
       // Guardamos só o id externo aqui; o pipeline resolve → nossa message e
@@ -76,6 +78,81 @@ export class ZApiMessageMapper {
       senderName: event.senderName,
       rawPayload: event,
     };
+  }
+
+  /**
+   * Extrai o tipo + conteúdo de um `ReceivedCallback`. Cada tipo de mídia vem
+   * num objeto próprio no top-level com uma `*Url` (imageUrl, videoUrl…). A URL
+   * é temporária — o pipeline re-hospeda depois. Retorna null para o que ainda
+   * não suportamos (localização, contato, enquete), pra ignorar sem quebrar.
+   *
+   * @example entrada  { image: { imageUrl, mimeType, caption } }
+   * @example saída    { type: 'IMAGE', content: { mediaUrl, mimeType, caption } }
+   */
+  private resolveContent(
+    event: any,
+  ): { type: MessageContentType; content: NormalizedMessageContent } | null {
+    const text: string | undefined = event.text?.message;
+    if (typeof text === 'string' && text.length > 0) {
+      return { type: MessageContentType.TEXT, content: { text } };
+    }
+
+    if (event.image?.imageUrl) {
+      return {
+        type: MessageContentType.IMAGE,
+        content: {
+          mediaUrl: String(event.image.imageUrl),
+          mimeType: event.image.mimeType || undefined,
+          caption: event.image.caption || undefined,
+        },
+      };
+    }
+
+    if (event.video?.videoUrl) {
+      return {
+        type: MessageContentType.VIDEO,
+        content: {
+          mediaUrl: String(event.video.videoUrl),
+          mimeType: event.video.mimeType || undefined,
+          caption: event.video.caption || undefined,
+        },
+      };
+    }
+
+    if (event.audio?.audioUrl) {
+      return {
+        type: MessageContentType.AUDIO,
+        content: {
+          mediaUrl: String(event.audio.audioUrl),
+          mimeType: event.audio.mimeType || undefined,
+        },
+      };
+    }
+
+    if (event.document?.documentUrl) {
+      return {
+        type: MessageContentType.DOCUMENT,
+        content: {
+          mediaUrl: String(event.document.documentUrl),
+          mimeType: event.document.mimeType || undefined,
+          fileName:
+            event.document.fileName || event.document.title || undefined,
+          caption: event.document.caption || undefined,
+        },
+      };
+    }
+
+    if (event.sticker?.stickerUrl) {
+      return {
+        type: MessageContentType.STICKER,
+        content: {
+          mediaUrl: String(event.sticker.stickerUrl),
+          mimeType: event.sticker.mimeType || undefined,
+        },
+      };
+    }
+
+    return null;
   }
 
   /** Webhooks `DeliveryCallback` / `MessageStatusCallback` → StatusUpdate. */

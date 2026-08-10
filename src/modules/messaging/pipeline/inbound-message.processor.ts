@@ -1,7 +1,9 @@
 import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
+import axios from 'axios';
 import { PrismaService } from '../../../database/prisma.service';
+import { UploadsService } from '../messages/uploads.service';
 import { IdempotencyService } from './idempotency.service';
 import { ContactResolverService } from './contact-resolver.service';
 import { ConversationResolverService } from './conversation-resolver.service';
@@ -110,6 +112,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly cadences: CadencesService,
     private readonly pipelines: PipelinesService,
     private readonly notifications: NotificationsService,
+    private readonly uploads: UploadsService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -243,6 +246,15 @@ export class InboundMessageProcessor extends WorkerHost {
       const direction = isEcho
         ? MessageDirection.OUTBOUND
         : MessageDirection.INBOUND;
+
+      // Z-API entrega mídia via URL TEMPORÁRIA (Backblaze). Baixamos e
+      // re-hospedamos no nosso storage ANTES de persistir, pra o link não
+      // expirar e a foto/vídeo/áudio/doc aparecer no inbox de forma durável.
+      // Fora da TX (é I/O de rede). Falha aqui não derruba a mensagem: cai no
+      // fallback da URL original (melhor uma imagem temporária que nenhuma).
+      if (!isEcho) {
+        await this.mirrorZapiMediaIfNeeded(channelId, message);
+      }
 
       // Wrap the message persist + outbox emit + lastMessageAt in a single
       // TX so the automation engine can never observe a message that
@@ -607,6 +619,77 @@ export class InboundMessageProcessor extends WorkerHost {
         `buildReplyToMetadata falhou (conv ${conversationId}, ext ${replyTo.externalMessageId}): ${err?.message ?? err}`,
       );
       return base;
+    }
+  }
+
+  /** Tipos que carregam mídia e podem ser re-hospedados. */
+  private static readonly MEDIA_TYPES = new Set<string>([
+    'IMAGE',
+    'VIDEO',
+    'AUDIO',
+    'DOCUMENT',
+    'STICKER',
+  ]);
+
+  /**
+   * Baixa a mídia de uma URL temporária do Z-API e re-hospeda no nosso storage
+   * persistente, trocando `content.mediaUrl` pela URL durável. Só age quando:
+   *  - o canal é Z-API (WHATSAPP_ZAPI);
+   *  - o tipo é mídia (imagem/vídeo/áudio/documento/figurinha);
+   *  - `content.mediaUrl` é uma URL http externa (não já re-hospedada por nós).
+   *
+   * Idempotente na prática: se já for uma URL `/api/v1/uploads/`, não refaz.
+   * NUNCA lança — qualquer erro (download/timeout/limite) vira warn e mantém a
+   * URL original, pra mensagem ainda aparecer (ainda que o link possa expirar).
+   *
+   * @example antes  content.mediaUrl = 'https://f004.backblazeb2.com/.../x.jpg'
+   * @example depois content.mediaUrl = 'https://<app>/api/v1/uploads/inbound/<canal>/<data>/<hash>.jpg'
+   */
+  private async mirrorZapiMediaIfNeeded(
+    channelId: string,
+    message: NormalizedInboundMessage,
+  ): Promise<void> {
+    if (message.channelType !== ChannelType.WHATSAPP_ZAPI) return;
+    if (!InboundMessageProcessor.MEDIA_TYPES.has(String(message.type))) return;
+
+    const content = (message.content ?? {}) as Record<string, any>;
+    const url = content.mediaUrl;
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+    // Já é nosso (re-host anterior / retry) — não baixa de novo.
+    if (url.includes('/api/v1/uploads/')) return;
+
+    try {
+      const resp = await axios.get<ArrayBuffer>(url, {
+        responseType: 'arraybuffer',
+        timeout: 60_000,
+        maxContentLength: UploadsService.MAX_INBOUND_BYTES,
+        maxBodyLength: UploadsService.MAX_INBOUND_BYTES,
+      });
+      const buffer = Buffer.from(resp.data);
+      const mimeType =
+        (typeof content.mimeType === 'string' && content.mimeType) ||
+        (resp.headers?.['content-type'] as string) ||
+        'application/octet-stream';
+
+      const saved = await this.uploads.saveInboundMedia({
+        buffer,
+        mimeType,
+        channelId,
+        originalFilename:
+          typeof content.fileName === 'string' ? content.fileName : null,
+      });
+
+      content.mediaUrl = saved.url;
+      content.mimeType = saved.mimeType;
+      content.fileSize = saved.size;
+      message.content = content as any;
+      this.logger.log(
+        `Z-API media re-hospedada: msg=${message.externalMessageId} type=${message.type} -> ${saved.url}`,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `Z-API media mirror falhou (msg=${message.externalMessageId}, url=${url}): ${err?.message ?? err} — mantém URL temporária`,
+      );
     }
   }
 

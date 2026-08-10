@@ -867,6 +867,12 @@ export class PipelinesService {
     });
     await this.applySourceTag(organizationId, contactId, ctx);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });
+    // Dispara Salesbots com gatilho STAGE_ENTERED na etapa de entrada — assim o
+    // Boas-Vindas roda em LEAD NOVO, não só quando o card é movido pra cá.
+    // Best-effort: nunca deixa a automação derrubar a criação do card.
+    void this.cadences
+      .onStageEntered(organizationId, conversationId, target.stageId)
+      .catch(() => undefined);
     return card;
   }
 

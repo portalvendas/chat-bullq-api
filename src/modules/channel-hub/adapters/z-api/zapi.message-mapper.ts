@@ -64,6 +64,13 @@ export class ZApiMessageMapper {
       timestamp: event.momment ? new Date(Number(event.momment)) : new Date(),
       type: MessageContentType.TEXT,
       content: { text },
+      // Reply/quote nativo do WhatsApp. No Z-API, o id da msg citada vem no
+      // top-level `referenceMessageId` (≠ Cloud API, que usa `context.id`).
+      // Guardamos só o id externo aqui; o pipeline resolve → nossa message e
+      // enriquece com preview+remetente pra UI renderizar a quote box.
+      replyTo: event.referenceMessageId
+        ? { externalMessageId: String(event.referenceMessageId) }
+        : undefined,
       isGroup,
       isEcho,
       senderName: event.senderName,

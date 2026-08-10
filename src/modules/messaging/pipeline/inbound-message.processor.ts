@@ -487,6 +487,15 @@ export class InboundMessageProcessor extends WorkerHost {
       return { message: updated, isNew: false };
     }
 
+    // Resolve o quote ANTES do create: se a msg cita outra (reply nativo),
+    // enriquece com preview+remetente pra UI renderizar a quote box também
+    // no inbound (o outbound já faz isso via messages.service).
+    const replyToMeta = await this.buildReplyToMetadata(
+      tx,
+      conversationId,
+      message.replyTo,
+    );
+
     try {
       const created = await tx.message.create({
         data: {
@@ -502,7 +511,7 @@ export class InboundMessageProcessor extends WorkerHost {
           metadata: {
             rawPayload: safeJson(message.rawPayload),
             isEcho,
-            replyTo: message.replyTo ? safeJson(message.replyTo) : null,
+            replyTo: replyToMeta,
           },
         },
       });
@@ -521,6 +530,83 @@ export class InboundMessageProcessor extends WorkerHost {
         if (racer) return { message: racer, isNew: false };
       }
       throw err;
+    }
+  }
+
+  /**
+   * Enriquece o `replyTo` de uma mensagem INBOUND com o preview da mensagem
+   * citada, na MESMA shape que o outbound (messages.service) produz, pra a UI
+   * renderizar a quote box em cima da bolha — não só no app do cliente.
+   *
+   * O webhook só nos entrega o id externo da msg citada:
+   *   - WhatsApp Cloud API (oficial): `context.id`
+   *   - Z-API:                        `referenceMessageId`
+   *   - Zappfy/Uazapi:                `contextInfo.stanzaId`
+   * Resolvemos esse id → nossa message interna (por conversa + externalId) e
+   * extraímos `previewText` + `senderName` + `messageId` (pro click-to-scroll).
+   *
+   * Degradação segura: se a msg citada não estiver no histórico (ex.: reply a
+   * uma mensagem antiga não sincronizada), ou se for um reply a story/ad do
+   * Instagram (sem `externalMessageId`), devolvemos o contexto cru — a quote
+   * box some, mas nada quebra. Nunca lança: qualquer erro vira warn + fallback.
+   *
+   * @example entrada  replyTo = { externalMessageId: 'wamid.XXX' }
+   * @example saída     { externalMessageId: 'wamid.XXX', messageId: 'cuid',
+   *                      previewText: 'Qual combina mais…', senderName: 'Você' }
+   */
+  private async buildReplyToMetadata(
+    tx: Prisma.TransactionClient,
+    conversationId: string,
+    replyTo?: NormalizedInboundMessage['replyTo'],
+  ): Promise<any> {
+    if (!replyTo) return null;
+    const base = safeJson(replyTo); // preserva story/ad/externalMessageId
+    if (!replyTo.externalMessageId) return base; // story/mention/ad puro
+
+    try {
+      const original = await tx.message.findUnique({
+        where: {
+          uq_msg_conv_external: {
+            conversationId,
+            externalId: replyTo.externalMessageId,
+          },
+        },
+        select: {
+          id: true,
+          content: true,
+          type: true,
+          senderName: true,
+          direction: true,
+          sender: { select: { name: true } },
+        },
+      });
+      // Citou uma msg que não temos no histórico carregado — mantém o cru.
+      if (!original) return base;
+
+      const c = (original.content ?? {}) as Record<string, any>;
+      const previewText =
+        (typeof c.text === 'string' && c.text) ||
+        (typeof c.caption === 'string' && c.caption) ||
+        replyMediaLabel(original.type);
+      // Nossa msg (OUTBOUND) → "Você" (fallback); msg do cliente (INBOUND) →
+      // nome de quem mandou. Espelha a lógica do outbound em messages.service.
+      const senderName =
+        original.direction === MessageDirection.INBOUND
+          ? (original.senderName ?? undefined)
+          : (original.sender?.name ?? original.senderName ?? 'Você');
+
+      return {
+        ...base,
+        messageId: original.id,
+        externalMessageId: replyTo.externalMessageId,
+        previewText,
+        senderName,
+      };
+    } catch (err: any) {
+      this.logger.warn(
+        `buildReplyToMetadata falhou (conv ${conversationId}, ext ${replyTo.externalMessageId}): ${err?.message ?? err}`,
+      );
+      return base;
     }
   }
 
@@ -924,5 +1010,23 @@ function safeJson(value: unknown): any {
     return JSON.parse(JSON.stringify(value ?? null));
   } catch {
     return null;
+  }
+}
+
+/** Rótulo curto pra usar como preview de uma msg citada sem texto (mídia). */
+function replyMediaLabel(type: PrismaContentType | string): string {
+  switch (type) {
+    case 'IMAGE':
+      return '📷 Imagem';
+    case 'AUDIO':
+      return '🎤 Áudio';
+    case 'VIDEO':
+      return '🎬 Vídeo';
+    case 'DOCUMENT':
+      return '📎 Documento';
+    case 'STICKER':
+      return '💬 Figurinha';
+    default:
+      return `[${String(type).toLowerCase()}]`;
   }
 }

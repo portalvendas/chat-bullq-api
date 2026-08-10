@@ -118,12 +118,51 @@ export class ZApiMessageMapper {
     contactExternalId: string,
   ): { endpoint: string; payload: Record<string, any> } {
     const phone = contactExternalId.replace(/\D/g, '');
+    const c = (message.content ?? {}) as Record<string, any>;
+    // Legenda: usa caption; no fallback aproveita o texto (nós às vezes
+    // mandamos o texto do nó como legenda do anexo).
+    const caption: string | undefined = c.caption ?? c.text ?? undefined;
+
     switch (message.type) {
+      case MessageContentType.IMAGE:
+        return {
+          endpoint: '/send-image',
+          payload: { phone, image: c.mediaUrl, caption },
+        };
+
+      case MessageContentType.VIDEO:
+        return {
+          endpoint: '/send-video',
+          payload: { phone, video: c.mediaUrl, caption },
+        };
+
+      case MessageContentType.AUDIO:
+        return {
+          // Áudio comum (não PTT). Se precisar de "gravação de voz", trocar
+          // por /send-ptt no futuro.
+          endpoint: '/send-audio',
+          payload: { phone, audio: c.mediaUrl },
+        };
+
+      case MessageContentType.DOCUMENT: {
+        // Z-API exige a extensão no path: /send-document/{extension}.
+        const fileName: string = c.fileName || 'arquivo';
+        const ext =
+          (fileName.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') ||
+          (typeof c.mimeType === 'string' && c.mimeType.includes('pdf')
+            ? 'pdf'
+            : 'bin');
+        return {
+          endpoint: `/send-document/${ext}`,
+          payload: { phone, document: c.mediaUrl, fileName, caption },
+        };
+      }
+
       case MessageContentType.TEXT:
       default:
         return {
           endpoint: '/send-text',
-          payload: { phone, message: message.content.text ?? '' },
+          payload: { phone, message: c.text ?? '' },
         };
     }
   }

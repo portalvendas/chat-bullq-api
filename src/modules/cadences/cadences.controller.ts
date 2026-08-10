@@ -55,6 +55,15 @@ export class CadencesController {
     return this.service.remove(id, orgId);
   }
 
+  @Get('active/:conversationId')
+  @ApiOperation({ summary: 'Salesbots ativos (rodando) numa conversa' })
+  active(
+    @CurrentOrg('id') orgId: string,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.service.activeForConversation(orgId, conversationId);
+  }
+
   @Post(':id/start')
   @ApiOperation({ summary: 'Inicia a cadência numa conversa' })
   start(

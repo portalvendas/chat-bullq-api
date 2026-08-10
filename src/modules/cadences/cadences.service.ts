@@ -325,6 +325,32 @@ export class CadencesService implements OnModuleInit {
     };
   }
 
+  /** Salesbots ATIVOS (RUNNING/WAITING) operando uma conversa. */
+  async activeForConversation(organizationId: string, conversationId: string) {
+    const runs = await this.prisma.cadenceRun.findMany({
+      where: {
+        conversationId,
+        status: { in: RUNNABLE as any },
+        cadence: { organizationId },
+      },
+      select: {
+        id: true,
+        status: true,
+        currentNodeId: true,
+        startedAt: true,
+        cadence: { select: { id: true, name: true } },
+      },
+      orderBy: { startedAt: 'desc' },
+    });
+    return runs.map((r) => ({
+      runId: r.id,
+      status: r.status,
+      cadenceId: r.cadence.id,
+      name: r.cadence.name,
+      startedAt: r.startedAt,
+    }));
+  }
+
   async start(
     id: string,
     organizationId: string,

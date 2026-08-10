@@ -926,10 +926,40 @@ export class CadencesService implements OnModuleInit {
     const onEnd = (cadence.onEnd as CadenceOnEnd) ?? {};
     try {
       if (onEnd.moveStageId) {
+        // Etapa destino (ordem + funil) e etapa ATUAL do card (antes do move),
+        // pra decidir se dispara o gatilho da etapa destino.
+        const destStage = await this.prisma.pipelineStage.findUnique({
+          where: { id: onEnd.moveStageId },
+          select: { order: true, pipelineId: true },
+        });
+        const cardBefore = destStage
+          ? await this.prisma.card.findFirst({
+              where: {
+                conversationId,
+                organizationId: cadence.organizationId,
+                pipelineId: destStage.pipelineId,
+              },
+              select: { stage: { select: { order: true } } },
+            })
+          : null;
+
         await this.prisma.card.updateMany({
           where: { conversationId, organizationId: cadence.organizationId },
           data: { stageId: onEnd.moveStageId },
         });
+
+        // Dispara os Salesbots com gatilho STAGE_ENTERED da etapa destino —
+        // MAS só em AVANÇO no funil (dest.order > origem.order). Assim um bot
+        // que move o card pra frente encadeia o bot da próxima etapa, sem
+        // risco de loop (dois bots empurrando o card de ida e volta).
+        const oldOrder = cardBefore?.stage?.order;
+        if (destStage && oldOrder != null && destStage.order > oldOrder) {
+          void this.onStageEntered(
+            cadence.organizationId,
+            conversationId,
+            onEnd.moveStageId,
+          ).catch(() => undefined);
+        }
       }
       if (onEnd.tagName) {
         const tag = await this.prisma.tag.upsert({

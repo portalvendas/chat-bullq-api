@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { TinyHttpClient } from './tiny.http-client';
+import { MetaCapiService } from './meta-capi/meta-capi.service';
 
 /** Situações de pedido do Tiny v3 (código → rótulo). */
 const PEDIDO_SITUACOES: Record<string, string> = {
@@ -49,6 +50,7 @@ export class TinyService {
     private readonly prisma: PrismaService,
     private readonly http: TinyHttpClient,
     private readonly config: ConfigService,
+    private readonly metaCapi: MetaCapiService,
   ) {}
 
   // ── OAuth ──────────────────────────────────────────────────────────
@@ -164,6 +166,13 @@ export class TinyService {
         await this.enrichDetails(organizationId, 40);
       } catch (err: any) {
         this.logger.warn(`enrichDetails falhou (best-effort): ${err?.message ?? err}`);
+      }
+      // Meta CAPI: emite Purchase/AddToCart pros documentos que casam com a
+      // config (no-op se desligado). Isolado — nunca derruba o sync.
+      try {
+        await this.metaCapi.emitPending(organizationId);
+      } catch (err: any) {
+        this.logger.warn(`CAPI emitPending falhou (best-effort): ${err?.message ?? err}`);
       }
       await this.prisma.tinyIntegration.update({
         where: { organizationId },

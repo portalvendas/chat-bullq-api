@@ -217,6 +217,8 @@ model Organization {
   instagramComments InstagramComment[]
   tinyIntegration TinyIntegration?
   tinyDocuments   TinyDocument[]
+  metaCapiConfig  MetaCapiConfig?
+  metaCapiEvents  MetaCapiEvent[]
 
   @@map("organizations")
 }
@@ -1961,9 +1963,65 @@ model TinyDocument {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  capiEvents   MetaCapiEvent[]
 
   @@unique([organizationId, kind, tinyId], name: "uq_tinydoc_org_kind_tinyid")
   @@index([organizationId, contactId], name: "idx_tinydoc_org_contact")
   @@index([organizationId, kind], name: "idx_tinydoc_org_kind")
   @@map("tiny_documents")
+}
+
+/// Configuração da integração com a Conversions API (CAPI) da Meta, por org.
+/// Nasce DESLIGADA (enabled=false): nenhum evento sai até ligar. O token fica
+/// aqui (não é exposto no read) — o service mascara na resposta.
+model MetaCapiConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique @map("organization_id")
+  enabled        Boolean  @default(false)
+  /// Pixel/Dataset ID da Meta.
+  pixelId        String?  @map("pixel_id")
+  /// Access token da CAPI (System User) — nunca retornado ao frontend.
+  accessToken    String?  @map("access_token") @db.Text
+  apiVersion     String   @default("v21.0") @map("api_version")
+  /// Código do Test Events (opcional) — valida no painel da Meta sem impactar.
+  testEventCode  String?  @map("test_event_code")
+  currency       String   @default("BRL")
+  /// Situações de PEDIDO (texto) que disparam `Purchase`. Configurável.
+  purchaseSituacoes Json  @default("[\"Faturada\",\"Aprovada\"]") @map("purchase_situacoes")
+  /// Dispara `AddToCart` para orçamentos/propostas.
+  addToCartEnabled  Boolean @default(true) @map("add_to_cart_enabled")
+  /// Situações de ORÇAMENTO que disparam `AddToCart`. Vazio = qualquer.
+  addToCartSituacoes Json @default("[]") @map("add_to_cart_situacoes")
+  lastError      String?  @map("last_error") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("meta_capi_configs")
+}
+
+/// Log + idempotência de eventos CAPI enviados. Unique (documento, evento)
+/// garante um `Purchase`/`AddToCart` por documento.
+model MetaCapiEvent {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  tinyDocumentId String   @map("tiny_document_id")
+  /// Purchase | AddToCart
+  eventName      String   @map("event_name")
+  /// sent | failed
+  status         String
+  httpStatus     Int?     @map("http_status")
+  fbTraceId      String?  @map("fb_trace_id")
+  error          String?  @db.Text
+  value          Decimal? @db.Decimal(14, 2)
+  eventId        String?  @map("event_id")
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tinyDocument TinyDocument @relation(fields: [tinyDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([tinyDocumentId, eventName], name: "uq_capi_doc_event")
+  @@index([organizationId, eventName], name: "idx_capi_org_event")
+  @@map("meta_capi_events")
 }

@@ -13,9 +13,14 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
+import {
+  Body,
+  Put,
+} from '@nestjs/common';
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
 import { Public, CurrentOrg } from '../../common/decorators';
 import { TinyService } from './tiny.service';
+import { MetaCapiService, MetaCapiConfigInput } from './meta-capi/meta-capi.service';
 
 /**
  * Integração com o ERP Olist Tiny (rotas autenticadas).
@@ -33,7 +38,25 @@ import { TinyService } from './tiny.service';
 @UseGuards(JwtAuthGuard, OrgGuard)
 @Controller('tiny')
 export class TinyController {
-  constructor(private readonly service: TinyService) {}
+  constructor(
+    private readonly service: TinyService,
+    private readonly capi: MetaCapiService,
+  ) {}
+
+  @Get('capi/config')
+  @ApiOperation({ summary: 'Config da integração Meta CAPI (token mascarado)' })
+  getCapiConfig(@CurrentOrg('id') orgId: string) {
+    return this.capi.getConfig(orgId);
+  }
+
+  @Put('capi/config')
+  @ApiOperation({ summary: 'Atualiza a config da Meta CAPI' })
+  updateCapiConfig(
+    @CurrentOrg('id') orgId: string,
+    @Body() dto: MetaCapiConfigInput,
+  ) {
+    return this.capi.updateConfig(orgId, dto);
+  }
 
   @Get('oauth/start')
   @ApiOperation({ summary: 'URL de consentimento OAuth do Tiny' })

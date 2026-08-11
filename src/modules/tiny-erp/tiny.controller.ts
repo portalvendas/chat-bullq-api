@@ -6,59 +6,38 @@ import {
   Query,
   Res,
   Logger,
+  UseGuards,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
+import { JwtAuthGuard, OrgGuard } from '../../common/guards';
 import { Public, CurrentOrg } from '../../common/decorators';
 import { TinyService } from './tiny.service';
 
 /**
- * Integração com o ERP Olist Tiny.
- *  - GET /tiny/oauth/start      (autenticado) → URL de consentimento
- *  - GET /tiny/oauth/callback   (público)     → Tiny redireciona aqui; troca o
- *                                                code e volta pro front
- *  - GET /tiny/status           (autenticado) → estado da conexão
- *  - POST /tiny/sync            (autenticado) → sincroniza agora (manual)
- *  - GET /tiny/documents?contactId= (autenticado) → pedidos/orçamentos do lead
- *  - DELETE /tiny/connection    (autenticado) → desconecta
+ * Integração com o ERP Olist Tiny (rotas autenticadas).
+ *  - GET /tiny/oauth/start      → URL de consentimento
+ *  - GET /tiny/status           → estado da conexão
+ *  - POST /tiny/sync            → sincroniza agora (manual)
+ *  - GET /tiny/documents?contactId= → pedidos/orçamentos do lead
+ *  - DELETE /tiny/connection    → desconecta
+ *
+ * O callback do OAuth é PÚBLICO (o Tiny redireciona o browser sem nosso JWT)
+ * e vive no {@link TinyOAuthCallbackController} pra não colidir com os guards.
  */
 @ApiTags('Tiny ERP')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, OrgGuard)
 @Controller('tiny')
 export class TinyController {
-  private readonly logger = new Logger(TinyController.name);
-
-  constructor(
-    private readonly service: TinyService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly service: TinyService) {}
 
   @Get('oauth/start')
   @ApiOperation({ summary: 'URL de consentimento OAuth do Tiny' })
   start(@CurrentOrg('id') orgId: string): Promise<{ url: string }> {
     return this.service.startOAuth(orgId);
-  }
-
-  @Get('oauth/callback')
-  @Public()
-  @ApiOperation({ summary: 'Callback OAuth do Tiny (redireciona pro front)' })
-  async callback(
-    @Query('code') code: string,
-    @Query('state') state: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').replace(/\/$/, '');
-    const done = (q: string) => res.redirect(`${webUrl}/settings/integrations?${q}`);
-    try {
-      if (!code || !state) throw new Error('code/state ausentes');
-      await this.service.handleCallback(code, state);
-      return done('tiny=connected');
-    } catch (err: any) {
-      this.logger.error(`Callback OAuth Tiny falhou: ${err?.message ?? err}`);
-      return done('tiny=error');
-    }
   }
 
   @Get('status')
@@ -88,5 +67,43 @@ export class TinyController {
   async disconnect(@CurrentOrg('id') orgId: string) {
     await this.service.disconnect(orgId);
     return { ok: true };
+  }
+}
+
+/**
+ * Callback OAuth do Tiny — PÚBLICO. O Tiny redireciona o browser pra cá
+ * (sem JWT); identificamos a org pelo `state` assinado e voltamos pro front.
+ * Controller separado porque `@Public()` não desliga guards aplicados via
+ * `@UseGuards` de classe — só o guard global. Sem guards de classe aqui, o
+ * `@Public()` cobre a rota.
+ */
+@ApiTags('Tiny ERP')
+@Controller('tiny/oauth')
+export class TinyOAuthCallbackController {
+  private readonly logger = new Logger(TinyOAuthCallbackController.name);
+
+  constructor(
+    private readonly service: TinyService,
+    private readonly config: ConfigService,
+  ) {}
+
+  @Get('callback')
+  @Public()
+  @ApiOperation({ summary: 'Callback OAuth do Tiny (redireciona pro front)' })
+  async callback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').replace(/\/$/, '');
+    const done = (q: string) => res.redirect(`${webUrl}/settings/integracoes?${q}`);
+    try {
+      if (!code || !state) throw new Error('code/state ausentes');
+      await this.service.handleCallback(code, state);
+      return done('tiny=connected');
+    } catch (err: any) {
+      this.logger.error(`Callback OAuth Tiny falhou: ${err?.message ?? err}`);
+      return done('tiny=error');
+    }
   }
 }

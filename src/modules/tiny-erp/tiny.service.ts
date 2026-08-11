@@ -157,8 +157,14 @@ export class TinyService {
       pedidos = await this.syncPedidos(organizationId, integ.lastPedidosSyncAt);
       orcamentos = await this.syncOrcamentos(organizationId, integ.lastOrcamentosSyncAt);
       // Enriquecimento sob demanda (natureza do pedido + vendedor do orçamento),
-      // capado por rodada pra não estourar rate limit — o cron completa o resto.
-      await this.enrichDetails(organizationId, 150);
+      // lote pequeno por rodada pra respeitar o rate limit do Tiny (120/min) —
+      // o cron (15min) completa o resto ao longo dos ciclos. Isolado: falha
+      // aqui NÃO derruba o sync nem impede o avanço dos watermarks.
+      try {
+        await this.enrichDetails(organizationId, 40);
+      } catch (err: any) {
+        this.logger.warn(`enrichDetails falhou (best-effort): ${err?.message ?? err}`);
+      }
       await this.prisma.tinyIntegration.update({
         where: { organizationId },
         data: {

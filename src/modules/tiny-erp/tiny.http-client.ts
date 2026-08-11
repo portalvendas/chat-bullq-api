@@ -28,6 +28,20 @@ export class TinyHttpClient {
   private readonly apiBase: string;
   private readonly client: AxiosInstance;
 
+  // Throttle proativo: o Tiny limita ~120 req/min POR CONTA (compartilhado
+  // entre apps). Serializamos as chamadas com um intervalo mínimo pra não
+  // estourar. `nextAllowedAt` é o instante em que a próxima request pode sair.
+  private static readonly MIN_INTERVAL_MS = 650; // ~92 req/min, folga de segurança
+  private nextAllowedAt = 0;
+
+  private async throttle(): Promise<void> {
+    const now = Date.now();
+    const wait = this.nextAllowedAt - now;
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    this.nextAllowedAt =
+      Math.max(now, this.nextAllowedAt) + TinyHttpClient.MIN_INTERVAL_MS;
+  }
+
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
@@ -166,10 +180,11 @@ export class TinyHttpClient {
     let token = await this.ensureAccessToken(organizationId);
     const url = `${this.apiBase}/${path.replace(/^\//, '')}`;
 
-    const maxAttempts = 3;
+    const maxAttempts = 5;
     let lastErr: any;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        await this.throttle();
         const { data } = await this.client.get(url, {
           params,
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
@@ -190,7 +205,17 @@ export class TinyHttpClient {
             continue;
           }
         }
-        if ((status === 429 || (status >= 500 && status <= 599)) && attempt < maxAttempts) {
+        if (status === 429 && attempt < maxAttempts) {
+          // Respeita o header de reset (segundos) quando presente; segura TODAS
+          // as próximas requests até o limite liberar.
+          const h = err?.response?.headers ?? {};
+          const resetS = Number(h['x-ratelimit-reset'] ?? h['retry-after'] ?? 3);
+          const waitMs = (Number.isFinite(resetS) ? Math.min(resetS, 65) : 3) * 1000 + 1000;
+          this.nextAllowedAt = Date.now() + waitMs;
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+        if (status >= 500 && status <= 599 && attempt < maxAttempts) {
           await new Promise((r) => setTimeout(r, 500 * attempt));
           continue;
         }

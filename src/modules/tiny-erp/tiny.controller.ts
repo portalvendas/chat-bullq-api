@@ -4,6 +4,7 @@ import {
   Post,
   Delete,
   Query,
+  Param,
   Res,
   Logger,
   UseGuards,
@@ -60,6 +61,30 @@ export class TinyController {
   ) {
     if (!contactId) throw new BadRequestException('contactId é obrigatório');
     return this.service.listForContact(orgId, contactId);
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Totais de pedidos e propostas (cards do topo)' })
+  summary(@CurrentOrg('id') orgId: string) {
+    return this.service.summary(orgId);
+  }
+
+  @Get('orders')
+  @ApiOperation({ summary: 'Lista paginada de pedidos/orçamentos com o lead vinculado' })
+  orders(
+    @CurrentOrg('id') orgId: string,
+    @Query('kind') kind: 'PEDIDO' | 'ORCAMENTO',
+    @Query('page') page = '1',
+    @Query('limit') limit = '30',
+  ) {
+    const k = kind === 'ORCAMENTO' ? 'ORCAMENTO' : 'PEDIDO';
+    return this.service.listDocuments(orgId, k, Number(page) || 1, Number(limit) || 30);
+  }
+
+  @Get('documents/:id/items')
+  @ApiOperation({ summary: 'Itens de um pedido/orçamento (sob demanda)' })
+  items(@CurrentOrg('id') orgId: string, @Param('id') id: string) {
+    return this.service.getItems(orgId, id);
   }
 
   @Delete('connection')

@@ -245,6 +245,16 @@ export class TinyHttpClient {
     return this.get(organizationId, `contatos/${contatoId}`);
   }
 
+  /** Detalhe de um pedido — inclui os `itens` (a listagem não traz). */
+  getPedido(organizationId: string, pedidoId: string | number): Promise<any> {
+    return this.get(organizationId, `pedidos/${pedidoId}`);
+  }
+
+  /** Detalhe de um orçamento (proposta) — inclui os `itens`. */
+  getOrcamento(organizationId: string, orcamentoId: string | number): Promise<any> {
+    return this.get(organizationId, `orcamentos/${orcamentoId}`);
+  }
+
   /** Dados da conta conectada (best-effort, pra rotular a integração). */
   async getContaEmpresa(organizationId: string): Promise<any | null> {
     try {

@@ -472,6 +472,120 @@ export class TinyService {
 
   // ── Leitura pro painel ─────────────────────────────────────────────
 
+  /**
+   * Resumo pros cards do topo da tela: soma de valores e contagem, por tipo.
+   * @example { pedidos: { count: 523, total: 184230.50 }, orcamentos: {...} }
+   */
+  async summary(organizationId: string) {
+    const [pedidos, orcamentos] = await Promise.all([
+      this.prisma.tinyDocument.aggregate({
+        where: { organizationId, kind: 'PEDIDO' },
+        _count: { _all: true },
+        _sum: { valor: true },
+      }),
+      this.prisma.tinyDocument.aggregate({
+        where: { organizationId, kind: 'ORCAMENTO' },
+        _count: { _all: true },
+        _sum: { valor: true },
+      }),
+    ]);
+    return {
+      pedidos: {
+        count: pedidos._count._all,
+        total: Number(pedidos._sum.valor ?? 0),
+      },
+      orcamentos: {
+        count: orcamentos._count._all,
+        total: Number(orcamentos._sum.valor ?? 0),
+      },
+    };
+  }
+
+  /**
+   * Listagem paginada de documentos por tipo, com o LEAD vinculado (contato do
+   * CRM) já embutido — pronto pra tabela do frontend. Ordena por data desc.
+   */
+  async listDocuments(
+    organizationId: string,
+    kind: 'PEDIDO' | 'ORCAMENTO',
+    page = 1,
+    limit = 30,
+  ) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = (Math.max(page, 1) - 1) * take;
+    const [total, rows] = await Promise.all([
+      this.prisma.tinyDocument.count({ where: { organizationId, kind } }),
+      this.prisma.tinyDocument.findMany({
+        where: { organizationId, kind },
+        orderBy: [{ data: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take,
+        include: {
+          contact: { select: { id: true, name: true, phone: true, email: true } },
+        },
+      }),
+    ]);
+    return {
+      items: rows.map((d) => ({
+        id: d.id,
+        kind: d.kind,
+        tinyId: d.tinyId,
+        numero: d.numero,
+        situacao: d.situacao,
+        data: d.data,
+        valor: d.valor != null ? Number(d.valor) : null,
+        clienteNome: d.clienteNome,
+        clienteTelefone: d.clienteTelefone,
+        matchedBy: d.matchedBy,
+        // Lead vinculado do CRM (null quando não casou).
+        lead: d.contact
+          ? { id: d.contact.id, name: d.contact.name, phone: d.contact.phone }
+          : null,
+      })),
+      pagination: {
+        page: Math.max(page, 1),
+        limit: take,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / take)),
+      },
+    };
+  }
+
+  /**
+   * Itens de um documento (pedido/orçamento) — buscados SOB DEMANDA no Tiny
+   * (o detalhe traz `itens`, a listagem não). Usado pela linha expansível.
+   * Normaliza pro shape { descricao, sku, quantidade, valorUnitario, valorTotal }.
+   */
+  async getItems(organizationId: string, docId: string) {
+    const doc = await this.prisma.tinyDocument.findFirst({
+      where: { id: docId, organizationId },
+      select: { kind: true, tinyId: true },
+    });
+    if (!doc) throw new BadRequestException('Documento não encontrado');
+
+    const detail =
+      doc.kind === 'PEDIDO'
+        ? await this.http.getPedido(organizationId, doc.tinyId)
+        : await this.http.getOrcamento(organizationId, doc.tinyId);
+
+    const itens: any[] = Array.isArray(detail?.itens) ? detail.itens : [];
+    return {
+      items: itens.map((it) => {
+        const prod = it?.produto ?? {};
+        const qtd = Number(it?.quantidade ?? 0);
+        const unit = Number(it?.valorUnitario ?? it?.valor ?? 0);
+        return {
+          descricao: prod.descricao ?? it?.descricao ?? '(sem descrição)',
+          sku: prod.sku ?? it?.codigo ?? null,
+          quantidade: qtd,
+          valorUnitario: unit,
+          valorTotal: Number((qtd * unit).toFixed(2)),
+          infoAdicional: it?.infoAdicional ?? null,
+        };
+      }),
+    };
+  }
+
   /** Documentos (pedidos + orçamentos) vinculados a um contato, mais recentes primeiro. */
   async listForContact(organizationId: string, contactId: string) {
     const docs = await this.prisma.tinyDocument.findMany({

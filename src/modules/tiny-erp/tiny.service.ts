@@ -18,6 +18,18 @@ const PEDIDO_SITUACOES: Record<string, string> = {
   '9': 'Não Entregue',
 };
 
+/** Situações de pedido que NÃO contam como venda efetiva. */
+const PEDIDO_STATUS_EXCLUIDOS = ['Cancelada', 'Dados Incompletos'];
+
+/** Canais de venda (marketplaces) cuja origem deve ser excluída da tela. */
+const MARKETPLACE_RE =
+  /(mercado ?livre|shopee|magalu|magazine ?luiza|amazon|americanas|b2w|via ?varejo)/i;
+
+interface DateRange {
+  gte?: Date;
+  lte?: Date;
+}
+
 interface MatchInput {
   cpfCnpj?: string | null;
   phone?: string | null;
@@ -144,6 +156,9 @@ export class TinyService {
     try {
       pedidos = await this.syncPedidos(organizationId, integ.lastPedidosSyncAt);
       orcamentos = await this.syncOrcamentos(organizationId, integ.lastOrcamentosSyncAt);
+      // Enriquecimento sob demanda (natureza do pedido + vendedor do orçamento),
+      // capado por rodada pra não estourar rate limit — o cron completa o resto.
+      await this.enrichDetails(organizationId, 150);
       await this.prisma.tinyIntegration.update({
         where: { organizationId },
         data: {
@@ -205,6 +220,24 @@ export class TinyService {
       nome: cli.nome,
     });
     const situacao = PEDIDO_SITUACOES[String(p?.situacao)] ?? String(p?.situacao ?? '');
+    const isMkt = this.isMarketplace(p?.ecommerce);
+    const vendedor = p?.vendedor?.nome ?? null;
+    const common = {
+      numero: p?.numeroPedido != null ? String(p.numeroPedido) : null,
+      situacao,
+      data: this.parseDate(p?.dataCriacao),
+      valor: this.parseDecimal(p?.valor),
+      clienteNome: cli.nome ?? null,
+      clienteCpfCnpj: this.digits(cli.cpfCnpj) || null,
+      clienteTelefone: phone,
+      clienteEmail: cli.email ?? null,
+      tinyContatoId: cli.id != null ? String(cli.id) : null,
+      isMarketplace: isMkt,
+      vendedor,
+      contactId: match?.contactId ?? null,
+      matchedBy: match?.matchedBy ?? null,
+      raw: p,
+    };
     await this.prisma.tinyDocument.upsert({
       where: {
         uq_tinydoc_org_kind_tinyid: {
@@ -213,38 +246,17 @@ export class TinyService {
           tinyId: String(p.id),
         },
       },
-      create: {
-        organizationId,
-        kind: 'PEDIDO',
-        tinyId: String(p.id),
-        numero: p?.numeroPedido != null ? String(p.numeroPedido) : null,
-        situacao,
-        data: this.parseDate(p?.dataCriacao),
-        valor: this.parseDecimal(p?.valor),
-        clienteNome: cli.nome ?? null,
-        clienteCpfCnpj: this.digits(cli.cpfCnpj) || null,
-        clienteTelefone: phone,
-        clienteEmail: cli.email ?? null,
-        tinyContatoId: cli.id != null ? String(cli.id) : null,
-        contactId: match?.contactId ?? null,
-        matchedBy: match?.matchedBy ?? null,
-        raw: p,
-      },
-      update: {
-        numero: p?.numeroPedido != null ? String(p.numeroPedido) : null,
-        situacao,
-        data: this.parseDate(p?.dataCriacao),
-        valor: this.parseDecimal(p?.valor),
-        clienteNome: cli.nome ?? null,
-        clienteCpfCnpj: this.digits(cli.cpfCnpj) || null,
-        clienteTelefone: phone,
-        clienteEmail: cli.email ?? null,
-        tinyContatoId: cli.id != null ? String(cli.id) : null,
-        contactId: match?.contactId ?? null,
-        matchedBy: match?.matchedBy ?? null,
-        raw: p,
-      },
+      create: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), ...common },
+      // natureza NÃO é sobrescrita aqui (vem do enriquecimento). vendedor só
+      // atualiza se veio na listagem (senão preserva o que o detalhe trouxe).
+      update: { ...common, ...(vendedor ? {} : { vendedor: undefined }) },
     });
+  }
+
+  /** True quando a origem do pedido é um marketplace (ML/Shopee/Magalu/Amazon…). */
+  private isMarketplace(ecommerce: any): boolean {
+    const s = `${ecommerce?.nome ?? ''} ${ecommerce?.canalVenda ?? ''}`.trim();
+    return !!s && MARKETPLACE_RE.test(s);
   }
 
   private async syncOrcamentos(organizationId: string, since: Date | null): Promise<number> {
@@ -472,33 +484,160 @@ export class TinyService {
 
   // ── Leitura pro painel ─────────────────────────────────────────────
 
+  /** Converte from/to (ISO/date) num filtro de data pro Prisma. */
+  private buildRange(from?: string, to?: string): DateRange | undefined {
+    const gte = from ? new Date(from) : undefined;
+    const lte = to ? new Date(to) : undefined;
+    const range: DateRange = {};
+    if (gte && !isNaN(gte.getTime())) range.gte = gte;
+    if (lte && !isNaN(lte.getTime())) range.lte = lte;
+    return range.gte || range.lte ? range : undefined;
+  }
+
   /**
-   * Resumo pros cards do topo da tela: soma de valores e contagem, por tipo.
-   * @example { pedidos: { count: 523, total: 184230.50 }, orcamentos: {...} }
+   * Filtro de PEDIDOS "venda efetiva": exclui Cancelado/Dados Incompletos,
+   * exclui origem marketplace e exige natureza de operação "Venda". Aplicado
+   * na tela e nos totais pra refletir só vendas reais.
    */
-  async summary(organizationId: string) {
-    const [pedidos, orcamentos] = await Promise.all([
+  private pedidoWhere(organizationId: string, range?: DateRange) {
+    return {
+      organizationId,
+      kind: 'PEDIDO',
+      situacao: { notIn: PEDIDO_STATUS_EXCLUIDOS },
+      isMarketplace: false,
+      natureza: { contains: 'venda', mode: 'insensitive' as const },
+      ...(range ? { data: range } : {}),
+    };
+  }
+
+  private orcamentoWhere(organizationId: string, range?: DateRange) {
+    return {
+      organizationId,
+      kind: 'ORCAMENTO',
+      ...(range ? { data: range } : {}),
+    };
+  }
+
+  /**
+   * Resumo pros cards do topo: totais (valor + contagem) de pedidos e
+   * propostas, mais o breakdown por vendedor. Respeita o período e os filtros
+   * de venda efetiva. @example { pedidos:{count,total}, orcamentos:{...},
+   * porVendedor:[{ vendedor, pedidosCount, pedidosTotal, propostasCount, propostasTotal }] }
+   */
+  async summary(organizationId: string, from?: string, to?: string) {
+    const range = this.buildRange(from, to);
+    const pw = this.pedidoWhere(organizationId, range);
+    const ow = this.orcamentoWhere(organizationId, range);
+
+    const [pedidos, orcamentos, vendPed, vendOrc] = await Promise.all([
       this.prisma.tinyDocument.aggregate({
-        where: { organizationId, kind: 'PEDIDO' },
+        where: pw,
         _count: { _all: true },
         _sum: { valor: true },
       }),
       this.prisma.tinyDocument.aggregate({
-        where: { organizationId, kind: 'ORCAMENTO' },
+        where: ow,
+        _count: { _all: true },
+        _sum: { valor: true },
+      }),
+      this.prisma.tinyDocument.groupBy({
+        by: ['vendedor'],
+        where: pw,
+        _count: { _all: true },
+        _sum: { valor: true },
+      }),
+      this.prisma.tinyDocument.groupBy({
+        by: ['vendedor'],
+        where: ow,
         _count: { _all: true },
         _sum: { valor: true },
       }),
     ]);
+
+    // Une pedidos e propostas por nome de vendedor.
+    const byVend = new Map<
+      string,
+      { vendedor: string; pedidosCount: number; pedidosTotal: number; propostasCount: number; propostasTotal: number }
+    >();
+    const key = (v: string | null) => v?.trim() || 'Sem vendedor';
+    for (const r of vendPed) {
+      const k = key(r.vendedor);
+      const e = byVend.get(k) ?? { vendedor: k, pedidosCount: 0, pedidosTotal: 0, propostasCount: 0, propostasTotal: 0 };
+      e.pedidosCount += r._count._all;
+      e.pedidosTotal += Number(r._sum.valor ?? 0);
+      byVend.set(k, e);
+    }
+    for (const r of vendOrc) {
+      const k = key(r.vendedor);
+      const e = byVend.get(k) ?? { vendedor: k, pedidosCount: 0, pedidosTotal: 0, propostasCount: 0, propostasTotal: 0 };
+      e.propostasCount += r._count._all;
+      e.propostasTotal += Number(r._sum.valor ?? 0);
+      byVend.set(k, e);
+    }
+    const porVendedor = [...byVend.values()].sort((a, b) => b.pedidosTotal - a.pedidosTotal);
+
     return {
-      pedidos: {
-        count: pedidos._count._all,
-        total: Number(pedidos._sum.valor ?? 0),
-      },
-      orcamentos: {
-        count: orcamentos._count._all,
-        total: Number(orcamentos._sum.valor ?? 0),
-      },
+      pedidos: { count: pedidos._count._all, total: Number(pedidos._sum.valor ?? 0) },
+      orcamentos: { count: orcamentos._count._all, total: Number(orcamentos._sum.valor ?? 0) },
+      porVendedor,
     };
+  }
+
+  /**
+   * Enriquecimento sob demanda via detalhe do Tiny (capado por rodada):
+   *  - PEDIDO candidato (não cancelado/incompleto, não-marketplace) sem
+   *    natureza → busca detalhe e preenche natureza (+ vendedor se faltar).
+   *  - ORÇAMENTO sem vendedor → busca detalhe e preenche vendedor.
+   * Best-effort: falha numa não derruba as outras. O cron completa ao longo
+   * dos ciclos (rows que continuam nulas são retentadas).
+   */
+  private async enrichDetails(organizationId: string, limit: number): Promise<void> {
+    const half = Math.ceil(limit / 2);
+    const [pedidos, orcamentos] = await Promise.all([
+      this.prisma.tinyDocument.findMany({
+        where: {
+          organizationId,
+          kind: 'PEDIDO',
+          natureza: null,
+          isMarketplace: false,
+          situacao: { notIn: PEDIDO_STATUS_EXCLUIDOS },
+        },
+        select: { id: true, tinyId: true, vendedor: true },
+        take: half,
+      }),
+      this.prisma.tinyDocument.findMany({
+        where: { organizationId, kind: 'ORCAMENTO', vendedor: null },
+        select: { id: true, tinyId: true },
+        take: half,
+      }),
+    ]);
+
+    for (const d of pedidos) {
+      try {
+        const det = await this.http.getPedido(organizationId, d.tinyId);
+        await this.prisma.tinyDocument.update({
+          where: { id: d.id },
+          data: {
+            natureza: det?.naturezaOperacao?.nome ?? '—',
+            ...(d.vendedor ? {} : { vendedor: det?.vendedor?.nome ?? null }),
+          },
+        });
+      } catch (err: any) {
+        this.logger.warn(`enrich pedido ${d.tinyId} falhou: ${err?.message ?? err}`);
+      }
+    }
+    for (const d of orcamentos) {
+      try {
+        const det = await this.http.getOrcamento(organizationId, d.tinyId);
+        // '—' pra sinalizar "resolvido sem vendedor" e não retentar pra sempre.
+        await this.prisma.tinyDocument.update({
+          where: { id: d.id },
+          data: { vendedor: det?.vendedor?.nome ?? '—' },
+        });
+      } catch (err: any) {
+        this.logger.warn(`enrich orçamento ${d.tinyId} falhou: ${err?.message ?? err}`);
+      }
+    }
   }
 
   /**
@@ -510,13 +649,20 @@ export class TinyService {
     kind: 'PEDIDO' | 'ORCAMENTO',
     page = 1,
     limit = 30,
+    from?: string,
+    to?: string,
   ) {
+    const range = this.buildRange(from, to);
+    const where =
+      kind === 'PEDIDO'
+        ? this.pedidoWhere(organizationId, range)
+        : this.orcamentoWhere(organizationId, range);
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
     const [total, rows] = await Promise.all([
-      this.prisma.tinyDocument.count({ where: { organizationId, kind } }),
+      this.prisma.tinyDocument.count({ where }),
       this.prisma.tinyDocument.findMany({
-        where: { organizationId, kind },
+        where,
         orderBy: [{ data: 'desc' }, { createdAt: 'desc' }],
         skip,
         take,
@@ -536,6 +682,7 @@ export class TinyService {
         valor: d.valor != null ? Number(d.valor) : null,
         clienteNome: d.clienteNome,
         clienteTelefone: d.clienteTelefone,
+        vendedor: d.vendedor,
         matchedBy: d.matchedBy,
         // Lead vinculado do CRM (null quando não casou).
         lead: d.contact

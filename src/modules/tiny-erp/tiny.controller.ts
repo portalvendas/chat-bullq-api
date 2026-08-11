@@ -64,9 +64,13 @@ export class TinyController {
   }
 
   @Get('summary')
-  @ApiOperation({ summary: 'Totais de pedidos e propostas (cards do topo)' })
-  summary(@CurrentOrg('id') orgId: string) {
-    return this.service.summary(orgId);
+  @ApiOperation({ summary: 'Totais de pedidos e propostas + por vendedor (cards do topo)' })
+  summary(
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.summary(orgId, from, to);
   }
 
   @Get('orders')
@@ -76,9 +80,11 @@ export class TinyController {
     @Query('kind') kind: 'PEDIDO' | 'ORCAMENTO',
     @Query('page') page = '1',
     @Query('limit') limit = '30',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     const k = kind === 'ORCAMENTO' ? 'ORCAMENTO' : 'PEDIDO';
-    return this.service.listDocuments(orgId, k, Number(page) || 1, Number(limit) || 30);
+    return this.service.listDocuments(orgId, k, Number(page) || 1, Number(limit) || 30, from, to);
   }
 
   @Get('documents/:id/items')

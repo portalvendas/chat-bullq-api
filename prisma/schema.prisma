@@ -1941,6 +1941,13 @@ model TinyDocument {
   clienteCpfCnpj  String?  @map("cliente_cpf_cnpj")
   clienteTelefone String?  @map("cliente_telefone")
   clienteEmail    String?  @map("cliente_email")
+  /// Origem em marketplace (ML/Shopee/Magalu/Amazon…) — derivado de ecommerce.
+  isMarketplace   Boolean  @default(false) @map("is_marketplace")
+  /// Natureza da operação (só no detalhe do pedido) — ex.: "Venda". Preenchido
+  /// pelo enriquecimento assíncrono; null = ainda não resolvido.
+  natureza        String?
+  /// Vendedor responsável (pedido: vem na listagem; orçamento: no detalhe).
+  vendedor        String?
   /// id do contato no Tiny (chave pra resolver orçamentos).
   tinyContatoId   String?  @map("tiny_contato_id")
   /// Contact do CRM vinculado (null = ainda não casou com lead).

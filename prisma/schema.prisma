@@ -215,6 +215,8 @@ model Organization {
   whatsappTemplates WhatsappTemplate[]
   leadAdsPages   LeadAdsPage[]
   instagramComments InstagramComment[]
+  tinyIntegration TinyIntegration?
+  tinyDocuments   TinyDocument[]
 
   @@map("organizations")
 }
@@ -437,6 +439,7 @@ model Contact {
   tags          ContactTag[]
   aiMemories    AiAgentMemory[]
   cards         Card[]           @relation("CardContact")
+  tinyDocuments TinyDocument[]
 
   @@index([organizationId, phone], name: "idx_contact_org_phone")
   @@index([organizationId, email], name: "idx_contact_org_email")
@@ -1888,4 +1891,72 @@ model LeadAdsPage {
 
   @@index([organizationId], name: "idx_leadads_org")
   @@map("lead_ads_pages")
+}
+
+/// Conexão OAuth com o ERP Olist Tiny (uma por organização). Guarda os tokens
+/// e o estado do sync incremental de pedidos/orçamentos.
+model TinyIntegration {
+  id             String    @id @default(cuid())
+  organizationId String    @unique @map("organization_id")
+  /// pending (aguardando OAuth) | active | error | revoked
+  status         String    @default("pending")
+  accessToken    String?   @map("access_token") @db.Text
+  refreshToken   String?   @map("refresh_token") @db.Text
+  /// Expiração do access_token (refresh automático quando faltam <60s).
+  tokenExpiresAt   DateTime? @map("token_expires_at")
+  refreshExpiresAt DateTime? @map("refresh_expires_at")
+  /// Nome/identificação da conta Tiny conectada (best-effort).
+  accountName    String?   @map("account_name")
+  /// Marca d'água do sync incremental (dataAtualizacao dos pedidos).
+  lastPedidosSyncAt    DateTime? @map("last_pedidos_sync_at")
+  /// Marca d'água do sync de orçamentos (por data de criação).
+  lastOrcamentosSyncAt DateTime? @map("last_orcamentos_sync_at")
+  lastError      String?   @map("last_error") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("tiny_integrations")
+}
+
+/// Pedido ou orçamento (proposta comercial) trazido do Tiny e vinculado — quando
+/// casou — a um Contact do CRM. Fonte de verdade pro painel no lead.
+model TinyDocument {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  /// PEDIDO | ORCAMENTO
+  kind           String
+  /// id do recurso no Tiny (pedido.id ou orcamento.id).
+  tinyId         String    @map("tiny_id")
+  /// numeroPedido / numeroProposta.
+  numero         String?
+  /// Situação textual normalizada (ex.: "Aprovada", "Pendente").
+  situacao       String?
+  /// Data do documento (criação/proposta).
+  data           DateTime?
+  valor          Decimal?  @db.Decimal(14, 2)
+  /// Dados do cliente do documento (pra exibir mesmo sem match).
+  clienteNome     String?  @map("cliente_nome")
+  clienteCpfCnpj  String?  @map("cliente_cpf_cnpj")
+  clienteTelefone String?  @map("cliente_telefone")
+  clienteEmail    String?  @map("cliente_email")
+  /// id do contato no Tiny (chave pra resolver orçamentos).
+  tinyContatoId   String?  @map("tiny_contato_id")
+  /// Contact do CRM vinculado (null = ainda não casou com lead).
+  contactId      String?   @map("contact_id")
+  /// Como casou: cpf_cnpj | phone | email | name | null.
+  matchedBy      String?   @map("matched_by")
+  /// Payload cru do Tiny (auditoria / campos extras).
+  raw            Json?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, kind, tinyId], name: "uq_tinydoc_org_kind_tinyid")
+  @@index([organizationId, contactId], name: "idx_tinydoc_org_contact")
+  @@index([organizationId, kind], name: "idx_tinydoc_org_kind")
+  @@map("tiny_documents")
 }

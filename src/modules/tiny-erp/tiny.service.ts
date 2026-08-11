@@ -481,10 +481,15 @@ export class TinyService {
   }
   private parseDecimal(v?: string | number | null): number | null {
     if (v == null) return null;
-    const n =
-      typeof v === 'number'
-        ? v
-        : parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
+    if (typeof v === 'number') return isNaN(v) ? null : v;
+    let s = String(v).trim();
+    if (!s) return null;
+    // O Tiny v3 manda decimal no formato AMERICANO: ponto é o separador
+    // decimal e NÃO há separador de milhar (ex.: "5234.12", "495.4"). Só
+    // convertemos de formato BR ("5.234,12") quando houver vírgula — aí o
+    // ponto é milhar. Antes removíamos TODO ponto, o que inflava 100x.
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(s);
     return isNaN(n) ? null : n;
   }
 

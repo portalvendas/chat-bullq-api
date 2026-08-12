@@ -230,11 +230,15 @@ model LeadDistributionConfig {
   id             String   @id @default(cuid())
   organizationId String   @unique @map("organization_id")
   enabled        Boolean  @default(false)
-  /// Pesos por vendedor: [{ userId, weight }]. weight = percentual (ou peso
-  /// relativo). Vendedores fora da org ou com weight<=0 são ignorados.
+  /// LEGADO — pesos globais [{ userId, weight }]. Migrado para uma regra "*"
+  /// em pipelineWeights (padrão pros demais funis). Mantido por compat.
   weights        Json     @default("[]")
-  /// Funis (pipelineIds) em que a distribuição sorteia. Vazio = todos os funis.
+  /// LEGADO — funis em que a distribuição sorteava (escopo global).
   pipelineIds    Json     @default("[]") @map("pipeline_ids")
+  /// Regras POR FUNIL: [{ pipelineId, weights: [{ userId, weight }] }].
+  /// pipelineId = "*" é o padrão aplicado aos demais funis. Cada funil tem sua
+  /// própria classificação de pesos (ex.: ML 100% p/ um; Vendas 70/30).
+  pipelineWeights Json    @default("[]") @map("pipeline_weights")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

@@ -5,17 +5,25 @@ export interface LeadWeight {
   userId: string;
   weight: number;
 }
+/** Regra de distribuição de UM funil. pipelineId "*" = padrão dos demais. */
+export interface PipelineRule {
+  pipelineId: string;
+  weights: LeadWeight[];
+}
 export interface LeadDistributionConfigInput {
   enabled?: boolean;
-  weights?: LeadWeight[];
-  /** Funis em que a distribuição sorteia. Vazio/omisso = todos os funis. */
-  pipelineIds?: string[];
+  /** Regras por funil. Cada funil tem sua própria classificação de pesos. */
+  rules?: PipelineRule[];
 }
+
+/** Coringa de regra aplicada aos funis sem configuração própria. */
+const DEFAULT_RULE = '*';
 
 /**
  * Orquestrador de leads: distribui cada lead novo (conversa sem responsável)
- * entre vendedores por SORTEIO PONDERADO conforme os pesos configurados.
- * Sem filtro de disponibilidade — respeita só os percentuais.
+ * entre vendedores por SORTEIO PONDERADO. Os pesos são POR FUNIL — cada funil
+ * tem sua própria classificação (ex.: Mercado Livre 100% p/ um vendedor; Funil
+ * de Vendas 70/30). Uma regra "*" pode servir de padrão pros demais funis.
  */
 @Injectable()
 export class LeadDistributionService {
@@ -25,30 +33,56 @@ export class LeadDistributionService {
 
   // ── Config ─────────────────────────────────────────────────────────
 
+  /** Normaliza as regras persistidas, com fallback do formato legado. */
+  private readRules(cfg: {
+    pipelineWeights?: unknown;
+    weights?: unknown;
+  } | null): PipelineRule[] {
+    const raw = (cfg?.pipelineWeights as unknown as PipelineRule[]) ?? [];
+    const rules = raw
+      .filter((r) => r?.pipelineId)
+      .map((r) => ({
+        pipelineId: r.pipelineId,
+        weights: (r.weights ?? []).filter((w) => w?.userId),
+      }));
+    // Compat: se ainda não migrou e há pesos globais legados, expõe como "*".
+    if (!rules.length) {
+      const legacy = ((cfg?.weights as unknown as LeadWeight[]) ?? []).filter(
+        (w) => w?.userId,
+      );
+      if (legacy.length) return [{ pipelineId: DEFAULT_RULE, weights: legacy }];
+    }
+    return rules;
+  }
+
   async getConfig(organizationId: string) {
     const c = await this.prisma.leadDistributionConfig.findUnique({
       where: { organizationId },
     });
     return {
       enabled: c?.enabled ?? false,
-      weights: ((c?.weights as unknown as LeadWeight[]) ?? []).filter((w) => w?.userId),
-      pipelineIds: ((c?.pipelineIds as unknown as string[]) ?? []).filter(Boolean),
+      rules: this.readRules(c),
     };
   }
 
   async updateConfig(organizationId: string, dto: LeadDistributionConfigInput) {
     const data: any = {
       ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
-      ...(dto.weights !== undefined
+      ...(dto.rules !== undefined
         ? {
-            weights: dto.weights
-              .filter((w) => w?.userId)
-              .map((w) => ({ userId: w.userId, weight: Number(w.weight) || 0 })) as any,
-          }
-        : {}),
-      ...(dto.pipelineIds !== undefined
-        ? {
-            pipelineIds: [...new Set(dto.pipelineIds.filter(Boolean))] as any,
+            pipelineWeights: dto.rules
+              .filter((r) => r?.pipelineId)
+              .map((r) => ({
+                pipelineId: r.pipelineId,
+                weights: (r.weights ?? [])
+                  .filter((w) => w?.userId)
+                  .map((w) => ({
+                    userId: w.userId,
+                    weight: Number(w.weight) || 0,
+                  })),
+              }))
+              // descarta regras sem nenhum peso > 0
+              .filter((r) => r.weights.some((w) => w.weight > 0)) as any,
           }
         : {}),
     };
@@ -63,22 +97,37 @@ export class LeadDistributionService {
   // ── Distribuição ───────────────────────────────────────────────────
 
   /**
-   * Sorteia um vendedor pra org conforme os pesos configurados — ou null se a
-   * distribuição está desligada / sem pesos / sem membros elegíveis. É a fonte
-   * de verdade da distribuição ponderada; a distribuição padrão da ferramenta
-   * (round-robin) chama isto e, quando retorna um userId, deixa o ponderado
-   * SOBREPOR o round-robin.
+   * Sorteia um vendedor pro funil informado conforme a regra dele (ou a regra
+   * padrão "*"). Retorna null se a distribuição está desligada, o funil não tem
+   * regra, ou não há membros elegíveis. Fonte de verdade da distribuição
+   * ponderada — a distribuição padrão (round-robin) chama isto e, quando volta
+   * um userId, deixa o ponderado SOBREPOR.
    */
-  async pickForOrg(organizationId: string): Promise<string | null> {
+  async pickForPipeline(
+    organizationId: string,
+    pipelineId?: string | null,
+  ): Promise<string | null> {
     const cfg = await this.prisma.leadDistributionConfig.findUnique({
       where: { organizationId },
     });
     if (!cfg?.enabled) return null;
-    const weights = ((cfg.weights as unknown as LeadWeight[]) ?? []).filter(
+
+    const rules = this.readRules(cfg);
+    if (!rules.length) return null;
+
+    // Regra específica do funil > regra padrão "*".
+    const rule =
+      (pipelineId && rules.find((r) => r.pipelineId === pipelineId)) ||
+      rules.find((r) => r.pipelineId === DEFAULT_RULE) ||
+      null;
+    if (!rule) return null;
+
+    const weights = rule.weights.filter(
       (w) => w?.userId && (w.weight ?? 0) > 0,
     );
     if (!weights.length) return null;
 
+    // Só membros ativos da org entram no sorteio.
     const members = await this.prisma.userOrganization.findMany({
       where: { organizationId, userId: { in: weights.map((w) => w.userId) } },
       select: { userId: true },
@@ -86,7 +135,13 @@ export class LeadDistributionService {
     const memberSet = new Set(members.map((m) => m.userId));
     const eligible = weights.filter((w) => memberSet.has(w.userId));
     if (!eligible.length) return null;
+
     return this.pickWeighted(eligible);
+  }
+
+  /** Compat: distribuição sem contexto de funil usa a regra padrão "*". */
+  async pickForOrg(organizationId: string): Promise<string | null> {
+    return this.pickForPipeline(organizationId, null);
   }
 
   /** Sorteio ponderado: retorna um userId conforme os pesos (>0). */
@@ -104,8 +159,9 @@ export class LeadDistributionService {
 
   /**
    * Atribui um responsável a uma conversa NOVA sem responsável, via sorteio
-   * ponderado. Best-effort e idempotente (só age quando assignedToId é null).
-   * Também aplica no card do contato (kanban) quando existir sem responsável.
+   * ponderado da regra do FUNIL do lead. Best-effort e idempotente (só age
+   * quando assignedToId é null). Também aplica no card do contato quando existir
+   * sem responsável.
    */
   async assignConversation(
     organizationId: string,
@@ -118,17 +174,7 @@ export class LeadDistributionService {
     });
     if (!conv || conv.assignedToId) return null;
 
-    // Escopo por funil: se a config restringe funis e o funil do lead não está
-    // na lista, a distribuição ponderada não age (o lead segue o fluxo padrão).
-    const cfg = await this.prisma.leadDistributionConfig.findUnique({
-      where: { organizationId },
-      select: { enabled: true, pipelineIds: true },
-    });
-    if (!cfg?.enabled) return null;
-    const allowed = ((cfg.pipelineIds as unknown as string[]) ?? []).filter(Boolean);
-    if (allowed.length && (!pipelineId || !allowed.includes(pipelineId))) return null;
-
-    const userId = await this.pickForOrg(organizationId);
+    const userId = await this.pickForPipeline(organizationId, pipelineId);
     if (!userId) return null;
 
     try {
@@ -148,7 +194,7 @@ export class LeadDistributionService {
             action: 'ASSIGNED',
             fromValue: null,
             toValue: userId,
-            metadata: { source: 'lead_distribution' },
+            metadata: { source: 'lead_distribution', pipelineId: pipelineId ?? null },
           },
         })
         .catch(() => undefined);
@@ -168,7 +214,7 @@ export class LeadDistributionService {
       }
 
       this.logger.log(
-        `lead_distribuido conv=${conversationId} -> user=${userId}`,
+        `lead_distribuido conv=${conversationId} funil=${pipelineId ?? '-'} -> user=${userId}`,
       );
       return userId;
     } catch (err: any) {

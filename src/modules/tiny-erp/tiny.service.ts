@@ -750,6 +750,21 @@ export class TinyService {
           infoAdicional: it?.infoAdicional ?? null,
         };
       }),
+      // Resumo financeiro do pedido (do detalhe). Nomes da v3; caem pra
+      // alternativas quando o recurso é orçamento.
+      resumo: {
+        totalProdutos: this.num(detail?.valorTotalProdutos),
+        desconto: this.num(detail?.valorDesconto),
+        frete: this.num(detail?.valorFrete),
+        outrasDespesas: this.num(detail?.valorOutrasDespesas),
+        total: this.num(
+          detail?.valorTotalPedido ?? detail?.valorTotal ?? detail?.valorTotalProdutos,
+        ),
+        condicaoPagamento:
+          detail?.pagamento?.condicaoPagamento ??
+          detail?.condicaoPagamento ??
+          null,
+      },
     };
   }
 

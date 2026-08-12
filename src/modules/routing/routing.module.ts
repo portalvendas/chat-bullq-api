@@ -9,6 +9,7 @@ import { RouterService } from './router.service';
 import { SlaService } from './sla/sla.service';
 import { SlaTimerProcessor } from './sla/sla-timer.processor';
 import { WatchdogModule } from './watchdog/watchdog.module';
+import { LeadDistributionModule } from '../lead-distribution/lead-distribution.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { WatchdogModule } from './watchdog/watchdog.module';
     MessagingModule,
     NotificationsModule,
     WatchdogModule,
+    LeadDistributionModule,
   ],
   controllers: [DepartmentsController],
   providers: [DepartmentsRepository, DepartmentsService, RouterService, SlaService, SlaTimerProcessor],

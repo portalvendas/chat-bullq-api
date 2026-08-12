@@ -54,6 +54,33 @@ export class LeadDistributionService {
 
   // ── Distribuição ───────────────────────────────────────────────────
 
+  /**
+   * Sorteia um vendedor pra org conforme os pesos configurados — ou null se a
+   * distribuição está desligada / sem pesos / sem membros elegíveis. É a fonte
+   * de verdade da distribuição ponderada; a distribuição padrão da ferramenta
+   * (round-robin) chama isto e, quando retorna um userId, deixa o ponderado
+   * SOBREPOR o round-robin.
+   */
+  async pickForOrg(organizationId: string): Promise<string | null> {
+    const cfg = await this.prisma.leadDistributionConfig.findUnique({
+      where: { organizationId },
+    });
+    if (!cfg?.enabled) return null;
+    const weights = ((cfg.weights as unknown as LeadWeight[]) ?? []).filter(
+      (w) => w?.userId && (w.weight ?? 0) > 0,
+    );
+    if (!weights.length) return null;
+
+    const members = await this.prisma.userOrganization.findMany({
+      where: { organizationId, userId: { in: weights.map((w) => w.userId) } },
+      select: { userId: true },
+    });
+    const memberSet = new Set(members.map((m) => m.userId));
+    const eligible = weights.filter((w) => memberSet.has(w.userId));
+    if (!eligible.length) return null;
+    return this.pickWeighted(eligible);
+  }
+
   /** Sorteio ponderado: retorna um userId conforme os pesos (>0). */
   private pickWeighted(weights: LeadWeight[]): string | null {
     const valid = weights.filter((w) => w.userId && (w.weight ?? 0) > 0);
@@ -76,34 +103,13 @@ export class LeadDistributionService {
     organizationId: string,
     conversationId: string,
   ): Promise<string | null> {
-    const cfg = await this.prisma.leadDistributionConfig.findUnique({
-      where: { organizationId },
-    });
-    if (!cfg?.enabled) return null;
-    const weights = ((cfg.weights as unknown as LeadWeight[]) ?? []).filter(
-      (w) => w?.userId && (w.weight ?? 0) > 0,
-    );
-    if (!weights.length) return null;
-
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
       select: { id: true, assignedToId: true, contactId: true, status: true },
     });
     if (!conv || conv.assignedToId) return null;
 
-    // Só sorteia entre vendedores que AINDA são membros da org.
-    const members = await this.prisma.userOrganization.findMany({
-      where: {
-        organizationId,
-        userId: { in: weights.map((w) => w.userId) },
-      },
-      select: { userId: true },
-    });
-    const memberSet = new Set(members.map((m) => m.userId));
-    const eligible = weights.filter((w) => memberSet.has(w.userId));
-    if (!eligible.length) return null;
-
-    const userId = this.pickWeighted(eligible);
+    const userId = await this.pickForOrg(organizationId);
     if (!userId) return null;
 
     try {

@@ -6,6 +6,7 @@ import {
 import { AgentStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { ConversationFsmService } from '../messaging/conversations/conversation-fsm.service';
+import { LeadDistributionService } from '../lead-distribution/lead-distribution.service';
 
 @Injectable()
 export class RouterService {
@@ -15,6 +16,7 @@ export class RouterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fsm: ConversationFsmService,
+    private readonly leadDistribution: LeadDistributionService,
   ) {}
 
   async assignConversation(
@@ -35,6 +37,18 @@ export class RouterService {
     });
     if (!department) {
       throw new BadRequestException('No department configured for this organization');
+    }
+
+    // Distribuição ponderada SOBREPÕE o round-robin padrão quando ativa e
+    // configurada: se ela retornar um vendedor, é ele que fica com o lead.
+    const weightedUserId = await this.leadDistribution.pickForOrg(organizationId);
+    if (weightedUserId) {
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { departmentId: department.id },
+      });
+      await this.fsm.assign(conversationId, weightedUserId, actorId);
+      return { departmentId: department.id, assignedToId: weightedUserId };
     }
 
     let agents = await this.prisma.departmentAgent.findMany({

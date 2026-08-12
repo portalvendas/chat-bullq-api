@@ -257,6 +257,11 @@ model CommercialRoutineConfig {
   id             String   @id @default(cuid())
   organizationId String   @unique @map("organization_id")
   enabled        Boolean  @default(true)
+  /// A quem a rotina se aplica: "ALL" = todos os membros; "SELECTED" = só os
+  /// usuários listados em userIds.
+  userMode       String   @default("ALL") @map("user_mode")
+  /// userIds ativos quando userMode = "SELECTED".
+  userIds        Json     @default("[]") @map("user_ids")
   /// [{ key, label, stageIds: string[], thresholdHours?: number, requireCheck?: bool }]
   steps          Json     @default("[]")
   createdAt      DateTime @default(now()) @map("created_at")

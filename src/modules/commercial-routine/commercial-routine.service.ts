@@ -23,6 +23,9 @@ export interface RoutineStep {
 
 export interface RoutineConfigInput {
   enabled?: boolean;
+  /** "ALL" = todos os membros; "SELECTED" = só os userIds listados. */
+  userMode?: 'ALL' | 'SELECTED';
+  userIds?: string[];
   steps?: Array<
     Pick<RoutineStep, 'key' | 'stageIds' | 'thresholdHours' | 'requireCheck'> & {
       label?: string;
@@ -106,6 +109,8 @@ export class CommercialRoutineService {
    */
   async getConfig(organizationId: string): Promise<{
     enabled: boolean;
+    userMode: 'ALL' | 'SELECTED';
+    userIds: string[];
     steps: RoutineStep[];
   }> {
     const saved = await this.prisma.commercialRoutineConfig.findUnique({
@@ -124,9 +129,28 @@ export class CommercialRoutineService {
           requireCheck: s?.requireCheck ?? def.requireCheck,
         };
       });
-      return { enabled: saved.enabled, steps };
+      return {
+        enabled: saved.enabled,
+        userMode: (saved.userMode as 'ALL' | 'SELECTED') ?? 'ALL',
+        userIds: ((saved.userIds as unknown as string[]) ?? []).filter(Boolean),
+        steps,
+      };
     }
-    return { enabled: true, steps: await this.autoSuggest(organizationId) };
+    return {
+      enabled: true,
+      userMode: 'ALL',
+      userIds: [],
+      steps: await this.autoSuggest(organizationId),
+    };
+  }
+
+  /** A rotina está ativa para ESTE vendedor? (geral + escopo por usuário) */
+  private isActiveForUser(
+    cfg: { enabled: boolean; userMode: 'ALL' | 'SELECTED'; userIds: string[] },
+    userId: string,
+  ): boolean {
+    if (!cfg.enabled) return false;
+    return cfg.userMode === 'ALL' || cfg.userIds.includes(userId);
   }
 
   /** Deriva stageIds sugeridos casando o nome da etapa com as palavras-chave. */
@@ -166,6 +190,10 @@ export class CommercialRoutineService {
     });
     const data = {
       enabled: dto.enabled ?? current.enabled,
+      userMode: dto.userMode ?? current.userMode,
+      userIds: (dto.userIds ?? current.userIds).filter(
+        Boolean,
+      ) as unknown as Prisma.InputJsonValue,
       steps: steps.map((s) => ({
         key: s.key,
         label: s.label,
@@ -214,8 +242,28 @@ export class CommercialRoutineService {
    * o frontend só renderiza.
    */
   async getToday(organizationId: string, userId: string) {
-    const { enabled, steps } = await this.getConfig(organizationId);
+    const cfg = await this.getConfig(organizationId);
+    const { steps } = cfg;
     const day = this.today();
+
+    // Rotina desligada (geral) ou não aplicável a este vendedor → devolve vazio
+    // e enabled=false. O frontend (tela + pop-up) já respeita esse enabled.
+    const activeForUser = this.isActiveForUser(cfg, userId);
+    if (!activeForUser) {
+      return {
+        day,
+        enabled: false,
+        steps: [],
+        summary: {
+          stepsTotal: 0,
+          stepsDone: 0,
+          totalPending: 0,
+          totalParados: 0,
+          firstPendingKey: null,
+          allDone: true,
+        },
+      };
+    }
 
     const checks = await this.prisma.routineDailyCheck.findMany({
       where: { organizationId, userId, day },
@@ -271,7 +319,7 @@ export class CommercialRoutineService {
     const firstPending = outSteps.find((s) => !s.done);
     return {
       day,
-      enabled,
+      enabled: true,
       steps: outSteps,
       summary: {
         stepsTotal: outSteps.length,

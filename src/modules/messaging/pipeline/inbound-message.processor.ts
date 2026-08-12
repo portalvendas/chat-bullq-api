@@ -22,6 +22,7 @@ import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { CadencesService } from '../../cadences/cadences.service';
 import { PipelinesService } from '../../pipelines/pipelines.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { LeadDistributionService } from '../../lead-distribution/lead-distribution.service';
 import {
   AutomationTrigger,
   ChannelType,
@@ -113,6 +114,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly pipelines: PipelinesService,
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
+    private readonly leadDistribution: LeadDistributionService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -209,6 +211,20 @@ export class InboundMessageProcessor extends WorkerHost {
         contactId,
         message.isGroup,
       );
+
+      // Orquestrador de leads: conversa NOVA sem responsável → sorteia um
+      // vendedor pelos pesos configurados e atribui. Best-effort e no-op se
+      // desligado. Roda antes do emit da mensagem pra o inbox já mostrar o
+      // responsável. (Não bloqueia o pipeline.)
+      if (isNewConversation && !message.isEcho && !message.isGroup) {
+        await this.leadDistribution
+          .assignConversation(organizationId, conversationId)
+          .catch((err) =>
+            this.logger.warn(
+              `Lead distribution falhou (conv ${conversationId}): ${err?.message ?? err}`,
+            ),
+          );
+      }
 
       // Paridade Kommo "origem → cria lead": conversa nova (não-echo) cria um
       // card na etapa de entrada do pipeline padrão. Best-effort, não bloqueia.

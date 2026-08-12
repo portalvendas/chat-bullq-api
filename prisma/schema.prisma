@@ -219,8 +219,26 @@ model Organization {
   tinyDocuments   TinyDocument[]
   metaCapiConfig  MetaCapiConfig?
   metaCapiEvents  MetaCapiEvent[]
+  leadDistributionConfig LeadDistributionConfig?
 
   @@map("organizations")
+}
+
+/// Orquestrador de leads: distribui cada lead novo (conversa sem responsável)
+/// entre vendedores por SORTEIO PONDERADO conforme os pesos (percentuais).
+model LeadDistributionConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique @map("organization_id")
+  enabled        Boolean  @default(false)
+  /// Pesos por vendedor: [{ userId, weight }]. weight = percentual (ou peso
+  /// relativo). Vendedores fora da org ou com weight<=0 são ignorados.
+  weights        Json     @default("[]")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("lead_distribution_configs")
 }
 
 model UserOrganization {

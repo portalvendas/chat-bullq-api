@@ -233,6 +233,8 @@ model LeadDistributionConfig {
   /// Pesos por vendedor: [{ userId, weight }]. weight = percentual (ou peso
   /// relativo). Vendedores fora da org ou com weight<=0 são ignorados.
   weights        Json     @default("[]")
+  /// Funis (pipelineIds) em que a distribuição sorteia. Vazio = todos os funis.
+  pipelineIds    Json     @default("[]") @map("pipeline_ids")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

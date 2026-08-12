@@ -212,35 +212,34 @@ export class InboundMessageProcessor extends WorkerHost {
         message.isGroup,
       );
 
-      // Orquestrador de leads: conversa NOVA sem responsável → sorteia um
-      // vendedor pelos pesos configurados e atribui. Best-effort e no-op se
-      // desligado. Roda antes do emit da mensagem pra o inbox já mostrar o
-      // responsável. (Não bloqueia o pipeline.)
+      // Paridade Kommo "origem → cria lead" + orquestrador de leads:
+      // 1) conversa nova cria um card na etapa de entrada (roteado por origem);
+      // 2) com o funil do card em mãos, o orquestrador sorteia um vendedor pelos
+      //    pesos — respeitando o ESCOPO POR FUNIL (só sorteia nos funis
+      //    configurados; vazio = todos). Best-effort, não bloqueia o pipeline.
       if (isNewConversation && !message.isEcho && !message.isGroup) {
-        await this.leadDistribution
-          .assignConversation(organizationId, conversationId)
-          .catch((err) =>
-            this.logger.warn(
-              `Lead distribution falhou (conv ${conversationId}): ${err?.message ?? err}`,
-            ),
-          );
-      }
-
-      // Paridade Kommo "origem → cria lead": conversa nova (não-echo) cria um
-      // card na etapa de entrada do pipeline padrão. Best-effort, não bloqueia.
-      if (isNewConversation && !message.isEcho && !message.isGroup) {
-        this.pipelines
-          .ensureEntryCard(
+        let entryPipelineId: string | null = null;
+        try {
+          const card = await this.pipelines.ensureEntryCard(
             organizationId,
             conversationId,
             contactId,
             message.contactName ?? message.contactPhone ?? 'Novo lead',
             // Roteamento por origem: usa o canal da conversa (tipo + exceção).
             { channelId },
-          )
+          );
+          entryPipelineId = card?.pipelineId ?? null;
+        } catch (err: any) {
+          this.logger.warn(
+            `ensureEntryCard falhou (conv ${conversationId}): ${err?.message ?? err}`,
+          );
+        }
+
+        await this.leadDistribution
+          .assignConversation(organizationId, conversationId, entryPipelineId)
           .catch((err) =>
             this.logger.warn(
-              `ensureEntryCard falhou (conv ${conversationId}): ${err?.message ?? err}`,
+              `Lead distribution falhou (conv ${conversationId}): ${err?.message ?? err}`,
             ),
           );
       }

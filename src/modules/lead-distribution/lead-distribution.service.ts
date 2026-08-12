@@ -8,6 +8,8 @@ export interface LeadWeight {
 export interface LeadDistributionConfigInput {
   enabled?: boolean;
   weights?: LeadWeight[];
+  /** Funis em que a distribuição sorteia. Vazio/omisso = todos os funis. */
+  pipelineIds?: string[];
 }
 
 /**
@@ -30,6 +32,7 @@ export class LeadDistributionService {
     return {
       enabled: c?.enabled ?? false,
       weights: ((c?.weights as unknown as LeadWeight[]) ?? []).filter((w) => w?.userId),
+      pipelineIds: ((c?.pipelineIds as unknown as string[]) ?? []).filter(Boolean),
     };
   }
 
@@ -41,6 +44,11 @@ export class LeadDistributionService {
             weights: dto.weights
               .filter((w) => w?.userId)
               .map((w) => ({ userId: w.userId, weight: Number(w.weight) || 0 })) as any,
+          }
+        : {}),
+      ...(dto.pipelineIds !== undefined
+        ? {
+            pipelineIds: [...new Set(dto.pipelineIds.filter(Boolean))] as any,
           }
         : {}),
     };
@@ -102,12 +110,23 @@ export class LeadDistributionService {
   async assignConversation(
     organizationId: string,
     conversationId: string,
+    pipelineId?: string | null,
   ): Promise<string | null> {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
       select: { id: true, assignedToId: true, contactId: true, status: true },
     });
     if (!conv || conv.assignedToId) return null;
+
+    // Escopo por funil: se a config restringe funis e o funil do lead não está
+    // na lista, a distribuição ponderada não age (o lead segue o fluxo padrão).
+    const cfg = await this.prisma.leadDistributionConfig.findUnique({
+      where: { organizationId },
+      select: { enabled: true, pipelineIds: true },
+    });
+    if (!cfg?.enabled) return null;
+    const allowed = ((cfg.pipelineIds as unknown as string[]) ?? []).filter(Boolean);
+    if (allowed.length && (!pipelineId || !allowed.includes(pipelineId))) return null;
 
     const userId = await this.pickForOrg(organizationId);
     if (!userId) return null;

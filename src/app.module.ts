@@ -34,6 +34,7 @@ import { WhatsappWindowModule } from './modules/whatsapp-window/whatsapp-window.
 import { PermissionGroupsModule } from './modules/permission-groups/permission-groups.module';
 import { TinyModule } from './modules/tiny-erp/tiny.module';
 import { LeadDistributionModule } from './modules/lead-distribution/lead-distribution.module';
+import { CommercialRoutineModule } from './modules/commercial-routine/commercial-routine.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
 // via skill HTTP getProductPitch + CatalogSyncService. Tabela `products`
@@ -89,6 +90,7 @@ import redisConfig from './config/redis.config';
     PermissionGroupsModule,
     TinyModule,
     LeadDistributionModule,
+    CommercialRoutineModule,
   ],
 })
 export class AppModule {}

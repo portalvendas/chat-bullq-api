@@ -125,6 +125,7 @@ model User {
   inboxViews            InboxView[]
   conversationReads     ConversationRead[]
   assignedCards         Card[]             @relation("CardAssignee")
+  routineDailyChecks    RoutineDailyCheck[]
 
   @@map("users")
 }
@@ -220,6 +221,8 @@ model Organization {
   metaCapiConfig  MetaCapiConfig?
   metaCapiEvents  MetaCapiEvent[]
   leadDistributionConfig LeadDistributionConfig?
+  commercialRoutineConfig CommercialRoutineConfig?
+  routineDailyChecks     RoutineDailyCheck[]
 
   @@map("organizations")
 }
@@ -245,6 +248,41 @@ model LeadDistributionConfig {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("lead_distribution_configs")
+}
+
+/// Rotina Comercial: checklist diário do vendedor. `steps` mapeia cada passo
+/// (chave fixa) para etapas de funil (stageIds — podem ser de funis diferentes)
+/// e um limiar de horas para "lead parado".
+model CommercialRoutineConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique @map("organization_id")
+  enabled        Boolean  @default(true)
+  /// [{ key, label, stageIds: string[], thresholdHours?: number, requireCheck?: bool }]
+  steps          Json     @default("[]")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("commercial_routine_configs")
+}
+
+/// Marcação manual de conclusão de um passo da rotina, por vendedor e por dia.
+model RoutineDailyCheck {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  /// Dia local no formato YYYY-MM-DD (fecha o ciclo diário do checklist).
+  day            String
+  stepKey        String   @map("step_key")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, day, stepKey], name: "uq_routine_check")
+  @@index([organizationId, userId, day])
+  @@map("routine_daily_checks")
 }
 
 model UserOrganization {

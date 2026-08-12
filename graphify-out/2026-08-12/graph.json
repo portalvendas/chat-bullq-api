@@ -4,70 +4,26 @@
   "graph": {},
   "nodes": [
     {
-      "label": "commercial-routine.service.ts",
+      "label": "zapi.message-mapper.ts",
       "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": "commercial-routine.service.ts"
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper",
+      "community": 10,
+      "community_name": "ZApiMessageMapper",
+      "norm_label": "zapi.message-mapper.ts"
     },
     {
-      "label": "StepMetric",
+      "label": "ZApiMessageMapper",
       "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L6",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L18",
       "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_stepmetric",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": "stepmetric"
-    },
-    {
-      "label": "RoutineStep",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L8",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_routinestep",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": "routinestep"
-    },
-    {
-      "label": "RoutineConfigInput",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L24",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_routineconfiginput",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": "routineconfiginput"
-    },
-    {
-      "label": "DEFAULT_STEPS",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L40",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_default_steps",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": "default_steps"
-    },
-    {
-      "label": "CommercialRoutineService",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L99",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": "commercialroutineservice"
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
+      "community": 10,
+      "community_name": "ZApiMessageMapper",
+      "norm_label": "zapimessagemapper"
     },
     {
       "label": "Injectable",
@@ -81,147 +37,15 @@
       "norm_label": "injectable"
     },
     {
-      "label": ".constructor()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L102",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_constructor",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".constructor()"
-    },
-    {
-      "label": ".getConfig()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L110",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getconfig",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".getconfig()"
-    },
-    {
-      "label": ".isActiveForUser()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L148",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_isactiveforuser",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".isactiveforuser()"
-    },
-    {
-      "label": ".autoSuggest()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L157",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_autosuggest",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".autosuggest()"
-    },
-    {
-      "label": ".updateConfig()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L175",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_updateconfig",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".updateconfig()"
-    },
-    {
-      "label": ".getOptions()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L214",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getoptions",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".getoptions()"
-    },
-    {
-      "label": ".today()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L233",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_today",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".today()"
-    },
-    {
-      "label": ".getToday()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L244",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".gettoday()"
-    },
-    {
-      "label": ".computeStep()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L336",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_computestep",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".computestep()"
-    },
-    {
-      "label": ".toggleCheck()",
-      "file_type": "code",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L393",
-      "_origin": "ast",
-      "id": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_togglecheck",
-      "community": 4,
-      "community_name": "CommercialRoutineService",
-      "norm_label": ".togglecheck()"
-    },
-    {
-      "label": "zapi.message-mapper.ts",
-      "file_type": "code",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L1",
-      "_origin": "ast",
-      "community": 10,
-      "community_name": "ZApiMessageMapper",
-      "norm_label": "zapi.message-mapper.ts",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper"
-    },
-    {
-      "label": "ZApiMessageMapper",
-      "file_type": "code",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L18",
-      "_origin": "ast",
-      "community": 10,
-      "community_name": "ZApiMessageMapper",
-      "norm_label": "zapimessagemapper",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper"
-    },
-    {
       "label": ".normalizeInbound()",
       "file_type": "code",
       "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L20",
       "_origin": "ast",
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizeinbound",
       "community": 10,
       "community_name": "ZApiMessageMapper",
-      "norm_label": ".normalizeinbound()",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizeinbound"
+      "norm_label": ".normalizeinbound()"
     },
     {
       "label": ".resolveContent()",
@@ -229,10 +53,10 @@
       "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L92",
       "_origin": "ast",
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_resolvecontent",
       "community": 10,
       "community_name": "ZApiMessageMapper",
-      "norm_label": ".resolvecontent()",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_resolvecontent"
+      "norm_label": ".resolvecontent()"
     },
     {
       "label": ".normalizeStatus()",
@@ -240,10 +64,10 @@
       "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L159",
       "_origin": "ast",
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizestatus",
       "community": 10,
       "community_name": "ZApiMessageMapper",
-      "norm_label": ".normalizestatus()",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizestatus"
+      "norm_label": ".normalizestatus()"
     },
     {
       "label": ".mapStatus()",
@@ -251,10 +75,10 @@
       "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L184",
       "_origin": "ast",
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_mapstatus",
       "community": 10,
       "community_name": "ZApiMessageMapper",
-      "norm_label": ".mapstatus()",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_mapstatus"
+      "norm_label": ".mapstatus()"
     },
     {
       "label": ".denormalize()",
@@ -262,10 +86,10 @@
       "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L200",
       "_origin": "ast",
+      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_denormalize",
       "community": 10,
       "community_name": "ZApiMessageMapper",
-      "norm_label": ".denormalize()",
-      "id": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_denormalize"
+      "norm_label": ".denormalize()"
     },
     {
       "label": "inbound-message.processor.ts",
@@ -273,10 +97,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L1",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "inbound-message.processor.ts",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor"
+      "norm_label": "inbound-message.processor.ts"
     },
     {
       "label": "InboundJobData",
@@ -284,10 +108,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L35",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundjobdata",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "inboundjobdata",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundjobdata"
+      "norm_label": "inboundjobdata"
     },
     {
       "label": "StatusJobData",
@@ -295,10 +119,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L42",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_statusjobdata",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "statusjobdata",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_statusjobdata"
+      "norm_label": "statusjobdata"
     },
     {
       "label": "NON_TRIGGERING_MESSAGE_TYPES",
@@ -306,10 +130,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L72",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_non_triggering_message_types",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "non_triggering_message_types",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_non_triggering_message_types"
+      "norm_label": "non_triggering_message_types"
     },
     {
       "label": "InboundMessageProcessor",
@@ -317,10 +141,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L78",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "inboundmessageprocessor",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor"
+      "norm_label": "inboundmessageprocessor"
     },
     {
       "label": "Processor",
@@ -328,10 +152,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
+      "id": "processor",
       "community": 0,
       "community_name": "pipelines.module.ts",
-      "norm_label": "processor",
-      "id": "processor"
+      "norm_label": "processor"
     },
     {
       "label": "InjectQueue",
@@ -339,10 +163,10 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
+      "id": "injectqueue",
       "community": 0,
       "community_name": "pipelines.module.ts",
-      "norm_label": "injectqueue",
-      "id": "injectqueue"
+      "norm_label": "injectqueue"
     },
     {
       "label": ".constructor()",
@@ -350,10 +174,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L97",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_constructor",
       "community": 0,
       "community_name": "pipelines.module.ts",
-      "norm_label": ".constructor()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_constructor"
+      "norm_label": ".constructor()"
     },
     {
       "label": ".process()",
@@ -361,10 +185,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L121",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".process()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process"
+      "norm_label": ".process()"
     },
     {
       "label": ".upsertMessage()",
@@ -372,10 +196,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L462",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".upsertmessage()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage"
+      "norm_label": ".upsertmessage()"
     },
     {
       "label": ".buildReplyToMetadata()",
@@ -383,10 +207,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L569",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".buildreplytometadata()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata"
+      "norm_label": ".buildreplytometadata()"
     },
     {
       "label": ".mirrorZapiMediaIfNeeded()",
@@ -394,10 +218,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L648",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_mirrorzapimediaifneeded",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".mirrorzapimediaifneeded()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_mirrorzapimediaifneeded"
+      "norm_label": ".mirrorzapimediaifneeded()"
     },
     {
       "label": ".checkActiveBotForChannel()",
@@ -405,10 +229,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L696",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_checkactivebotforchannel",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".checkactivebotforchannel()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_checkactivebotforchannel"
+      "norm_label": ".checkactivebotforchannel()"
     },
     {
       "label": ".channelLabel()",
@@ -416,10 +240,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L707",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_channellabel",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".channellabel()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_channellabel"
+      "norm_label": ".channellabel()"
     },
     {
       "label": ".messagePreview()",
@@ -427,10 +251,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L724",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_messagepreview",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".messagepreview()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_messagepreview"
+      "norm_label": ".messagepreview()"
     },
     {
       "label": ".notifyNewInboundMessage()",
@@ -438,10 +262,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L759",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".notifynewinboundmessage()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage"
+      "norm_label": ".notifynewinboundmessage()"
     },
     {
       "label": ".tryAiAgent()",
@@ -449,10 +273,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L814",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".tryaiagent()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent"
+      "norm_label": ".tryaiagent()"
     },
     {
       "label": ".scheduleAgentRun()",
@@ -460,10 +284,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L868",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".scheduleagentrun()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun"
+      "norm_label": ".scheduleagentrun()"
     },
     {
       "label": ".fireAgentRun()",
@@ -471,10 +295,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L900",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_fireagentrun",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".fireagentrun()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_fireagentrun"
+      "norm_label": ".fireagentrun()"
     },
     {
       "label": ".processStatus()",
@@ -482,10 +306,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L973",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".processstatus()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus"
+      "norm_label": ".processstatus()"
     },
     {
       "label": ".processInstagramReadWatermark()",
@@ -493,10 +317,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L1037",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processinstagramreadwatermark",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".processinstagramreadwatermark()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processinstagramreadwatermark"
+      "norm_label": ".processinstagramreadwatermark()"
     },
     {
       "label": ".maxStatus()",
@@ -504,10 +328,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L1077",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_maxstatus",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": ".maxstatus()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_maxstatus"
+      "norm_label": ".maxstatus()"
     },
     {
       "label": "safeJson()",
@@ -515,10 +339,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L1091",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_safejson",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "safejson()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_safejson"
+      "norm_label": "safejson()"
     },
     {
       "label": "replyMediaLabel()",
@@ -526,10 +350,10 @@
       "source_file": "src/modules/messaging/pipeline/inbound-message.processor.ts",
       "source_location": "L1100",
       "_origin": "ast",
+      "id": "src_modules_messaging_pipeline_inbound_message_processor_replymedialabel",
       "community": 9,
       "community_name": "InboundMessageProcessor",
-      "norm_label": "replymedialabel()",
-      "id": "src_modules_messaging_pipeline_inbound_message_processor_replymedialabel"
+      "norm_label": "replymedialabel()"
     },
     {
       "label": "cadences.graph.ts",
@@ -1549,8 +1373,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L144",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".listpipelines()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listpipelines"
     },
@@ -1560,8 +1384,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L161",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".getboard()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getboard"
     },
@@ -1571,8 +1395,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L230",
       "_origin": "ast",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".createpipeline()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createpipeline"
     },
@@ -1582,8 +1406,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L274",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": ".updatepipeline()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_updatepipeline"
     },
@@ -1593,8 +1417,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L308",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 12,
+      "community_name": ".remove",
       "norm_label": ".removepipeline()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_removepipeline"
     },
@@ -1604,8 +1428,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L315",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 7,
+      "community_name": ".upsertStages",
       "norm_label": ".upsertstages()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_upsertstages"
     },
@@ -1615,8 +1439,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L376",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".createcard()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_createcard"
     },
@@ -1626,8 +1450,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L476",
       "_origin": "ast",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": ".updatecard()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_updatecard"
     },
@@ -1637,8 +1461,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L517",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 12,
+      "community_name": ".remove",
       "norm_label": ".removecard()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_removecard"
     },
@@ -1648,8 +1472,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L535",
       "_origin": "ast",
-      "community": 5,
-      "community_name": "pipelines.service.ts",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".movecard()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_movecard"
     },
@@ -1736,8 +1560,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L878",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": ".listcardsbyconversation()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listcardsbyconversation"
     },
@@ -1747,8 +1571,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L916",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".getcard()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getcard"
     },
@@ -1758,8 +1582,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L974",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".startwhatsappconversation()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_startwhatsappconversation"
     },
@@ -1769,8 +1593,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1066",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".listwhatsappchannels()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_listwhatsappchannels"
     },
@@ -1780,8 +1604,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1082",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 7,
+      "community_name": ".upsertStages",
       "norm_label": ".saverouting()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_saverouting"
     },
@@ -1791,8 +1615,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1134",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 3,
+      "community_name": "ApiOperation",
       "norm_label": ".getroutingoptions()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_getroutingoptions"
     },
@@ -1802,8 +1626,8 @@
       "source_file": "src/modules/pipelines/pipelines.service.ts",
       "source_location": "L1152",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 12,
+      "community_name": ".remove",
       "norm_label": ".assertpipeline()",
       "id": "src_modules_pipelines_pipelines_service_pipelinesservice_assertpipeline"
     },
@@ -1824,7 +1648,7 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L30",
       "_origin": "ast",
-      "community": 3,
+      "community": 11,
       "community_name": "PipelinesController",
       "norm_label": "pipelinescontroller",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller"
@@ -1835,8 +1659,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "WhatsappMergeService",
+      "community": 11,
+      "community_name": "PipelinesController",
       "norm_label": "apitags",
       "id": "apitags"
     },
@@ -1846,8 +1670,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "WhatsappMergeService",
+      "community": 11,
+      "community_name": "PipelinesController",
       "norm_label": "apibearerauth",
       "id": "apibearerauth"
     },
@@ -1857,8 +1681,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "WhatsappMergeService",
+      "community": 11,
+      "community_name": "PipelinesController",
       "norm_label": "useguards",
       "id": "useguards"
     },
@@ -1868,8 +1692,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "WhatsappMergeService",
+      "community": 11,
+      "community_name": "PipelinesController",
       "norm_label": "controller",
       "id": "controller"
     },
@@ -1880,7 +1704,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": "get",
       "id": "get"
     },
@@ -1891,7 +1715,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": "apioperation",
       "id": "apioperation"
     },
@@ -1902,7 +1726,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": "currentorg",
       "id": "currentorg"
     },
@@ -1913,7 +1737,7 @@
       "source_location": "",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": "query",
       "id": "query"
     },
@@ -1923,8 +1747,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": "post",
       "id": "post"
     },
@@ -1934,8 +1758,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": "body",
       "id": "body"
     },
@@ -1945,8 +1769,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": "param",
       "id": "param"
     },
@@ -1956,8 +1780,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 7,
+      "community_name": ".upsertStages",
       "norm_label": "put",
       "id": "put"
     },
@@ -1967,8 +1791,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": "patch",
       "id": "patch"
     },
@@ -1978,8 +1802,8 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 12,
+      "community_name": ".remove",
       "norm_label": "delete",
       "id": "delete"
     },
@@ -1989,8 +1813,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L31",
       "_origin": "ast",
-      "community": 2,
-      "community_name": "PipelinesService",
+      "community": 11,
+      "community_name": "PipelinesController",
       "norm_label": ".constructor()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_constructor"
     },
@@ -2001,7 +1825,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": ".list()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_list"
     },
@@ -2011,8 +1835,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L47",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".create()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_create"
     },
@@ -2023,7 +1847,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": ".getrouting()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_getrouting"
     },
@@ -2034,7 +1858,7 @@
       "source_location": "L64",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": ".whatsappchannels()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_whatsappchannels"
     },
@@ -2044,8 +1868,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L73",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".startwhatsapp()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_startwhatsapp"
     },
@@ -2056,7 +1880,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": ".routingoptions()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_routingoptions"
     },
@@ -2066,8 +1890,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L89",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 7,
+      "community_name": ".upsertStages",
       "norm_label": ".saverouting()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_saverouting"
     },
@@ -2078,7 +1902,7 @@
       "source_location": "L98",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": ".board()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_board"
     },
@@ -2088,8 +1912,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L112",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": ".update()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_update"
     },
@@ -2099,8 +1923,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L122",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 12,
+      "community_name": ".remove",
       "norm_label": ".remove()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_remove"
     },
@@ -2110,8 +1934,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L130",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 7,
+      "community_name": ".upsertStages",
       "norm_label": ".upsertstages()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_upsertstages"
     },
@@ -2121,8 +1945,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L145",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": ".cardsbyconversation()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_cardsbyconversation"
     },
@@ -2133,7 +1957,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "community": 3,
-      "community_name": "PipelinesController",
+      "community_name": "ApiOperation",
       "norm_label": ".getcard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_getcard"
     },
@@ -2143,8 +1967,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L166",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".createcard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_createcard"
     },
@@ -2154,8 +1978,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L176",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 6,
+      "community_name": "Param",
       "norm_label": ".updatecard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_updatecard"
     },
@@ -2165,8 +1989,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L186",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 12,
+      "community_name": ".remove",
       "norm_label": ".removecard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_removecard"
     },
@@ -2176,8 +2000,8 @@
       "source_file": "src/modules/pipelines/pipelines.controller.ts",
       "source_location": "L198",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".movecard()",
       "id": "src_modules_pipelines_pipelines_controller_pipelinescontroller_movecard"
     },
@@ -2319,8 +2143,8 @@
       "source_file": "src/modules/whatsapp-merge/whatsapp-merge.controller.ts",
       "source_location": "L11",
       "_origin": "ast",
-      "community": 1,
-      "community_name": "WhatsappMergeService",
+      "community": 11,
+      "community_name": "PipelinesController",
       "norm_label": "whatsappmergecontroller",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_controller_whatsappmergecontroller"
     },
@@ -2341,8 +2165,8 @@
       "source_file": "src/modules/whatsapp-merge/whatsapp-merge.controller.ts",
       "source_location": "L19",
       "_origin": "ast",
-      "community": 3,
-      "community_name": "PipelinesController",
+      "community": 4,
+      "community_name": "Body",
       "norm_label": ".run()",
       "id": "src_modules_whatsapp_merge_whatsapp_merge_controller_whatsappmergecontroller_run"
     },
@@ -2384,178 +2208,79 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L99",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L40",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service",
-      "target": "src_modules_commercial_routine_commercial_routine_service_default_steps",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L24",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service",
-      "target": "src_modules_commercial_routine_commercial_routine_service_routineconfiginput",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L8",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service",
-      "target": "src_modules_commercial_routine_commercial_routine_service_routinestep",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L6",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service",
-      "target": "src_modules_commercial_routine_commercial_routine_service_stepmetric",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper",
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
       "confidence_score": 1.0
     },
     {
       "relation": "references",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L98",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L17",
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
       "target": "injectable",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L157",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L200",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_autosuggest",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_denormalize",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L336",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L184",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_computestep",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_mapstatus",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L102",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L20",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_constructor",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizeinbound",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L110",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L159",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getconfig",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizestatus",
       "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L214",
+      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
+      "source_location": "L92",
       "weight": 1.0,
       "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getoptions",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L244",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L148",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_isactiveforuser",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L233",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_today",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L393",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_togglecheck",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L175",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_updateconfig",
+      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_resolvecontent",
       "confidence_score": 1.0
     },
     {
@@ -2568,18 +2293,6 @@
       "_origin": "ast",
       "confidence_score": 1.0,
       "source": "src_modules_cadences_cadences_service_cadencesservice",
-      "target": "injectable"
-    },
-    {
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L17",
-      "weight": 1.0,
-      "context": "decorator",
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
       "target": "injectable"
     },
     {
@@ -2598,175 +2311,13 @@
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L143",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getconfig",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_autosuggest",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L245",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getconfig",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L176",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_updateconfig",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_getconfig",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L251",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_isactiveforuser",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L247",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_today",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L399",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_togglecheck",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_today",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L285",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_computestep",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/commercial-routine/commercial-routine.service.ts",
-      "source_location": "L409",
-      "weight": 1.0,
-      "_origin": "ast",
-      "source": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_togglecheck",
-      "target": "src_modules_commercial_routine_commercial_routine_service_commercialroutineservice_gettoday",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L18",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L200",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_denormalize"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L184",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_mapstatus"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L20",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizeinbound"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L159",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizestatus"
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
-      "source_location": "L92",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_resolvecontent"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
       "source_file": "src/modules/channel-hub/adapters/z-api/zapi.message-mapper.ts",
       "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizeinbound",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_resolvecontent"
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_resolvecontent",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -2776,9 +2327,9 @@
       "source_location": "L176",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_normalizestatus",
-      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_mapstatus"
+      "target": "src_modules_channel_hub_adapters_z_api_zapi_message_mapper_zapimessagemapper_mapstatus",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -2788,9 +2339,9 @@
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_cadences_cadences_service"
+      "target": "src_modules_cadences_cadences_service",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -2800,9 +2351,9 @@
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_cadences_cadences_service_cadencesservice"
+      "target": "src_modules_cadences_cadences_service_cadencesservice",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -2811,9 +2362,9 @@
       "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundjobdata"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundjobdata",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -2822,9 +2373,9 @@
       "source_location": "L78",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -2833,9 +2384,9 @@
       "source_location": "L72",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_non_triggering_message_types"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_non_triggering_message_types",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -2844,9 +2395,9 @@
       "source_location": "L1100",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_replymedialabel"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_replymedialabel",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -2855,9 +2406,9 @@
       "source_location": "L1091",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_safejson"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_safejson",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -2866,9 +2417,9 @@
       "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_statusjobdata"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_statusjobdata",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -2878,9 +2429,9 @@
       "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_pipelines_pipelines_service"
+      "target": "src_modules_pipelines_pipelines_service",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -2890,9 +2441,9 @@
       "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor",
-      "target": "src_modules_pipelines_pipelines_service_pipelinesservice"
+      "target": "src_modules_pipelines_pipelines_service_pipelinesservice",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -2914,9 +2465,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "processor"
+      "target": "processor",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2925,9 +2476,9 @@
       "source_location": "L569",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2936,9 +2487,9 @@
       "source_location": "L707",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_channellabel"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_channellabel",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2947,9 +2498,9 @@
       "source_location": "L696",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_checkactivebotforchannel"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_checkactivebotforchannel",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2958,9 +2509,9 @@
       "source_location": "L97",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_constructor"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_constructor",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2969,9 +2520,9 @@
       "source_location": "L900",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_fireagentrun"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_fireagentrun",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2980,9 +2531,9 @@
       "source_location": "L1077",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_maxstatus"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_maxstatus",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -2991,9 +2542,9 @@
       "source_location": "L724",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_messagepreview"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_messagepreview",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3002,9 +2553,9 @@
       "source_location": "L648",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_mirrorzapimediaifneeded"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_mirrorzapimediaifneeded",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3013,9 +2564,9 @@
       "source_location": "L759",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3024,9 +2575,9 @@
       "source_location": "L121",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3035,9 +2586,9 @@
       "source_location": "L1037",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processinstagramreadwatermark"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processinstagramreadwatermark",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3046,9 +2597,9 @@
       "source_location": "L973",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3057,9 +2608,9 @@
       "source_location": "L868",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3068,9 +2619,9 @@
       "source_location": "L814",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -3079,9 +2630,9 @@
       "source_location": "L462",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -3115,9 +2666,9 @@
       "weight": 1.0,
       "context": "decorator",
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_constructor",
-      "target": "injectqueue"
+      "target": "injectqueue",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -3139,9 +2690,9 @@
       "source_location": "L349",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_checkactivebotforchannel"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_checkactivebotforchannel",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3151,9 +2702,9 @@
       "source_location": "L256",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_mirrorzapimediaifneeded"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_mirrorzapimediaifneeded",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3163,9 +2714,9 @@
       "source_location": "L327",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3175,9 +2726,9 @@
       "source_location": "L123",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3187,9 +2738,9 @@
       "source_location": "L422",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3199,9 +2750,9 @@
       "source_location": "L266",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_process",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3211,9 +2762,9 @@
       "source_location": "L505",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3223,9 +2774,9 @@
       "source_location": "L524",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_upsertmessage",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_safejson"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_safejson",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3235,9 +2786,9 @@
       "source_location": "L602",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_replymedialabel"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_replymedialabel",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3247,9 +2798,9 @@
       "source_location": "L575",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_buildreplytometadata",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_safejson"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_safejson",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3259,9 +2810,9 @@
       "source_location": "L782",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_channellabel"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_channellabel",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3271,9 +2822,9 @@
       "source_location": "L784",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_notifynewinboundmessage",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_messagepreview"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_messagepreview",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3283,9 +2834,9 @@
       "source_location": "L855",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_tryaiagent",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3295,9 +2846,9 @@
       "source_location": "L965",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_fireagentrun",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_scheduleagentrun",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3307,9 +2858,9 @@
       "source_location": "L997",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_maxstatus"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_maxstatus",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -3319,9 +2870,9 @@
       "source_location": "L988",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processstatus",
-      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processinstagramreadwatermark"
+      "target": "src_modules_messaging_pipeline_inbound_message_processor_inboundmessageprocessor_processinstagramreadwatermark",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7760,5 +7311,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "afa53b09fe3bffebb944672f8a0242dffd366860"
+  "built_at_commit": "8dcd4a231279b125c2b7f015c1a9bb84da696008"
 }

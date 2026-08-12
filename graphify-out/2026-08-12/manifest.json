@@ -265,8 +265,8 @@
     "semantic_hash": ""
   },
   "src/app.module.ts": {
-    "mtime": 1786544374.6002314,
-    "ast_hash": "66d16f67b1fb904d64a2e399579ac066",
+    "mtime": 1786364931.3611782,
+    "ast_hash": "bed19214916e9d0bb4207d741fb00429",
     "semantic_hash": ""
   },
   "src/common/decorators/current-channel-access.decorator.ts": {
@@ -1120,8 +1120,8 @@
     "semantic_hash": ""
   },
   "src/modules/channel-hub/adapters/instagram/instagram.outbound-adapter.ts": {
-    "mtime": 1786373251.7143238,
-    "ast_hash": "aee104846e232efa3ba667ff0ff7ef11",
+    "mtime": 1781632677.0,
+    "ast_hash": "8087f33f6efbadd1fc19998ad016b323",
     "semantic_hash": ""
   },
   "src/modules/channel-hub/adapters/instagram/instagram.sync-adapter.ts": {
@@ -1750,8 +1750,8 @@
     "semantic_hash": ""
   },
   "src/modules/messaging/messaging.module.ts": {
-    "mtime": 1786493800.476761,
-    "ast_hash": "5cca5f795167559db291067d3b17cec1",
+    "mtime": 1786313834.1604922,
+    "ast_hash": "ba83c5bd3dd52167af5ac5b9cd18e4e6",
     "semantic_hash": ""
   },
   "src/modules/messaging/pipeline/contact-resolver.service.ts": {
@@ -1780,8 +1780,8 @@
     "semantic_hash": ""
   },
   "src/modules/messaging/pipeline/inbound-message.processor.ts": {
-    "mtime": 1786496333.6682987,
-    "ast_hash": "c4cb8c5db6eb7d7230d6cad6140b360f",
+    "mtime": 1786371420.8436134,
+    "ast_hash": "0c97e06fdeaea15430a69c0ad9f12fbf",
     "semantic_hash": ""
   },
   "src/modules/messaging/pipeline/outbound-message.processor.ts": {
@@ -2015,13 +2015,13 @@
     "semantic_hash": ""
   },
   "src/modules/routing/router.service.ts": {
-    "mtime": 1786495745.8020372,
-    "ast_hash": "a246cc6933d2feb3319620dbc373993b",
+    "mtime": 1781632677.1270008,
+    "ast_hash": "b85533c44d19d51bdc16f9b2b391f7d3",
     "semantic_hash": ""
   },
   "src/modules/routing/routing.module.ts": {
-    "mtime": 1786495725.3375063,
-    "ast_hash": "27fbed4b847818f18616cdfbf47d103e",
+    "mtime": 1781632677.1270008,
+    "ast_hash": "0dc1a91ca7cec827d3cf93524ebe664d",
     "semantic_hash": ""
   },
   "src/modules/routing/sla/sla-timer.processor.ts": {
@@ -2257,126 +2257,6 @@
   "src/modules/whatsapp-window/whatsapp-window.service.ts": {
     "mtime": 1786363720.0976772,
     "ast_hash": "c8cf792598c7e6bcbb3c9d19a038ea4f",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260811000000_tiny_erp/migration.sql": {
-    "mtime": 1786475276.6388361,
-    "ast_hash": "023c74ef6b0e84ba97cb914af005576f",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812000000_tiny_filters/migration.sql": {
-    "mtime": 1786488452.8324552,
-    "ast_hash": "3922d0830ebdd8f3050e7354b23bf65a",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812010000_tiny_fix_valor/migration.sql": {
-    "mtime": 1786489956.74184,
-    "ast_hash": "ea83dfebe0cf1463c1ea1a08e52da732",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812020000_meta_capi/migration.sql": {
-    "mtime": 1786491436.556415,
-    "ast_hash": "26d4bbd16180e286811a847f56693f6c",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812030000_lead_distribution/migration.sql": {
-    "mtime": 1786493687.028788,
-    "ast_hash": "d844cdc9efed2c4eaa226bda5398ad15",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812040000_lead_distribution_pipelines/migration.sql": {
-    "mtime": 1786496357.4920187,
-    "ast_hash": "ad6c0febf85e39348b8925db2a0c11ab",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812050000_lead_distribution_per_pipeline/migration.sql": {
-    "mtime": 1786504639.6092565,
-    "ast_hash": "c74a63568b70b272a06134c95c1cc484",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812060000_commercial_routine/migration.sql": {
-    "mtime": 1786544200.4064455,
-    "ast_hash": "b2ccc921a18c8fea81668e51f713d442",
-    "semantic_hash": ""
-  },
-  "prisma/migrations/20260812070000_routine_user_scope/migration.sql": {
-    "mtime": 1786545759.7142956,
-    "ast_hash": "45ca6c64bf3b1f514d4489f21d58068f",
-    "semantic_hash": ""
-  },
-  "src/modules/commercial-routine/commercial-routine.controller.ts": {
-    "mtime": 1786544343.1918976,
-    "ast_hash": "c0c9f3adff5d6394b7eff282777a3095",
-    "semantic_hash": ""
-  },
-  "src/modules/commercial-routine/commercial-routine.module.ts": {
-    "mtime": 1786544359.1415753,
-    "ast_hash": "80720da58a60b0483f4f5174f0b2c2bd",
-    "semantic_hash": ""
-  },
-  "src/modules/commercial-routine/commercial-routine.service.ts": {
-    "mtime": 1786545810.4745228,
-    "ast_hash": "2a6c3e56be0fa504601e9b699d6f76f7",
-    "semantic_hash": ""
-  },
-  "src/modules/lead-distribution/lead-distribution.controller.ts": {
-    "mtime": 1786493754.8768485,
-    "ast_hash": "dc409520ffc5b567e06114bff3c90c54",
-    "semantic_hash": ""
-  },
-  "src/modules/lead-distribution/lead-distribution.module.ts": {
-    "mtime": 1786493761.7509344,
-    "ast_hash": "f24e2063a2afc4d4676338c5c1614801",
-    "semantic_hash": ""
-  },
-  "src/modules/lead-distribution/lead-distribution.service.ts": {
-    "mtime": 1786504631.276916,
-    "ast_hash": "1c93721b1ea09a17339f818553e36856",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/meta-capi/meta-capi.hash.ts": {
-    "mtime": 1786491461.667686,
-    "ast_hash": "c7a5a4ffead7eb7596bf00bff6e22f79",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/meta-capi/meta-capi.http-client.ts": {
-    "mtime": 1786491474.1683362,
-    "ast_hash": "e14a29c66f3b217ef4baeb600fea9100",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/meta-capi/meta-capi.service.ts": {
-    "mtime": 1786491631.243053,
-    "ast_hash": "60ce89681e6c41e0c0b7f9c844565886",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/tiny.controller.ts": {
-    "mtime": 1786491666.7291152,
-    "ast_hash": "1012e75655fe21f16bb519313a7f4436",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/tiny.cron.service.ts": {
-    "mtime": 1786475540.0557437,
-    "ast_hash": "7caa2416ac4ced4a8dc50c873e5fcc5d",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/tiny.http-client.ts": {
-    "mtime": 1786489638.3816729,
-    "ast_hash": "ac84f7b4c42ad47c39df28ec17d56f45",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/tiny.module.ts": {
-    "mtime": 1786491674.7729135,
-    "ast_hash": "4284c79602cda8282c70529260c32199",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/tiny.processor.ts": {
-    "mtime": 1786475561.1722317,
-    "ast_hash": "4aab878237130951a43e944429d5f31c",
-    "semantic_hash": ""
-  },
-  "src/modules/tiny-erp/tiny.service.ts": {
-    "mtime": 1786541565.6380186,
-    "ast_hash": "c432a6a885f261f1069b309c9b0f2791",
     "semantic_hash": ""
   }
 }

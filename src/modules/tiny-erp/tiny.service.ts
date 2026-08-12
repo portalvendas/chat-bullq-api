@@ -753,11 +753,11 @@ export class TinyService {
       // Resumo financeiro do pedido (do detalhe). Nomes da v3; caem pra
       // alternativas quando o recurso é orçamento.
       resumo: {
-        totalProdutos: this.num(detail?.valorTotalProdutos),
-        desconto: this.num(detail?.valorDesconto),
-        frete: this.num(detail?.valorFrete),
-        outrasDespesas: this.num(detail?.valorOutrasDespesas),
-        total: this.num(
+        totalProdutos: this.parseDecimal(detail?.valorTotalProdutos),
+        desconto: this.parseDecimal(detail?.valorDesconto),
+        frete: this.parseDecimal(detail?.valorFrete),
+        outrasDespesas: this.parseDecimal(detail?.valorOutrasDespesas),
+        total: this.parseDecimal(
           detail?.valorTotalPedido ?? detail?.valorTotal ?? detail?.valorTotalProdutos,
         ),
         condicaoPagamento:

@@ -29,7 +29,7 @@ export class LeadDistributionService {
     });
     return {
       enabled: c?.enabled ?? false,
-      weights: ((c?.weights as LeadWeight[]) ?? []).filter((w) => w?.userId),
+      weights: ((c?.weights as unknown as LeadWeight[]) ?? []).filter((w) => w?.userId),
     };
   }
 
@@ -80,7 +80,7 @@ export class LeadDistributionService {
       where: { organizationId },
     });
     if (!cfg?.enabled) return null;
-    const weights = ((cfg.weights as LeadWeight[]) ?? []).filter(
+    const weights = ((cfg.weights as unknown as LeadWeight[]) ?? []).filter(
       (w) => w?.userId && (w.weight ?? 0) > 0,
     );
     if (!weights.length) return null;

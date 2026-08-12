@@ -736,6 +736,21 @@ export class TinyService {
         : await this.http.getOrcamento(organizationId, doc.tinyId);
 
     const itens: any[] = Array.isArray(detail?.itens) ? detail.itens : [];
+
+    const totalProdutos = this.parseDecimal(detail?.valorTotalProdutos);
+    const desconto = this.parseDecimal(detail?.valorDesconto);
+
+    // Pagamento pode vir num objeto `pagamento` ou espalhado no detalhe / nas
+    // parcelas. Loga as chaves uma vez pra confirmar o shape real nos logs.
+    const pg = detail?.pagamento ?? {};
+    const parcela0 = Array.isArray(pg?.parcelas) ? pg.parcelas[0] : undefined;
+    if (pg && Object.keys(pg).length) {
+      this.logger.debug(
+        `tiny pagamento shape (doc ${docId}): ${JSON.stringify(Object.keys(pg))}` +
+          (parcela0 ? ` parcela0=${JSON.stringify(Object.keys(parcela0))}` : ''),
+      );
+    }
+
     return {
       items: itens.map((it) => {
         const prod = it?.produto ?? {};
@@ -753,19 +768,80 @@ export class TinyService {
       // Resumo financeiro do pedido (do detalhe). Nomes da v3; caem pra
       // alternativas quando o recurso é orçamento.
       resumo: {
-        totalProdutos: this.parseDecimal(detail?.valorTotalProdutos),
-        desconto: this.parseDecimal(detail?.valorDesconto),
+        totalProdutos,
+        desconto,
+        // % de desconto: usa o nativo do Tiny quando houver; senão deriva
+        // do valor sobre o total de produtos (ex.: 693,79 / 5.781,58 = 12%).
+        descontoPercent: this.tinyDescontoPercent(detail, totalProdutos, desconto),
         frete: this.parseDecimal(detail?.valorFrete),
         outrasDespesas: this.parseDecimal(detail?.valorOutrasDespesas),
         total: this.parseDecimal(
           detail?.valorTotalPedido ?? detail?.valorTotal ?? detail?.valorTotalProdutos,
         ),
         condicaoPagamento:
-          detail?.pagamento?.condicaoPagamento ??
-          detail?.condicaoPagamento ??
-          null,
+          pg?.condicaoPagamento ?? detail?.condicaoPagamento ?? null,
+        // Forma de recebimento / meio / conta bancária (defensivo em múltiplos
+        // caminhos do payload; null quando ausente → UI esconde).
+        formaRecebimento: this.pickStr(
+          pg?.formaPagamento?.nome,
+          pg?.formaPagamento,
+          parcela0?.formaPagamento?.nome,
+          parcela0?.formaPagamento,
+          detail?.formaPagamento?.nome,
+          detail?.formaPagamento,
+        ),
+        meioPagamento: this.pickStr(
+          pg?.meioPagamento?.nome,
+          pg?.meioPagamento,
+          parcela0?.meioPagamento?.nome,
+          parcela0?.meioPagamento,
+          detail?.meioPagamento?.nome,
+          detail?.meioPagamento,
+        ),
+        contaBancaria: this.pickStr(
+          pg?.conta?.nome,
+          pg?.contaBancaria?.nome,
+          pg?.nomeConta,
+          parcela0?.conta?.nome,
+          parcela0?.contaBancaria?.nome,
+          parcela0?.nomeConta,
+          detail?.conta?.nome,
+          detail?.contaBancaria?.nome,
+        ),
       },
     };
+  }
+
+  /** Primeiro valor string não-vazio dentre os candidatos. */
+  private pickStr(...candidates: any[]): string | null {
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+    return null;
+  }
+
+  /** % de desconto do pedido: nativo do Tiny ou derivado (valor/total). */
+  private tinyDescontoPercent(
+    detail: any,
+    totalProdutos: number | null,
+    desconto: number | null,
+  ): number | null {
+    // Campos nativos possíveis (número ou string tipo "12" / "12,00%").
+    const nativo =
+      detail?.percentualDesconto ??
+      detail?.descontoPercentual ??
+      (typeof detail?.desconto === 'string' && detail.desconto.includes('%')
+        ? detail.desconto
+        : undefined);
+    if (nativo != null) {
+      const n = parseFloat(String(nativo).replace('%', '').replace(',', '.'));
+      if (Number.isFinite(n) && n > 0) return Number(n.toFixed(2));
+    }
+    // Deriva do valor sobre o total de produtos.
+    if (totalProdutos && totalProdutos > 0 && desconto && desconto > 0) {
+      return Number(((desconto / totalProdutos) * 100).toFixed(2));
+    }
+    return null;
   }
 
   /** Documentos (pedidos + orçamentos) vinculados a um contato, mais recentes primeiro. */

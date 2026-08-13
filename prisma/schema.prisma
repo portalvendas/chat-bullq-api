@@ -262,6 +262,9 @@ model CommercialRoutineConfig {
   userMode       String   @default("ALL") @map("user_mode")
   /// userIds ativos quando userMode = "SELECTED".
   userIds        Json     @default("[]") @map("user_ids")
+  /// Conta leads das etapas IGNORANDO o responsável (útil p/ validação e p/
+  /// operações sem atribuição). false = só conta os leads atribuídos ao vendedor.
+  ignoreAssignment Boolean @default(false) @map("ignore_assignment")
   /// [{ key, label, stageIds: string[], thresholdHours?: number, requireCheck?: bool }]
   steps          Json     @default("[]")
   createdAt      DateTime @default(now()) @map("created_at")

@@ -26,6 +26,8 @@ export interface RoutineConfigInput {
   /** "ALL" = todos os membros; "SELECTED" = só os userIds listados. */
   userMode?: 'ALL' | 'SELECTED';
   userIds?: string[];
+  /** Conta leads das etapas ignorando o responsável. */
+  ignoreAssignment?: boolean;
   steps?: Array<
     Pick<RoutineStep, 'key' | 'stageIds' | 'thresholdHours' | 'requireCheck'> & {
       label?: string;
@@ -111,6 +113,7 @@ export class CommercialRoutineService {
     enabled: boolean;
     userMode: 'ALL' | 'SELECTED';
     userIds: string[];
+    ignoreAssignment: boolean;
     steps: RoutineStep[];
   }> {
     const saved = await this.prisma.commercialRoutineConfig.findUnique({
@@ -133,6 +136,7 @@ export class CommercialRoutineService {
         enabled: saved.enabled,
         userMode: (saved.userMode as 'ALL' | 'SELECTED') ?? 'ALL',
         userIds: ((saved.userIds as unknown as string[]) ?? []).filter(Boolean),
+        ignoreAssignment: saved.ignoreAssignment ?? false,
         steps,
       };
     }
@@ -140,6 +144,7 @@ export class CommercialRoutineService {
       enabled: true,
       userMode: 'ALL',
       userIds: [],
+      ignoreAssignment: false,
       steps: await this.autoSuggest(organizationId),
     };
   }
@@ -194,6 +199,7 @@ export class CommercialRoutineService {
       userIds: (dto.userIds ?? current.userIds).filter(
         Boolean,
       ) as unknown as Prisma.InputJsonValue,
+      ignoreAssignment: dto.ignoreAssignment ?? current.ignoreAssignment,
       steps: steps.map((s) => ({
         key: s.key,
         label: s.label,
@@ -282,7 +288,9 @@ export class CommercialRoutineService {
     const stageName = new Map(stageRows.map((s) => [s.id, s.name]));
 
     const computed = await Promise.all(
-      steps.map((step) => this.computeStep(organizationId, userId, step)),
+      steps.map((step) =>
+        this.computeStep(organizationId, userId, step, cfg.ignoreAssignment),
+      ),
     );
 
     const outSteps = steps.map((step, i) => {
@@ -337,12 +345,15 @@ export class CommercialRoutineService {
     organizationId: string,
     userId: string,
     step: RoutineStep,
+    ignoreAssignment = false,
   ): Promise<{ total: number; pending: number; parados: number }> {
     if (!step.stageIds.length) return { total: 0, pending: 0, parados: 0 };
 
     const base: Prisma.CardWhereInput = {
       organizationId,
-      assignedToId: userId,
+      // Quando ignoreAssignment, conta todos os leads da etapa (com ou sem
+      // responsável). Senão, só os atribuídos ao vendedor.
+      ...(ignoreAssignment ? {} : { assignedToId: userId }),
       status: 'OPEN',
       stageId: { in: step.stageIds },
     };

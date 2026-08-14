@@ -9,11 +9,13 @@ import {
   PIPELINE_INACTIVITY_QUEUE,
 } from './pipeline-inactivity.processor';
 import { PipelineInactivityCronService } from './pipeline-inactivity.cron.service';
+import { LeadDistributionModule } from '../lead-distribution/lead-distribution.module';
 
 @Module({
   imports: [
     RealtimeModule,
     NotificationsModule,
+    LeadDistributionModule,
     BullModule.registerQueue({ name: PIPELINE_INACTIVITY_QUEUE }),
   ],
   controllers: [PipelinesController],

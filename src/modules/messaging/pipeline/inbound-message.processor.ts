@@ -22,7 +22,6 @@ import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { CadencesService } from '../../cadences/cadences.service';
 import { PipelinesService } from '../../pipelines/pipelines.service';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { LeadDistributionService } from '../../lead-distribution/lead-distribution.service';
 import {
   AutomationTrigger,
   ChannelType,
@@ -114,7 +113,6 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly pipelines: PipelinesService,
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
-    private readonly leadDistribution: LeadDistributionService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -218,9 +216,12 @@ export class InboundMessageProcessor extends WorkerHost {
       //    pesos — respeitando o ESCOPO POR FUNIL (só sorteia nos funis
       //    configurados; vazio = todos). Best-effort, não bloqueia o pipeline.
       if (isNewConversation && !message.isEcho && !message.isGroup) {
-        let entryPipelineId: string | null = null;
+        // Cria o card de entrada (roteado por origem). A DISTRIBUIÇÃO de
+        // vendedor (sorteio ponderado + stickiness) roda DENTRO do
+        // ensureEntryCard: atribui na conversa (já criada pelo WhatsApp) e no
+        // card, com o MESMO dono. Cobre também lead recorrente (dedup).
         try {
-          const card = await this.pipelines.ensureEntryCard(
+          await this.pipelines.ensureEntryCard(
             organizationId,
             conversationId,
             contactId,
@@ -228,20 +229,11 @@ export class InboundMessageProcessor extends WorkerHost {
             // Roteamento por origem: usa o canal da conversa (tipo + exceção).
             { channelId },
           );
-          entryPipelineId = card?.pipelineId ?? null;
         } catch (err: any) {
           this.logger.warn(
             `ensureEntryCard falhou (conv ${conversationId}): ${err?.message ?? err}`,
           );
         }
-
-        await this.leadDistribution
-          .assignConversation(organizationId, conversationId, entryPipelineId)
-          .catch((err) =>
-            this.logger.warn(
-              `Lead distribution falhou (conv ${conversationId}): ${err?.message ?? err}`,
-            ),
-          );
       }
 
       // Auto-tag por FONTE: aplica em TODO inbound humano (não só na criação do

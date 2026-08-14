@@ -158,6 +158,128 @@ export class LeadDistributionService {
   }
 
   /**
+   * STICKINESS: retorna o vendedor que JÁ é dono deste contato, se houver.
+   * Um lead que voltou a falar "gruda" no vendedor que já era dele — não
+   * re-sorteia. Fonte da verdade, em ordem: conversa atribuída mais recente
+   * do contato → senão card (kanban) atribuído mais recente. Retorna null se
+   * o contato ainda não tem dono em lugar nenhum.
+   */
+  async existingOwnerForContact(
+    organizationId: string,
+    contactId?: string | null,
+  ): Promise<string | null> {
+    if (!contactId) return null;
+    const conv = await this.prisma.conversation.findFirst({
+      where: { organizationId, contactId, assignedToId: { not: null } },
+      orderBy: { updatedAt: 'desc' },
+      select: { assignedToId: true },
+    });
+    if (conv?.assignedToId) return conv.assignedToId;
+    const card = await this.prisma.card.findFirst({
+      where: { organizationId, contactId, assignedToId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { assignedToId: true },
+    });
+    return card?.assignedToId ?? null;
+  }
+
+  /**
+   * Distribui um lead na ENTRADA (criação do card / nova conversa). Regra:
+   *  1) STICKINESS — se o contato já tem dono, o lead fica com ele (não sorteia);
+   *  2) senão, SORTEIO PONDERADO pela regra do funil do lead.
+   * Aplica o responsável na conversa E no card, sempre de forma IDEMPOTENTE
+   * (só escreve quando estão sem responsável — nunca rouba um lead já atribuído).
+   * Best-effort: nunca lança. Retorna o userId escolhido ou null (sem regra /
+   * sem membros elegíveis / lead já tinha dono e nada a fazer).
+   */
+  async assignEntry(params: {
+    organizationId: string;
+    contactId?: string | null;
+    conversationId?: string | null;
+    cardId?: string | null;
+    pipelineId?: string | null;
+  }): Promise<string | null> {
+    const { organizationId, contactId, conversationId, cardId, pipelineId } =
+      params;
+
+    // 1) Stickiness tem prioridade sobre o sorteio.
+    let userId = await this.existingOwnerForContact(organizationId, contactId);
+    let source: 'sticky' | 'weighted' = 'sticky';
+
+    // 2) Sem dono ainda → sorteia pela regra do funil.
+    if (!userId) {
+      userId = await this.pickForPipeline(organizationId, pipelineId ?? null);
+      source = 'weighted';
+    }
+
+    if (!userId) {
+      this.logger.debug(
+        `assignEntry sem vendedor (org=${organizationId} funil=${pipelineId ?? '-'} contato=${contactId ?? '-'}): distribuição off, funil sem regra ou sem membro elegível`,
+      );
+      return null;
+    }
+
+    try {
+      if (conversationId) {
+        const res = await this.prisma.conversation.updateMany({
+          where: { id: conversationId, organizationId, assignedToId: null },
+          data: { assignedToId: userId },
+        });
+        if (res.count > 0) {
+          await this.prisma.conversationAuditLog
+            .create({
+              data: {
+                conversationId,
+                actorId: null,
+                action: 'ASSIGNED',
+                fromValue: null,
+                toValue: userId,
+                metadata: {
+                  source: `lead_distribution:${source}`,
+                  pipelineId: pipelineId ?? null,
+                },
+              },
+            })
+            .catch(() => undefined);
+        }
+      }
+
+      // Card: o específico quando informado; senão os cards abertos sem dono
+      // do contato (cura leads antigos sem responsável).
+      if (cardId) {
+        await this.prisma.card
+          .updateMany({
+            where: { id: cardId, organizationId, assignedToId: null },
+            data: { assignedToId: userId },
+          })
+          .catch(() => undefined);
+      } else if (contactId) {
+        await this.prisma.card
+          .updateMany({
+            where: {
+              organizationId,
+              contactId,
+              assignedToId: null,
+              status: 'OPEN',
+            },
+            data: { assignedToId: userId },
+          })
+          .catch(() => undefined);
+      }
+
+      this.logger.log(
+        `lead_distribuido(${source}) conv=${conversationId ?? '-'} card=${cardId ?? '-'} funil=${pipelineId ?? '-'} -> user=${userId}`,
+      );
+      return userId;
+    } catch (err: any) {
+      this.logger.warn(
+        `assignEntry falhou (org=${organizationId} conv=${conversationId ?? '-'}): ${err?.message ?? err}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Atribui um responsável a uma conversa NOVA sem responsável, via sorteio
    * ponderado da regra do FUNIL do lead. Best-effort e idempotente (só age
    * quando assignedToId é null). Também aplica no card do contato quando existir

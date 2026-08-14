@@ -9,6 +9,7 @@ import { CardStatus, ConversationStatus, PipelineStageType } from '@prisma/clien
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
+import { LeadDistributionService } from '../lead-distribution/lead-distribution.service';
 import {
   CreateCardDto,
   CreatePipelineDto,
@@ -86,6 +87,7 @@ export class PipelinesService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly cadences: CadencesService,
+    private readonly leadDistribution: LeadDistributionService,
   ) {}
 
   /**
@@ -792,9 +794,21 @@ export class PipelinesService {
   ) {
     const contactCard = await this.prisma.card.findFirst({
       where: { organizationId, contactId, status: 'OPEN' },
-      select: { id: true },
+      select: { id: true, pipelineId: true },
     });
-    if (contactCard) return null;
+    if (contactCard) {
+      // Já existe card aberto: não duplica, mas garante o sorteio/stickiness
+      // no card existente caso ainda esteja sem vendedor (cura leads antigos).
+      void this.leadDistribution
+        .assignEntry({
+          organizationId,
+          contactId,
+          cardId: contactCard.id,
+          pipelineId: contactCard.pipelineId,
+        })
+        .catch(() => undefined);
+      return null;
+    }
 
     const target = await this.pickEntryTarget(organizationId, ctx);
     if (!target) return null;
@@ -815,6 +829,16 @@ export class PipelinesService {
       },
     });
     await this.applySourceTag(organizationId, contactId, ctx);
+    // Sorteio ponderado (ou stickiness) JÁ NA ENTRADA DO CARD — LP/Lead Ads
+    // entram sem conversa, então o vendedor é definido aqui no card.
+    void this.leadDistribution
+      .assignEntry({
+        organizationId,
+        contactId,
+        cardId: card.id,
+        pipelineId: target.pipelineId,
+      })
+      .catch(() => undefined);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });
     return card;
   }
@@ -833,18 +857,44 @@ export class PipelinesService {
   ) {
     const existing = await this.prisma.card.findFirst({
       where: { conversationId },
-      select: { id: true },
+      select: { id: true, pipelineId: true },
     });
-    if (existing) return null;
+    if (existing) {
+      // Já há card pra esta conversa: garante o vendedor na conversa E no card
+      // (stickiness/sorteio), sem duplicar.
+      void this.leadDistribution
+        .assignEntry({
+          organizationId,
+          contactId,
+          conversationId,
+          cardId: existing.id,
+          pipelineId: existing.pipelineId,
+        })
+        .catch(() => undefined);
+      return null;
+    }
 
     // Controle de duplicatas: se o contato já tem um card ABERTO na org, não
     // cria outro lead (paridade com o "controle de duplicatas" do Kommo).
     if (contactId) {
       const contactCard = await this.prisma.card.findFirst({
         where: { organizationId, contactId, status: 'OPEN' },
-        select: { id: true },
+        select: { id: true, pipelineId: true },
       });
-      if (contactCard) return null;
+      if (contactCard) {
+        // Lead recorrente: a CONVERSA nova gruda no vendedor que já é dono do
+        // lead (stickiness). Se o card antigo estava sem dono, cura junto.
+        void this.leadDistribution
+          .assignEntry({
+            organizationId,
+            contactId,
+            conversationId,
+            cardId: contactCard.id,
+            pipelineId: contactCard.pipelineId,
+          })
+          .catch(() => undefined);
+        return null;
+      }
     }
 
     // Roteia por origem (canal) quando configurado; senão pipeline padrão.
@@ -866,6 +916,17 @@ export class PipelinesService {
       },
     });
     await this.applySourceTag(organizationId, contactId, ctx);
+    // Sorteio ponderado (ou stickiness) na ENTRADA: define o vendedor na
+    // conversa (já criada pelo WhatsApp) e no card recém-criado — mesmo dono.
+    void this.leadDistribution
+      .assignEntry({
+        organizationId,
+        contactId,
+        conversationId,
+        cardId: card.id,
+        pipelineId: target.pipelineId,
+      })
+      .catch(() => undefined);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });
     // Dispara Salesbots com gatilho STAGE_ENTERED na etapa de entrada — assim o
     // Boas-Vindas roda em LEAD NOVO, não só quando o card é movido pra cá.

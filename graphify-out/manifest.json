@@ -2383,5 +2383,10 @@
     "mtime": 1786626476.388352,
     "ast_hash": "df08cf0f681a9cdf15008d75e7ac2643",
     "semantic_hash": ""
+  },
+  "prisma/migrations/20260814170000_lead_base_cleanup/migration.sql": {
+    "mtime": 1786724380.2477965,
+    "ast_hash": "1bde1b0b52b268e4c1e2b08f64b30e53",
+    "semantic_hash": ""
   }
 }

@@ -1,16 +1,16 @@
 # Graph Report - chat-bullq-api  (2026-08-14)
 
 ## Corpus Check
-- 476 files · ~204,755 words
+- 476 files · ~204,747 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 318 nodes · 752 edges · 10 communities
+- 318 nodes · 752 edges · 11 communities (10 shown, 1 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1388f74e`
+- Built from commit: `73c6916b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -25,6 +25,7 @@
 - ConversationsService
 - CadencesService
 - InboundMessageProcessor
+- Injectable
 
 ## God Nodes (most connected - your core abstractions)
 1. `PipelinesService` - 33 edges
@@ -45,7 +46,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (10 total, 0 thin omitted)
+## Communities (11 total, 1 thin omitted)
 
 ### Community 0 - "pipelines.module.ts"
 Cohesion: 0.14
@@ -73,7 +74,7 @@ Nodes (25): IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Len
 
 ### Community 6 - "LeadDistributionService"
 Cohesion: 0.10
-Nodes (15): LeadDistributionController, ApiBearerAuth, ApiOperation, ApiTags, Body, Controller, CurrentOrg, Get (+7 more)
+Nodes (14): LeadDistributionController, ApiBearerAuth, ApiOperation, ApiTags, Body, Controller, CurrentOrg, Get (+6 more)
 
 ### Community 7 - "ConversationsService"
 Cohesion: 0.11
@@ -90,16 +91,17 @@ Nodes (6): InboundJobData, InboundMessageProcessor, NON_TRIGGERING_MESSAGE_TYPES
 ## Knowledge Gaps
 - **24 isolated node(s):** `LeadWeight`, `PipelineRule`, `InboundJobData`, `StatusJobData`, `RoutingCtx` (+19 more)
   These have ≤1 connection - possible missing edges or undocumented components.
+- **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `PipelinesService` connect `PipelinesService` to `pipelines.module.ts`, `InboundMessageProcessor`, `pipelines.service.ts`, `LeadDistributionService`?**
-  _High betweenness centrality (0.255) - this node is a cross-community bridge._
+  _High betweenness centrality (0.251) - this node is a cross-community bridge._
 - **Why does `CadencesService` connect `CadencesService` to `pipelines.module.ts`, `InboundMessageProcessor`, `CommercialRoutineService`, `pipelines.service.ts`?**
-  _High betweenness centrality (0.255) - this node is a cross-community bridge._
+  _High betweenness centrality (0.204) - this node is a cross-community bridge._
 - **Why does `PipelinesController` connect `PipelinesService` to `pipelines.module.ts`, `WhatsappMergeService`?**
-  _High betweenness centrality (0.175) - this node is a cross-community bridge._
+  _High betweenness centrality (0.173) - this node is a cross-community bridge._
 - **What connects `LeadWeight`, `PipelineRule`, `InboundJobData` to the rest of the system?**
   _24 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `pipelines.module.ts` be split into smaller, more focused modules?**

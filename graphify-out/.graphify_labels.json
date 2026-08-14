@@ -8,5 +8,6 @@
   "6": "LeadDistributionService",
   "7": "ConversationsService",
   "8": "CadencesService",
-  "9": "InboundMessageProcessor"
+  "9": "InboundMessageProcessor",
+  "10": "Injectable"
 }

@@ -120,7 +120,7 @@ export class LeadDistributionService {
     const byId = new Map(users.map((u) => [u.id, u]));
     return ids
       .map((id) => byId.get(id))
-      .filter((u): u is { id: string; name: string | null; avatarUrl: string | null } => !!u)
+      .filter((u): u is (typeof users)[number] => u != null)
       .map((u) => ({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl }));
   }
 

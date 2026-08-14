@@ -94,6 +94,36 @@ export class LeadDistributionService {
     return this.getConfig(organizationId);
   }
 
+  /**
+   * Lista os VENDEDORES da org = usuários que participam da distribuição
+   * (têm peso > 0 em qualquer regra de funil). Usado pelo filtro "Vendedores"
+   * do inbox. Retorna id/nome/avatar dos usuários, deduplicados.
+   */
+  async listSellers(
+    organizationId: string,
+  ): Promise<Array<{ userId: string; name: string | null; avatarUrl: string | null }>> {
+    const cfg = await this.getConfig(organizationId);
+    const ids = [
+      ...new Set(
+        cfg.rules
+          .flatMap((r) => r.weights)
+          .filter((w) => w?.userId && (w.weight ?? 0) > 0)
+          .map((w) => w.userId),
+      ),
+    ];
+    if (!ids.length) return [];
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, avatarUrl: true },
+    });
+    // Preserva a ordem/deduplicação de `ids` e ignora usuários inexistentes.
+    const byId = new Map(users.map((u) => [u.id, u]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((u): u is { id: string; name: string | null; avatarUrl: string | null } => !!u)
+      .map((u) => ({ userId: u.id, name: u.name, avatarUrl: u.avatarUrl }));
+  }
+
   // ── Distribuição ───────────────────────────────────────────────────
 
   /**

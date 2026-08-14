@@ -66,6 +66,7 @@ export class ConversationsController {
     @Query('status') status?: string,
     @Query('channelId') channelId?: string,
     @Query('assignedToId') assignedToId?: string,
+    @Query('assignedToIds') assignedToIds?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -88,12 +89,19 @@ export class ConversationsController {
       ?.split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    const parsedAssignedToIds = assignedToIds
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     return this.service.findInbox(
       orgId,
       {
         status,
         channelId,
         assignedToId,
+        assignedToIds: parsedAssignedToIds?.length
+          ? parsedAssignedToIds
+          : undefined,
         search,
         archived: archivedScope,
         unreadOnly: unread === 'true' || unread === '1',

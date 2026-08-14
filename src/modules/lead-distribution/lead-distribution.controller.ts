@@ -22,6 +22,15 @@ export class LeadDistributionController {
     return this.service.getConfig(orgId);
   }
 
+  @Get('sellers')
+  @ApiOperation({
+    summary:
+      'Vendedores da org = usuários que participam da distribuição (peso > 0). Usado pelo filtro do inbox.',
+  })
+  listSellers(@CurrentOrg('id') orgId: string) {
+    return this.service.listSellers(orgId);
+  }
+
   @Put('config')
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: 'Atualiza pesos e ativação da distribuição' })

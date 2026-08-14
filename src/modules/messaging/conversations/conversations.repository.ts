@@ -19,6 +19,9 @@ export interface InboxFilters {
   /** Tag ids applied to the conversation OR its contact. ANY match. */
   tagIds?: string[];
   assignedToId?: string;
+  /** Filtro por MÚLTIPLOS responsáveis (ex.: filtro "Vendedores" do inbox).
+   *  Quando presente e não-vazio, tem precedência sobre assignedToId. */
+  assignedToIds?: string[];
   search?: string;
   accessibleChannelIds?: string[];
   /**
@@ -125,7 +128,14 @@ export class ConversationsRepository {
         { contact: { tags: { some: { tagId: { in: filters.tagIds } } } } },
       ];
     }
-    if (filters.assignedToId) where.assignedToId = filters.assignedToId;
+    if (filters.assignedToIds && filters.assignedToIds.length > 0) {
+      where.assignedToId =
+        filters.assignedToIds.length === 1
+          ? filters.assignedToIds[0]
+          : { in: filters.assignedToIds };
+    } else if (filters.assignedToId) {
+      where.assignedToId = filters.assignedToId;
+    }
     if (filters.stuckOnly) where.isStuck = true;
     if (filters.search) {
       where.OR = [

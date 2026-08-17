@@ -36,6 +36,8 @@ export interface VectorEntry {
   ownerType: VectorOwnerType;
   /** Foreign key in the owning domain (Message.id, Fact.id, etc). */
   ownerId: string;
+  /** Tenant (multi-empresa). Gravado no insert; usado pra filtrar/auditar. */
+  organizationId?: string;
   /** Optional scope filters — set on insert so we can filter at search time. */
   conversationId?: string;
   agentId?: string;
@@ -51,6 +53,8 @@ export interface VectorEntry {
 }
 
 export interface SearchScope {
+  /** Tenant (multi-empresa). Quando setado, a busca filtra por ele. */
+  organizationId?: string;
   agentId?: string;
   contactId?: string;
   conversationId?: string;

@@ -7,6 +7,7 @@ import * as express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AppModule } from './app.module';
+import { runWithTenant } from './common/tenant/tenant-context';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -19,6 +20,14 @@ async function bootstrap() {
   // helmet blocks cross-origin media by default; relax that for <audio>/<img>
   // tags served by this API (same origin, but browsers enforce CORP).
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+  // Contexto de tenant por request (multi-empresa): cria o AsyncLocalStorage
+  // que o OrgGuard preenche com a org validada e o tenant-guard do Prisma
+  // consulta pra detectar queries de tenant sem filtro de organizationId.
+  app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+    runWithTenant({ source: 'http' }, () => next()),
+  );
+
   app.setGlobalPrefix('api/v1');
 
   // Serve locally-stored user uploads (audio, etc.) before the global prefix

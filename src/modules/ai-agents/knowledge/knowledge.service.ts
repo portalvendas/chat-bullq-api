@@ -90,7 +90,7 @@ export class KnowledgeService {
             type: 'index_knowledge',
             knowledgeId: `${item.id}:${agentId}`,
             content: item.text,
-            scope: { agentId, ownerType: 'knowledge' },
+            scope: { organizationId: item.organizationId, agentId, ownerType: 'knowledge' },
             metadata: { knowledgeItemId: item.id, organizationId: item.organizationId },
           },
           { removeOnComplete: 200, removeOnFail: 50 },

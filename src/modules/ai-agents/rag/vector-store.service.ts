@@ -17,6 +17,7 @@ import type { SearchResult, SearchScope, VectorEntry } from './types';
  *
  *  CREATE TABLE ai_vector_entries (
  *    id              text PRIMARY KEY,
+ *    organization_id text,                    -- tenant (multi-empresa); NOT NULL idealmente
  *    owner_type      text NOT NULL,           -- 'message' | 'fact' | 'memory_summary'
  *    owner_id        text NOT NULL,           -- FK in the source domain
  *    conversation_id text,
@@ -29,6 +30,7 @@ import type { SearchResult, SearchScope, VectorEntry } from './types';
  *  );
  *
  *  -- Filter indexes for the scope predicates.
+ *  CREATE INDEX ai_vector_entries_org_idx          ON ai_vector_entries(organization_id);
  *  CREATE INDEX ai_vector_entries_owner_idx        ON ai_vector_entries(owner_type, owner_id);
  *  CREATE INDEX ai_vector_entries_conversation_idx ON ai_vector_entries(conversation_id);
  *  CREATE INDEX ai_vector_entries_agent_idx        ON ai_vector_entries(agent_id);
@@ -62,15 +64,16 @@ export class VectorStoreService {
     await this.prisma.$executeRawUnsafe(
       `
       INSERT INTO ai_vector_entries
-        (id, owner_type, owner_id, conversation_id, agent_id, contact_id, content, embedding, metadata)
+        (id, organization_id, owner_type, owner_id, conversation_id, agent_id, contact_id, content, embedding, metadata)
       VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8::vector, $9::jsonb)
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector, $10::jsonb)
       ON CONFLICT (id) DO UPDATE SET
         embedding = EXCLUDED.embedding,
         content   = EXCLUDED.content,
         metadata  = EXCLUDED.metadata
       `,
       entry.id,
+      entry.organizationId ?? null,
       entry.ownerType,
       entry.ownerId,
       entry.conversationId ?? null,
@@ -115,6 +118,12 @@ export class VectorStoreService {
     const params: any[] = [vec, k];
     let p = 3;
 
+    // Multi-empresa: quando a org vem no escopo, filtra por ela (defesa em
+    // profundidade — além do agentId, que já é org-bound).
+    if (scope.organizationId) {
+      filters.push(`organization_id = $${p++}`);
+      params.push(scope.organizationId);
+    }
     if (scope.agentId) {
       filters.push(`agent_id = $${p++}`);
       params.push(scope.agentId);
@@ -177,7 +186,15 @@ export class VectorStoreService {
       }));
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, organizationId?: string): Promise<void> {
+    if (organizationId) {
+      await this.prisma.$executeRawUnsafe(
+        `DELETE FROM ai_vector_entries WHERE id = $1 AND organization_id = $2`,
+        id,
+        organizationId,
+      );
+      return;
+    }
     await this.prisma.$executeRawUnsafe(
       `DELETE FROM ai_vector_entries WHERE id = $1`,
       id,
@@ -188,7 +205,20 @@ export class VectorStoreService {
    * Removes every entry tied to a given owner. Useful when a fact is
    * deleted upstream and we want the vector store to reflect that.
    */
-  async deleteByOwner(ownerType: VectorEntry['ownerType'], ownerId: string): Promise<void> {
+  async deleteByOwner(
+    ownerType: VectorEntry['ownerType'],
+    ownerId: string,
+    organizationId?: string,
+  ): Promise<void> {
+    if (organizationId) {
+      await this.prisma.$executeRawUnsafe(
+        `DELETE FROM ai_vector_entries WHERE owner_type = $1 AND owner_id = $2 AND organization_id = $3`,
+        ownerType,
+        ownerId,
+        organizationId,
+      );
+      return;
+    }
     await this.prisma.$executeRawUnsafe(
       `DELETE FROM ai_vector_entries WHERE owner_type = $1 AND owner_id = $2`,
       ownerType,

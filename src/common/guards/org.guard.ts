@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../database/prisma.service';
 import { ChannelAccessService } from '../../modules/iam/channel-access/channel-access.service';
 import { IS_PUBLIC_KEY } from '../decorators';
+import { setTenantOrg } from '../tenant/tenant-context';
 
 @Injectable()
 export class OrgGuard implements CanActivate {
@@ -55,6 +56,10 @@ export class OrgGuard implements CanActivate {
       userRole: membership.role,
       userOrganizationId: membership.id,
     };
+
+    // Publica a org validada no contexto de tenant do request (AsyncLocalStorage)
+    // pro tenant-guard do Prisma conseguir detectar queries sem filtro de org.
+    setTenantOrg(membership.organizationId, userId);
 
     request.accessibleChannelIds = await this.channelAccess.getAccessibleChannelIds(
       membership.id,

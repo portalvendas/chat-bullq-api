@@ -9,8 +9,5 @@
   "7": "ConversationsService",
   "8": "CadencesService",
   "9": "InboundMessageProcessor",
-  "10": "Injectable",
-  "11": "PrismaService",
-  "12": "secret-cipher.ts",
-  "13": "KnowledgeService"
+  "10": "Injectable"
 }

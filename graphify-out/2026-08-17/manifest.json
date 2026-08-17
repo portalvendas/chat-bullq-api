@@ -325,8 +325,8 @@
     "semantic_hash": ""
   },
   "src/common/guards/org.guard.ts": {
-    "mtime": 1786986900.37488,
-    "ast_hash": "72b10c20c3c1543c7144c17e89d5f616",
+    "mtime": 1781632677.0,
+    "ast_hash": "95de9a7e047e080ea0dccfe0b17f6a0a",
     "semantic_hash": ""
   },
   "src/common/guards/roles.guard.ts": {
@@ -365,13 +365,13 @@
     "semantic_hash": ""
   },
   "src/database/prisma.service.ts": {
-    "mtime": 1786991202.2515826,
-    "ast_hash": "5be8eb1b0736888ddea2820ebb21bf30",
+    "mtime": 1781632677.0,
+    "ast_hash": "aeb7183bb364b5ad50cd2d18e47d654e",
     "semantic_hash": ""
   },
   "src/main.ts": {
-    "mtime": 1786986900.3733284,
-    "ast_hash": "19c17ec8368b869ab2540199cb821d12",
+    "mtime": 1781632677.0,
+    "ast_hash": "892551fbba0d530b0ccad03e3284d704",
     "semantic_hash": ""
   },
   "src/modules/ai-agents/agents/agents.controller.ts": {
@@ -580,8 +580,8 @@
     "semantic_hash": ""
   },
   "src/modules/ai-agents/knowledge/knowledge.service.ts": {
-    "mtime": 1786987077.664851,
-    "ast_hash": "9a9c3e711992cdd0f5a1fc58107051bc",
+    "mtime": 1785035852.6790633,
+    "ast_hash": "b396b39e6374a94f3cf1397fc33fa281",
     "semantic_hash": ""
   },
   "src/modules/ai-agents/llm/llm.module.ts": {
@@ -710,13 +710,13 @@
     "semantic_hash": ""
   },
   "src/modules/ai-agents/rag/types.ts": {
-    "mtime": 1786987077.6627843,
-    "ast_hash": "c97c991b78b872d627321f56b84948a4",
+    "mtime": 1784518024.3050241,
+    "ast_hash": "1824b60af82c957aee4989caceef8a1c",
     "semantic_hash": ""
   },
   "src/modules/ai-agents/rag/vector-store.service.ts": {
-    "mtime": 1786987077.6669374,
-    "ast_hash": "180c76982a3795a4f86933930353e5f1",
+    "mtime": 1781632677.0,
+    "ast_hash": "fc5c6416270608327108c8b43e79e95f",
     "semantic_hash": ""
   },
   "src/modules/ai-agents/router/agent-router.service.ts": {
@@ -2387,36 +2387,6 @@
   "prisma/migrations/20260814170000_lead_base_cleanup/migration.sql": {
     "mtime": 1786724380.2477965,
     "ast_hash": "1bde1b0b52b268e4c1e2b08f64b30e53",
-    "semantic_hash": ""
-  },
-  "scripts/backfill-encrypt-channel-secrets.ts": {
-    "mtime": 1786991380.3770664,
-    "ast_hash": "6080694ad4b6e8ecf0761d7aa5da9dfe",
-    "semantic_hash": ""
-  },
-  "src/common/crypto/secret-cipher.spec.ts": {
-    "mtime": 1786991454.8348503,
-    "ast_hash": "1ff8cbf93e59663cc28b80699f493cba",
-    "semantic_hash": ""
-  },
-  "src/common/crypto/secret-cipher.ts": {
-    "mtime": 1786991174.7799087,
-    "ast_hash": "526c4010c484e0c7d3762cc3825285a9",
-    "semantic_hash": ""
-  },
-  "src/common/tenant/tenant-context.ts": {
-    "mtime": 1786986850.6702335,
-    "ast_hash": "304cba69b2da2b476d4d081ec3ca5dec",
-    "semantic_hash": ""
-  },
-  "src/common/tenant/tenant-models.spec.ts": {
-    "mtime": 1786987130.3107994,
-    "ast_hash": "8cc00eedb96e18c898af72a351c15354",
-    "semantic_hash": ""
-  },
-  "src/common/tenant/tenant-models.ts": {
-    "mtime": 1786986850.6711907,
-    "ast_hash": "5a3afaeee9a9cfa7addad3ed05fb6cda",
     "semantic_hash": ""
   }
 }

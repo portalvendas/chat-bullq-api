@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { getTenantContext } from '../common/tenant/tenant-context';
 import {
@@ -12,110 +17,142 @@ import {
   isEncryptionEnabled,
 } from '../common/crypto/secret-cipher';
 
+const cryptoLogger = new Logger('secret-cipher');
+const guardLogger = new Logger('tenant-guard');
+
+// Ações de escrita cujo `data` pode conter segredos do canal.
+const WRITE_DATA = new Set(['create', 'update', 'createMany', 'updateMany']);
+// Ações que retornam linha(s) de Channel — precisam ser decifradas na volta.
+const RETURN_ROWS = new Set([
+  'findMany',
+  'findFirst',
+  'findFirstOrThrow',
+  'findUnique',
+  'findUniqueOrThrow',
+  'create',
+  'update',
+  'delete',
+]);
+
+/**
+ * PrismaService — cliente Prisma da aplicação com DUAS extensões (client
+ * extension `$extends`, pois o `$use`/middleware foi REMOVIDO no Prisma 6):
+ *
+ *  1. tenant-guard (defesa em profundidade multi-empresa, MODO OBSERVAÇÃO):
+ *     quando há org no contexto do request e uma query de CONJUNTO roda num
+ *     modelo de tenant SEM filtrar por organizationId, apenas LOGA um warning
+ *     (não altera nem bloqueia). Serve pra caçar vazamentos reais nos logs
+ *     antes de ligar o bloqueio. Jobs/crons (sem request) não são afetados.
+ *
+ *  2. secret-cipher (cifragem de segredos do canal em repouso, AES-256-GCM):
+ *     cifra `config`/`webhookSecret` na ESCRITA e decifra na LEITURA, de forma
+ *     transparente — nenhum adapter/repository muda. Chave em ENCRYPTION_KEY;
+ *     sem a env vira no-op (texto puro). Raw SQL não passa por extensão, mas
+ *     `channels` nunca é lido via $queryRaw no projeto.
+ *
+ * Wiring: `$extends` devolve um cliente NOVO (não muta `this`). Como toda a
+ * app injeta PrismaService e usa `this.prisma.<model>`, o construtor devolve
+ * um Proxy que delega ao cliente estendido para tudo que ele conhece
+ * (delegates de modelo, $connect, $transaction, etc.) e mantém no `this` os
+ * métodos da própria classe (onModuleInit/onModuleDestroy/logger).
+ */
 @Injectable()
 export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  private readonly extended: PrismaClient;
 
-  async onModuleInit() {
-    this.registerTenantGuard();
-    this.registerChannelCrypto();
-    await this.$connect();
-    this.logger.log('Database connected');
-  }
+  constructor() {
+    super();
 
-  /**
-   * Tenant-guard (defesa em profundidade multi-empresa) — MODO OBSERVAÇÃO.
-   * Quando há org no contexto do request (OrgGuard) e uma query de conjunto
-   * (findMany/updateMany/deleteMany/count/aggregate/groupBy) roda num modelo
-   * de tenant SEM filtrar por organizationId, apenas LOGA um warning — não
-   * altera nem bloqueia a query. Serve pra caçar vazamentos reais nos logs
-   * antes de ligar o bloqueio. Jobs/crons (sem contexto de request) não são
-   * afetados. TODO: migrar de $use (deprecado) p/ client extension e, após
-   * validar os logs, passar a INJETAR o organizationId / lançar erro.
-   */
-  private registerTenantGuard(): void {
-    this.$use(async (params: any, next: (p: any) => Promise<any>) => {
-      try {
-        const orgId = getTenantContext()?.organizationId;
-        if (
-          orgId &&
-          params.model &&
-          TENANT_MODELS.has(params.model) &&
-          SET_ACTIONS.has(params.action)
-        ) {
-          const where =
-            (params.args && (params.args.where ?? params.args)) || {};
-          if (!whereMentionsOrg(where)) {
-            this.logger.warn(
-              `[tenant-guard][observacao] ${params.model}.${params.action} sem organizationId (org do request=${orgId}) — potencial vazamento cross-tenant`,
-            );
-          }
-        }
-      } catch {
-        // o guard NUNCA pode derrubar a query
-      }
-      return next(params);
-    });
-  }
-
-  /**
-   * Cifragem de segredos do canal em repouso (AES-256-GCM) — TRANSPARENTE.
-   * Cifra `config`/`webhookSecret` na ESCRITA e decifra na LEITURA, no mesmo
-   * ponto (middleware) que já intercepta todas as operações do modelo Channel.
-   * Assim nenhum adapter/repository precisa mudar. Chave em ENCRYPTION_KEY;
-   * sem a env, vira no-op (texto puro) — ver secret-cipher.ts. Raw SQL não
-   * passa por aqui, mas `channels` nunca é lido via $queryRaw no projeto.
-   */
-  private registerChannelCrypto(): void {
     if (!isEncryptionEnabled()) {
-      this.logger.warn(
-        '[secret-cipher] ENCRYPTION_KEY ausente — segredos de canal ficam em texto puro (cifragem desligada)',
+      cryptoLogger.warn(
+        'ENCRYPTION_KEY ausente — segredos de canal ficam em texto puro (cifragem desligada)',
       );
     }
-    const WRITE_DATA = new Set(['create', 'update', 'createMany', 'updateMany']);
-    const RETURN_ROWS = new Set([
-      'findMany',
-      'findFirst',
-      'findFirstOrThrow',
-      'findUnique',
-      'findUniqueOrThrow',
-      'create',
-      'update',
-      'delete',
-    ]);
-    this.$use(async (params: any, next: (p: any) => Promise<any>) => {
-      if (params.model !== 'Channel') return next(params);
-      try {
-        if (params.args?.data && WRITE_DATA.has(params.action)) {
-          params.args.data = encryptChannelWriteData(params.args.data);
-        } else if (params.action === 'upsert' && params.args) {
-          if (params.args.create)
-            params.args.create = encryptChannelWriteData(params.args.create);
-          if (params.args.update)
-            params.args.update = encryptChannelWriteData(params.args.update);
+
+    this.extended = this.$extends({
+      query: {
+        $allModels: {
+          async $allOperations({ model, operation, args, query }: any) {
+            // (1) tenant-guard — só observa/loga, nunca derruba a query.
+            try {
+              const orgId = getTenantContext()?.organizationId;
+              if (
+                orgId &&
+                model &&
+                TENANT_MODELS.has(model) &&
+                SET_ACTIONS.has(operation)
+              ) {
+                const where = (args && (args.where ?? args)) || {};
+                if (!whereMentionsOrg(where)) {
+                  guardLogger.warn(
+                    `[observacao] ${model}.${operation} sem organizationId (org do request=${orgId}) — potencial vazamento cross-tenant`,
+                  );
+                }
+              }
+            } catch {
+              // o guard NUNCA pode derrubar a query
+            }
+
+            // (2) secret-cipher — só no modelo Channel.
+            if (model === 'Channel') {
+              try {
+                if (args?.data && WRITE_DATA.has(operation)) {
+                  args.data = encryptChannelWriteData(args.data);
+                } else if (operation === 'upsert' && args) {
+                  if (args.create)
+                    args.create = encryptChannelWriteData(args.create);
+                  if (args.update)
+                    args.update = encryptChannelWriteData(args.update);
+                }
+              } catch (err: any) {
+                cryptoLogger.error(
+                  `falha ao cifrar Channel.${operation}: ${err?.message}`,
+                );
+                throw err; // nunca gravar segredo achando que cifrou
+              }
+
+              const result = await query(args);
+
+              if (operation === 'upsert' || RETURN_ROWS.has(operation)) {
+                try {
+                  return decryptChannelResult(result);
+                } catch (err: any) {
+                  cryptoLogger.error(
+                    `falha ao decifrar Channel.${operation}: ${err?.message}`,
+                  );
+                  return result;
+                }
+              }
+              return result;
+            }
+
+            return query(args);
+          },
+        },
+      },
+    }) as unknown as PrismaClient;
+
+    // Delega tudo que o cliente estendido conhece (modelos, $connect,
+    // $transaction, $queryRaw...) e mantém os métodos da classe no target.
+    return new Proxy(this, {
+      get: (target, prop, receiver) => {
+        const ext = (target as PrismaService).extended as any;
+        if (ext && prop in ext && prop !== 'extended') {
+          const value = ext[prop];
+          return typeof value === 'function' ? value.bind(ext) : value;
         }
-      } catch (err: any) {
-        this.logger.error(
-          `[secret-cipher] falha ao cifrar Channel.${params.action}: ${err?.message}`,
-        );
-        throw err; // nunca gravar segredo achando que cifrou
-      }
-      const result = await next(params);
-      if (params.action === 'upsert' || RETURN_ROWS.has(params.action)) {
-        try {
-          return decryptChannelResult(result);
-        } catch (err: any) {
-          this.logger.error(
-            `[secret-cipher] falha ao decifrar Channel.${params.action}: ${err?.message}`,
-          );
-          return result;
-        }
-      }
-      return result;
+        return Reflect.get(target, prop, receiver);
+      },
     });
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+    this.logger.log('Database connected');
   }
 
   async onModuleDestroy() {

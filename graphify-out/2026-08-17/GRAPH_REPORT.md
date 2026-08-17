@@ -1,16 +1,16 @@
-# Graph Report - chat-bullq-api  (2026-08-17)
+# Graph Report - chat-bullq-api  (2026-08-14)
 
 ## Corpus Check
-- 483 files · ~208,251 words
+- 476 files · ~204,747 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 403 nodes · 942 edges · 14 communities (13 shown, 1 thin omitted)
+- 318 nodes · 752 edges · 11 communities (10 shown, 1 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `de5fb356`
+- Built from commit: `73c6916b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -26,9 +26,6 @@
 - CadencesService
 - InboundMessageProcessor
 - Injectable
-- PrismaService
-- secret-cipher.ts
-- KnowledgeService
 
 ## God Nodes (most connected - your core abstractions)
 1. `PipelinesService` - 33 edges
@@ -36,39 +33,31 @@
 3. `ConversationsController` - 25 edges
 4. `ConversationsService` - 25 edges
 5. `PipelinesController` - 24 edges
-6. `KnowledgeService` - 17 edges
-7. `LeadDistributionService` - 17 edges
-8. `InboundMessageProcessor` - 17 edges
-9. `PrismaService` - 16 edges
-10. `ConversationsRepository` - 12 edges
+6. `LeadDistributionService` - 17 edges
+7. `InboundMessageProcessor` - 17 edges
+8. `ConversationsRepository` - 12 edges
+9. `CommercialRoutineService` - 12 edges
+10. `LeadDistributionController` - 9 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `configAlreadyEncrypted()` --calls--> `isEncrypted()`  [EXTRACTED]
-  scripts/backfill-encrypt-channel-secrets.ts → src/common/crypto/secret-cipher.ts
-- `main()` --calls--> `decryptChannelRow()`  [EXTRACTED]
-  scripts/backfill-encrypt-channel-secrets.ts → src/common/crypto/secret-cipher.ts
-- `main()` --calls--> `encryptConfig()`  [EXTRACTED]
-  scripts/backfill-encrypt-channel-secrets.ts → src/common/crypto/secret-cipher.ts
-- `main()` --calls--> `encryptString()`  [EXTRACTED]
-  scripts/backfill-encrypt-channel-secrets.ts → src/common/crypto/secret-cipher.ts
-- `main()` --calls--> `isEncrypted()`  [EXTRACTED]
-  scripts/backfill-encrypt-channel-secrets.ts → src/common/crypto/secret-cipher.ts
+- `CadenceInput` --references--> `WorkflowGraph`  [EXTRACTED]
+  src/modules/cadences/cadences.service.ts → src/modules/cadences/cadences.graph.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (14 total, 1 thin omitted)
+## Communities (11 total, 1 thin omitted)
 
 ### Community 0 - "pipelines.module.ts"
 Cohesion: 0.14
 Nodes (9): InjectQueue, Module, Processor, PipelineInactivityCronService, Injectable, PIPELINE_INACTIVITY_QUEUE, PIPELINE_INACTIVITY_SCAN_JOB, PipelineInactivityProcessor (+1 more)
 
 ### Community 1 - "WhatsappMergeService"
-Cohesion: 0.12
-Nodes (14): ApiBearerAuth, ApiTags, Controller, AppModule, Module, runWithTenant(), bootstrap(), WhatsappMergeController (+6 more)
+Cohesion: 0.13
+Nodes (12): ApiBearerAuth, ApiTags, Controller, AppModule, Module, WhatsappMergeController, Module, WhatsappMergeModule (+4 more)
 
 ### Community 2 - "PipelinesService"
-Cohesion: 0.10
+Cohesion: 0.09
 Nodes (11): ApiOperation, Body, CurrentOrg, Delete, Get, Patch, Put, Query (+3 more)
 
 ### Community 3 - "Param"
@@ -84,7 +73,7 @@ Cohesion: 0.15
 Nodes (25): IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Length (+17 more)
 
 ### Community 6 - "LeadDistributionService"
-Cohesion: 0.09
+Cohesion: 0.10
 Nodes (14): LeadDistributionController, ApiBearerAuth, ApiOperation, ApiTags, Body, Controller, CurrentOrg, Get (+6 more)
 
 ### Community 7 - "ConversationsService"
@@ -99,20 +88,8 @@ Nodes (21): ActionKind, CadenceLike, edgeTarget(), GraphEdge, GraphNode, GraphNo
 Cohesion: 0.18
 Nodes (6): InboundJobData, InboundMessageProcessor, NON_TRIGGERING_MESSAGE_TYPES, replyMediaLabel(), safeJson(), StatusJobData
 
-### Community 11 - "PrismaService"
-Cohesion: 0.09
-Nodes (22): OrgGuard, Injectable, getTenantContext(), setTenantOrg(), storage, TenantStore, SET_ACTIONS, TENANT_MODELS (+14 more)
-
-### Community 12 - "secret-cipher.ts"
-Cohesion: 0.30
-Nodes (17): configAlreadyEncrypted(), DRY_RUN, main(), prisma, ChannelWriteData, decryptChannelResult(), decryptChannelRow(), decryptConfig() (+9 more)
-
-### Community 13 - "KnowledgeService"
-Cohesion: 0.22
-Nodes (4): CreateKnowledgeInput, KnowledgeService, RAG_INDEXABLE, Injectable
-
 ## Knowledge Gaps
-- **36 isolated node(s):** `prisma`, `DRY_RUN`, `ChannelWriteData`, `TenantStore`, `storage` (+31 more)
+- **24 isolated node(s):** `LeadWeight`, `PipelineRule`, `InboundJobData`, `StatusJobData`, `RoutingCtx` (+19 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -120,16 +97,16 @@ Nodes (4): CreateKnowledgeInput, KnowledgeService, RAG_INDEXABLE, Injectable
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `PipelinesService` connect `PipelinesService` to `pipelines.module.ts`, `InboundMessageProcessor`, `pipelines.service.ts`, `LeadDistributionService`?**
-  _High betweenness centrality (0.288) - this node is a cross-community bridge._
+  _High betweenness centrality (0.251) - this node is a cross-community bridge._
 - **Why does `CadencesService` connect `CadencesService` to `pipelines.module.ts`, `InboundMessageProcessor`, `CommercialRoutineService`, `pipelines.service.ts`?**
-  _High betweenness centrality (0.224) - this node is a cross-community bridge._
-- **Why does `PrismaService` connect `PrismaService` to `pipelines.module.ts`, `secret-cipher.ts`, `KnowledgeService`?**
-  _High betweenness centrality (0.205) - this node is a cross-community bridge._
-- **What connects `prisma`, `DRY_RUN`, `ChannelWriteData` to the rest of the system?**
-  _36 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _High betweenness centrality (0.204) - this node is a cross-community bridge._
+- **Why does `PipelinesController` connect `PipelinesService` to `pipelines.module.ts`, `WhatsappMergeService`?**
+  _High betweenness centrality (0.173) - this node is a cross-community bridge._
+- **What connects `LeadWeight`, `PipelineRule`, `InboundJobData` to the rest of the system?**
+  _24 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `pipelines.module.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.14035087719298245 - nodes in this community are weakly interconnected._
 - **Should `WhatsappMergeService` be split into smaller, more focused modules?**
-  _Cohesion score 0.11956521739130435 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._
 - **Should `PipelinesService` be split into smaller, more focused modules?**
-  _Cohesion score 0.0996078431372549 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09225589225589226 - nodes in this community are weakly interconnected._

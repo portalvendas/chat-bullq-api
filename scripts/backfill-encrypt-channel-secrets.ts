@@ -22,7 +22,7 @@
  *   # aplicar:
  *   ENCRYPTION_KEY=... npx ts-node -P tsconfig.json --transpile-only scripts/backfill-encrypt-channel-secrets.ts
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import {
   isEncryptionEnabled,
   isEncrypted,
@@ -65,10 +65,10 @@ async function main() {
   let skipped = 0;
 
   for (const ch of channels) {
-    const data: { config?: unknown; webhookSecret?: string } = {};
+    const data: Prisma.ChannelUpdateInput = {};
 
     if (ch.config !== null && !configAlreadyEncrypted(ch.config)) {
-      data.config = encryptConfig(ch.config);
+      data.config = encryptConfig(ch.config) as Prisma.InputJsonValue;
       cfgEnc++;
     }
     if (

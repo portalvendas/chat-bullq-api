@@ -39,3 +39,6 @@ temp/
 
 # Local file storage
 uploads/
+
+# Graphify output (ferramenta de grafo de código — nunca versionar)
+graphify-out/

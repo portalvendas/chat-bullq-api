@@ -13,7 +13,7 @@ import {
 } from '../common/tenant/tenant-models';
 import {
   encryptChannelWriteData,
-  decryptChannelResult,
+  deepDecryptChannels,
   isEncryptionEnabled,
 } from '../common/crypto/secret-cipher';
 
@@ -97,7 +97,7 @@ export class PrismaService
               // o guard NUNCA pode derrubar a query
             }
 
-            // (2) secret-cipher — só no modelo Channel.
+            // (2) secret-cipher — ESCRITA: cifra config/webhookSecret do Channel.
             if (model === 'Channel') {
               try {
                 if (args?.data && WRITE_DATA.has(operation)) {
@@ -114,23 +114,28 @@ export class PrismaService
                 );
                 throw err; // nunca gravar segredo achando que cifrou
               }
-
-              const result = await query(args);
-
-              if (operation === 'upsert' || RETURN_ROWS.has(operation)) {
-                try {
-                  return decryptChannelResult(result);
-                } catch (err: any) {
-                  cryptoLogger.error(
-                    `falha ao decifrar Channel.${operation}: ${err?.message}`,
-                  );
-                  return result;
-                }
-              }
-              return result;
             }
 
-            return query(args);
+            const result = await query(args);
+
+            // (3) secret-cipher — LEITURA: decifra canais em QUALQUER nível do
+            // resultado (topo OU aninhado via include: message -> conversation
+            // -> channel, etc.). Sem isto, um canal trazido como relação passa
+            // cifrado e quem lê os tokens quebra (ex.: mídia WA Oficial -> 401).
+            if (
+              isEncryptionEnabled() &&
+              (operation === 'upsert' || RETURN_ROWS.has(operation))
+            ) {
+              try {
+                deepDecryptChannels(result);
+              } catch (err: any) {
+                cryptoLogger.error(
+                  `falha ao decifrar canais em ${model}.${operation}: ${err?.message}`,
+                );
+              }
+            }
+
+            return result;
           },
         },
       },

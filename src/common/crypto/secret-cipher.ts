@@ -186,3 +186,40 @@ export function decryptChannelResult(result: unknown): unknown {
   if (typeof result === 'object') return decryptChannelRow(result as ChannelWriteData);
   return result;
 }
+
+/**
+ * Decifra IN-PLACE qualquer canal encontrado em `node` — no topo OU aninhado
+ * via include (ex.: message → conversation → channel). Necessário porque a
+ * extensão do Prisma só roda a lógica de "Channel" quando o modelo consultado
+ * é Channel no topo; um canal trazido como relação de outro modelo passaria
+ * cifrado (config = { __enc }), quebrando quem lê `channel.config` (tokens).
+ *
+ * Detecta um canal cifrado pelo formato do `config` (`{ __enc }`) ou do
+ * `webhookSecret` (`enc:v1:...`). Um canal não contém outro canal aninhado,
+ * então paramos de descer ao decifrar um. Profundidade limitada por segurança.
+ */
+export function deepDecryptChannels(node: unknown, depth = 0): void {
+  if (depth > 6 || node === null || typeof node !== 'object') return;
+
+  if (Array.isArray(node)) {
+    for (const item of node) deepDecryptChannels(item, depth + 1);
+    return;
+  }
+
+  const obj = node as Record<string, unknown>;
+  let isChannel = false;
+  if (isEncryptedConfig(obj.config)) {
+    obj.config = decryptConfig(obj.config);
+    isChannel = true;
+  }
+  if (isEncrypted(obj.webhookSecret)) {
+    obj.webhookSecret = decryptString(obj.webhookSecret);
+    isChannel = true;
+  }
+  if (isChannel) return; // canal não aninha canal — não precisa descer mais
+
+  for (const key of Object.keys(obj)) {
+    const v = obj[key];
+    if (v && typeof v === 'object') deepDecryptChannels(v, depth + 1);
+  }
+}

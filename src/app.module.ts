@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './database/prisma.module';
+import { MailModule } from './modules/mail/mail.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
@@ -56,6 +57,7 @@ import redisConfig from './config/redis.config';
       }),
     }),
     PrismaModule,
+    MailModule,
     // AutomationsModule is @Global — register early so every domain
     // module can inject OutboxService without explicit imports.
     AutomationsModule,

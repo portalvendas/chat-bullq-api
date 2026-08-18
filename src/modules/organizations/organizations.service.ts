@@ -11,6 +11,7 @@ import { OrganizationsRepository } from './organizations.repository';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { MailService } from '../mail/mail.service';
 
 const DEFAULT_LOSS_REASONS = [
   'Não respondeu a mensagem inicial',
@@ -28,7 +29,10 @@ const DEFAULT_LOSS_REASONS = [
 export class OrganizationsService {
   private readonly logger = new Logger(OrganizationsService.name);
 
-  constructor(private readonly repository: OrganizationsRepository) {}
+  constructor(
+    private readonly repository: OrganizationsRepository,
+    private readonly mail: MailService,
+  ) {}
 
   async getOrganization(orgId: string) {
     const org = await this.repository.findById(orgId);
@@ -121,6 +125,14 @@ export class OrganizationsService {
       this.logger.log(`User ${dto.email} auto-added to org ${orgId} (already registered)`);
       return { ...invitation, status: 'ACCEPTED' as const, autoAccepted: true };
     }
+
+    // Usuário novo: dispara o convite por e-mail (best-effort, não bloqueia).
+    await this.mail.sendInvitation({
+      to: dto.email,
+      orgName: invitation.organization.name,
+      token: invitation.token,
+      role: dto.role,
+    });
 
     return { ...invitation, autoAccepted: false };
   }

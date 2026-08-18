@@ -77,7 +77,13 @@ export class PrismaService
       query: {
         $allModels: {
           async $allOperations({ model, operation, args, query }: any) {
-            // (1) tenant-guard — só observa/loga, nunca derruba a query.
+            // (1) tenant-guard: isolamento multi-empresa (defesa em profundidade).
+            //  - TENANT_ISOLATION != 'enforce' (default): MODO OBSERVAÇÃO — só
+            //    loga set-actions sem organizationId (pra caçar vazamentos).
+            //  - TENANT_ISOLATION == 'enforce': INJETA organizationId no where
+            //    (AND) quando falta. Narrowing puro — restringe às linhas da org
+            //    do request; nunca amplia nem vaza. Cobre TODOS os call sites de
+            //    uma vez, sem precisar alterar cada um.
             try {
               const orgId = getTenantContext()?.organizationId;
               if (
@@ -86,11 +92,18 @@ export class PrismaService
                 TENANT_MODELS.has(model) &&
                 SET_ACTIONS.has(operation)
               ) {
-                const where = (args && (args.where ?? args)) || {};
+                const where = (args?.where ?? {}) as Record<string, unknown>;
                 if (!whereMentionsOrg(where)) {
-                  guardLogger.warn(
-                    `[observacao] ${model}.${operation} sem organizationId (org do request=${orgId}) — potencial vazamento cross-tenant`,
-                  );
+                  if (process.env.TENANT_ISOLATION === 'enforce') {
+                    args = {
+                      ...(args ?? {}),
+                      where: { AND: [{ organizationId: orgId }, where] },
+                    };
+                  } else {
+                    guardLogger.warn(
+                      `[observacao] ${model}.${operation} sem organizationId (org do request=${orgId}) — potencial vazamento cross-tenant`,
+                    );
+                  }
                 }
               }
             } catch {

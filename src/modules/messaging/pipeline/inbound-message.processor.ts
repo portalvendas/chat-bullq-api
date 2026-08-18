@@ -259,9 +259,10 @@ export class InboundMessageProcessor extends WorkerHost {
       // expirar e a foto/vídeo/áudio/doc aparecer no inbox de forma durável.
       // Fora da TX (é I/O de rede). Falha aqui não derruba a mensagem: cai no
       // fallback da URL original (melhor uma imagem temporária que nenhuma).
-      if (!isEcho) {
-        await this.mirrorZapiMediaIfNeeded(channelId, message);
-      }
+      // Também roda no ECHO (fromMe): mídia enviada por OUTRO aparelho chega
+      // como echo com URL temporária e precisa ser re-hospedada igual. Echoes
+      // de envios feitos pelo próprio app já são duráveis e o mirror os ignora.
+      await this.mirrorZapiMediaIfNeeded(channelId, conversationId, message);
 
       // Wrap the message persist + outbox emit + lastMessageAt in a single
       // TX so the automation engine can never observe a message that
@@ -654,6 +655,7 @@ export class InboundMessageProcessor extends WorkerHost {
    */
   private async mirrorZapiMediaIfNeeded(
     channelId: string,
+    conversationId: string,
     message: NormalizedInboundMessage,
   ): Promise<void> {
     if (message.channelType !== ChannelType.WHATSAPP_ZAPI) return;
@@ -664,6 +666,31 @@ export class InboundMessageProcessor extends WorkerHost {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
     // Já é nosso (re-host anterior / retry) — não baixa de novo.
     if (url.includes('/api/v1/uploads/')) return;
+
+    // ECHO (fromMe): se NÓS enviamos pelo próprio app, o outbound processor já
+    // persistiu a mensagem com a URL durável; o echo do Z-API traz só uma cópia
+    // temporária que o upsert descarta. Nesse caso não re-hospeda (evita baixar
+    // e gravar um arquivo órfão). Só age em echo de envio por OUTRO aparelho,
+    // que vira mensagem NOVA carregando a URL temporária.
+    if (message.isEcho && message.externalMessageId) {
+      const existing = await this.prisma.message.findUnique({
+        where: {
+          uq_msg_conv_external: {
+            conversationId,
+            externalId: message.externalMessageId,
+          },
+        },
+        select: { content: true },
+      });
+      const existingUrl = (existing?.content as Record<string, any> | null)
+        ?.mediaUrl;
+      if (
+        typeof existingUrl === 'string' &&
+        existingUrl.includes('/api/v1/uploads/')
+      ) {
+        return;
+      }
+    }
 
     try {
       const resp = await axios.get<ArrayBuffer>(url, {

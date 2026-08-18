@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { OrgRole, Prisma } from '@prisma/client';
 import type { SignOptions } from 'jsonwebtoken';
 import { PrismaService } from '../../database/prisma.service';
+import { TENANT_MODELS } from '../../common/tenant/tenant-models';
 
 /** Ator (super-admin) que executa uma ação — pra auditoria. */
 export interface PlatformActor {
@@ -455,6 +456,92 @@ export class PlatformAdminService {
    * Grava um evento de auditoria. Nunca derruba a operação principal —
    * falha de auditoria é logada mas não propagada (a mutação já ocorreu).
    */
+  /**
+   * LGPD/portabilidade: dump estruturado de TODOS os dados da org (tabelas
+   * tenant + mensagens). Segredos de canal (config/webhookSecret) sao
+   * REDIGIDOS — nao exportamos tokens em texto puro.
+   */
+  async exportOrganization(id: string) {
+    const org = await this.prisma.organization.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        plan: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!org) throw new NotFoundException('Organizacao nao encontrada');
+
+    const data: Record<string, unknown> = {
+      exportedAt: new Date().toISOString(),
+      organization: org,
+    };
+
+    for (const model of TENANT_MODELS) {
+      const accessor = model.charAt(0).toLowerCase() + model.slice(1);
+      const client = (this.prisma as any)[accessor];
+      if (!client?.findMany) continue;
+      try {
+        const rows = await client.findMany({ where: { organizationId: id } });
+        data[accessor] =
+          model === 'Channel'
+            ? rows.map((c: Record<string, unknown>) => ({
+                ...c,
+                config: '[REDACTED]',
+                webhookSecret: '[REDACTED]',
+              }))
+            : rows;
+      } catch (err: any) {
+        data[accessor] = { error: err?.message ?? 'falha ao exportar' };
+      }
+    }
+
+    // Mensagens sao filhas de conversa (nao tem organizationId direto).
+    data.message = await this.prisma.message.findMany({
+      where: { conversation: { organizationId: id } },
+    });
+
+    return data;
+  }
+
+  /**
+   * LGPD/offboarding: EXCLUSAO DEFINITIVA da org e de tudo relacionado. O delete
+   * cascateia no banco (FKs onDelete: Cascade), entao e atomico. Irreversivel —
+   * exige confirmacao com o slug e e auditado ANTES (o platform_audit_log
+   * sobrevive: organizationId vira null via SetNull).
+   */
+  async purgeOrganization(
+    id: string,
+    actor: PlatformActor,
+    confirmSlug: string,
+  ) {
+    const org = await this.prisma.organization.findFirst({
+      where: { id },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!org) throw new NotFoundException('Organizacao nao encontrada');
+    if (!confirmSlug || confirmSlug !== org.slug) {
+      throw new BadRequestException(
+        'Confirmacao invalida: informe o slug exato da empresa para excluir.',
+      );
+    }
+
+    await this.audit(actor, 'ORGANIZATION_PURGED', 'Organization', id, id, {
+      name: org.name,
+      slug: org.slug,
+    });
+
+    await this.prisma.organization.delete({ where: { id } });
+
+    this.logger.warn(
+      `Org ${id} (${org.slug}) EXCLUIDA DEFINITIVAMENTE por ${actor.userId}`,
+    );
+    return { id, slug: org.slug, purged: true };
+  }
+
   private async audit(
     actor: PlatformActor,
     action: string,

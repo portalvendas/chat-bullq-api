@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -21,6 +22,7 @@ import { ListQueryDto } from './dto/list-query.dto';
 import { SuspendOrganizationDto } from './dto/suspend-organization.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
+import { PurgeOrganizationDto } from './dto/purge-organization.dto';
 
 /**
  * Console de super-admin (plataforma multi-empresa). TODAS as rotas exigem
@@ -58,6 +60,27 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Detalhe de uma empresa (sem segredos de canal)' })
   getOrganization(@Param('id') id: string) {
     return this.service.getOrganization(id);
+  }
+
+  @Get('organizations/:id/export')
+  @ApiOperation({
+    summary: 'Exporta todos os dados da empresa (LGPD/portabilidade, sem segredos)',
+  })
+  exportOrg(@Param('id') id: string) {
+    return this.service.exportOrganization(id);
+  }
+
+  @Delete('organizations/:id')
+  @ApiOperation({
+    summary: 'EXCLUI definitivamente a empresa e todos os dados (LGPD). Irreversível.',
+  })
+  purgeOrg(
+    @Param('id') id: string,
+    @Body() dto: PurgeOrganizationDto,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.service.purgeOrganization(id, this.actor(req, userId), dto.confirmSlug);
   }
 
   @Patch('organizations/:id/suspend')

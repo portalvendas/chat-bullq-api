@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { isPlatformAdmin } from '../../common/guards';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -243,6 +244,7 @@ export class AuthService {
 
     return {
       user: this.sanitizeUser(user),
+      isPlatformAdmin: isPlatformAdmin(user),
       organizations: memberships.map((m) => ({
         id: m.organization.id,
         name: m.organization.name,
@@ -295,6 +297,9 @@ export class AuthService {
 
     return {
       user: this.sanitizeUser(user),
+      // Bootstrap por allowlist (PLATFORM_ADMIN_EMAILS) OU papel no banco — o
+      // frontend usa essa flag pra liberar o console de super-admin.
+      isPlatformAdmin: isPlatformAdmin(user),
       organizations: memberships.map((m) => ({
         id: m.organization.id,
         name: m.organization.name,

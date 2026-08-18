@@ -43,13 +43,20 @@ export class MercadoLivreWebhookController {
       const resource = body?.resource;
       const userId = body?.user_id;
       if (topic && resource && userId != null) {
-        const channel = await this.prisma.channel.findFirst({
-          where: {
-            type: ChannelType.MERCADO_LIVRE,
-            isActive: true,
-            config: { path: ['sellerId'], equals: String(userId) },
-          },
+        // O `config` é cifrado em repouso — não dá pra filtrar por
+        // config.sellerId via JSONB path (o valor fica dentro do blob __enc).
+        // Carrega os canais ML ativos (o read decifra o config) e casa o
+        // sellerId em memória. São poucos canais; custo desprezível.
+        const mlChannels = await this.prisma.channel.findMany({
+          where: { type: ChannelType.MERCADO_LIVRE, isActive: true },
         });
+        const channel =
+          mlChannels.find(
+            (c) =>
+              String(
+                (c.config as { sellerId?: unknown } | null)?.sellerId ?? '',
+              ) === String(userId),
+          ) ?? null;
         if (channel) {
           // Grava o evento CRU antes de enfileirar — fonte de verdade pra
           // replay se o processamento falhar (paridade com canais genéricos).

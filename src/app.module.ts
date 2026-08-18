@@ -35,6 +35,7 @@ import { PermissionGroupsModule } from './modules/permission-groups/permission-g
 import { TinyModule } from './modules/tiny-erp/tiny.module';
 import { LeadDistributionModule } from './modules/lead-distribution/lead-distribution.module';
 import { CommercialRoutineModule } from './modules/commercial-routine/commercial-routine.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
 // via skill HTTP getProductPitch + CatalogSyncService. Tabela `products`
@@ -91,6 +92,7 @@ import redisConfig from './config/redis.config';
     TinyModule,
     LeadDistributionModule,
     CommercialRoutineModule,
+    PlatformAdminModule,
   ],
 })
 export class AppModule {}

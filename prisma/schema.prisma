@@ -114,6 +114,10 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  /// Papel de PLATAFORMA (acima das orgs). NULL = usuário comum.
+  /// SUPER_ADMIN = console de super-admin (gestão de todas as empresas).
+  platformRole PlatformRole? @map("platform_role")
+
   organizations         UserOrganization[]
   assignedConversations Conversation[]     @relation("AssignedAgent")
   sentMessages          Message[]          @relation("MessageSender")
@@ -126,6 +130,7 @@ model User {
   conversationReads     ConversationRead[]
   assignedCards         Card[]             @relation("CardAssignee")
   routineDailyChecks    RoutineDailyCheck[]
+  platformAuditLogs     PlatformAuditLog[]
 
   @@map("users")
 }
@@ -140,6 +145,12 @@ model Organization {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
+
+  // ─── Suspensão (super-admin) ────────────────────
+  /// Quando != null, a org está suspensa: membros comuns são bloqueados
+  /// pelo OrgGuard (403). Setado/limpo só pelo console de super-admin.
+  suspendedAt     DateTime? @map("suspended_at")
+  suspendedReason String?   @map("suspended_reason") @db.Text
 
   // ─── AI settings ────────────────────────────────
   aiEnabled            Boolean @default(true) @map("ai_enabled")
@@ -223,6 +234,7 @@ model Organization {
   leadDistributionConfig LeadDistributionConfig?
   commercialRoutineConfig CommercialRoutineConfig?
   routineDailyChecks     RoutineDailyCheck[]
+  platformAuditLogs      PlatformAuditLog[]
 
   @@map("organizations")
 }
@@ -2094,4 +2106,31 @@ model MetaCapiEvent {
   @@unique([tinyDocumentId, eventName], name: "uq_capi_doc_event")
   @@index([organizationId, eventName], name: "idx_capi_org_event")
   @@map("meta_capi_events")
+}
+
+
+enum PlatformRole {
+  SUPER_ADMIN
+}
+
+/// Trilha de auditoria das ações do console de super-admin (plataforma).
+/// Toda mutação (suspender/reativar/trocar plano/etc.) grava aqui.
+model PlatformAuditLog {
+  id             String   @id @default(cuid())
+  actorUserId    String   @map("actor_user_id")
+  action         String
+  targetType     String   @map("target_type")
+  targetId       String?  @map("target_id")
+  organizationId String?  @map("organization_id")
+  metadata       Json     @default("{}")
+  ipAddress      String?  @map("ip_address")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  actor        User          @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("platform_audit_logs")
 }

@@ -10,6 +10,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { ChannelAccessService } from '../../modules/iam/channel-access/channel-access.service';
 import { IS_PUBLIC_KEY } from '../decorators';
 import { setTenantOrg } from '../tenant/tenant-context';
+import { isPlatformAdmin } from './platform-admin.guard';
 
 @Injectable()
 export class OrgGuard implements CanActivate {
@@ -47,6 +48,13 @@ export class OrgGuard implements CanActivate {
 
     if (!membership) {
       throw new ForbiddenException('You are not a member of this organization');
+    }
+
+    // Org suspensa: bloqueia membros comuns (super-admin de plataforma passa).
+    if (membership.organization.suspendedAt && !isPlatformAdmin(request.user)) {
+      throw new ForbiddenException(
+        'Organização suspensa. Fale com o suporte da plataforma.',
+      );
     }
 
     request.organization = {

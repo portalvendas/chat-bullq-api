@@ -23,6 +23,7 @@ import { SuspendOrganizationDto } from './dto/suspend-organization.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { PurgeOrganizationDto } from './dto/purge-organization.dto';
+import { CreateOrganizationDto } from './dto/create-organization.dto';
 
 /**
  * Console de super-admin (plataforma multi-empresa). TODAS as rotas exigem
@@ -54,6 +55,18 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Lista empresas (paginado por cursor + busca)' })
   listOrganizations(@Query() query: ListQueryDto) {
     return this.service.listOrganizations(query);
+  }
+
+  @Post('organizations')
+  @ApiOperation({
+    summary: 'Provisiona uma empresa nova + convite do dono (OWNER)',
+  })
+  createOrg(
+    @Body() dto: CreateOrganizationDto,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.service.createOrganization(dto, this.actor(req, userId));
   }
 
   @Get('organizations/:id')

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,6 +10,8 @@ import { OrgRole, Prisma } from '@prisma/client';
 import type { SignOptions } from 'jsonwebtoken';
 import { PrismaService } from '../../database/prisma.service';
 import { TENANT_MODELS } from '../../common/tenant/tenant-models';
+import { MailService } from '../mail/mail.service';
+import { randomBytes } from 'crypto';
 
 /** Ator (super-admin) que executa uma ação — pra auditoria. */
 export interface PlatformActor {
@@ -38,6 +41,7 @@ export class PlatformAdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly mail: MailService,
   ) {}
 
   private clampLimit(limit?: number): number {
@@ -456,6 +460,93 @@ export class PlatformAdminService {
    * Grava um evento de auditoria. Nunca derruba a operação principal —
    * falha de auditoria é logada mas não propagada (a mutação já ocorreu).
    */
+  /**
+   * Provisiona uma empresa nova (inclusão pelo super-admin, sem venda no app):
+   * cria a org + departamento padrão + um convite OWNER, e dispara o e-mail de
+   * convite (best-effort). Devolve o token do convite pra o console montar o
+   * link mesmo antes do e-mail estar configurado.
+   */
+  async createOrganization(
+    input: { name: string; ownerEmail: string; plan?: string; slug?: string },
+    actor: PlatformActor,
+  ) {
+    const name = input.name.trim();
+    const ownerEmail = input.ownerEmail.trim().toLowerCase();
+    const slug = (input.slug?.trim() || this.generateSlug(name)).slice(0, 60);
+    if (!name) throw new BadRequestException('Nome da empresa obrigatório');
+    if (!slug) throw new BadRequestException('Slug inválido');
+
+    const clash = await this.prisma.organization.findFirst({
+      where: { slug },
+      select: { id: true },
+    });
+    if (clash) throw new ConflictException(`Slug "${slug}" já está em uso`);
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const organization = await tx.organization.create({
+        data: { name, slug, ...(input.plan ? { plan: input.plan } : {}) },
+      });
+      await tx.department.create({
+        data: {
+          organizationId: organization.id,
+          name: 'Geral',
+          description: 'Departamento padrão',
+          isDefault: true,
+        },
+      });
+      const token = randomBytes(32).toString('hex');
+      const invitation = await tx.invitation.create({
+        data: {
+          organizationId: organization.id,
+          email: ownerEmail,
+          role: 'OWNER',
+          token,
+          invitedById: actor.userId,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+      return { organization, invitation };
+    });
+
+    await this.audit(
+      actor,
+      'ORGANIZATION_CREATED',
+      'Organization',
+      created.organization.id,
+      created.organization.id,
+      { name, slug, ownerEmail },
+    );
+
+    const emailSent = await this.mail.sendInvitation({
+      to: ownerEmail,
+      orgName: created.organization.name,
+      token: created.invitation.token,
+      role: 'OWNER',
+    });
+
+    this.logger.warn(
+      `Nova empresa provisionada: ${created.organization.id} (${slug}) por ${actor.userId} — convite p/ ${ownerEmail} (email=${emailSent})`,
+    );
+
+    return {
+      id: created.organization.id,
+      name: created.organization.name,
+      slug: created.organization.slug,
+      ownerEmail,
+      inviteToken: created.invitation.token,
+      emailSent,
+    };
+  }
+
+  private generateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  }
+
   /**
    * LGPD/portabilidade: dump estruturado de TODOS os dados da org (tabelas
    * tenant + mensagens). Segredos de canal (config/webhookSecret) sao

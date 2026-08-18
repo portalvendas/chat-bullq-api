@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -40,6 +41,15 @@ export class AuthService {
     // Check if registering via invitation
     if (dto.inviteToken) {
       return this.registerWithInvite(dto, hashedPassword);
+    }
+
+    // Cadastro aberto (self-service) pode ser desligado por env: com
+    // SELF_SERVICE_SIGNUP=invite_only, só entra quem tem convite — inclusão de
+    // empresas passa a ser 100% provisionada pelo super-admin.
+    if (process.env.SELF_SERVICE_SIGNUP === 'invite_only') {
+      throw new ForbiddenException(
+        'Cadastro aberto desabilitado. Solicite um convite ao administrador.',
+      );
     }
 
     return this.registerNewWorkspace(dto, hashedPassword);

@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -19,6 +20,7 @@ import {
 import { ListQueryDto } from './dto/list-query.dto';
 import { SuspendOrganizationDto } from './dto/suspend-organization.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
+import { ImpersonateDto } from './dto/impersonate.dto';
 
 /**
  * Console de super-admin (plataforma multi-empresa). TODAS as rotas exigem
@@ -88,6 +90,24 @@ export class PlatformAdminController {
     @Req() req: Request,
   ) {
     return this.service.updatePlan(id, dto.plan, this.actor(req, userId));
+  }
+
+  @Post('impersonate/:organizationId')
+  @ApiOperation({
+    summary:
+      'Emite token de impersonação (agir como membro da org, 30min, auditado)',
+  })
+  impersonate(
+    @Param('organizationId') organizationId: string,
+    @Body() dto: ImpersonateDto,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.service.impersonate(
+      organizationId,
+      this.actor(req, userId),
+      dto.userId,
+    );
   }
 
   @Get('users')

@@ -17,7 +17,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string; email: string }) {
+  async validate(payload: {
+    sub: string;
+    email: string;
+    imp?: { by: string; org: string };
+  }) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
@@ -32,6 +36,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       name: user.name,
       avatarUrl: user.avatarUrl,
       platformRole: user.platformRole,
+      // Sessão de impersonação (super-admin agindo como este membro).
+      // OrgGuard usa isso pra escopar o token à org de origem.
+      ...(payload.imp
+        ? { impersonation: { by: payload.imp.by, org: payload.imp.org } }
+        : {}),
     };
   }
 }

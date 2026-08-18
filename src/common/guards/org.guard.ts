@@ -39,6 +39,15 @@ export class OrgGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
+    // Impersonação (super-admin agindo como membro): o token é escopado a UMA
+    // org. Se tentarem usá-lo em outra org, bloqueia.
+    const impersonation = request.user?.impersonation;
+    if (impersonation && impersonation.org !== organizationId) {
+      throw new ForbiddenException(
+        'Token de impersonação não é válido para esta organização.',
+      );
+    }
+
     const membership = await this.prisma.userOrganization.findUnique({
       where: {
         userId_organizationId: { userId, organizationId },

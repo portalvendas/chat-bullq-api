@@ -1,5 +1,12 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { OrgRole, Prisma } from '@prisma/client';
+import type { SignOptions } from 'jsonwebtoken';
 import { PrismaService } from '../../database/prisma.service';
 
 /** Ator (super-admin) que executa uma ação — pra auditoria. */
@@ -27,7 +34,10 @@ const MAX_LIMIT = 100;
 export class PlatformAdminService {
   private readonly logger = new Logger(PlatformAdminService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwt: JwtService,
+  ) {}
 
   private clampLimit(limit?: number): number {
     if (!limit || limit < 1) return DEFAULT_LIMIT;
@@ -337,6 +347,108 @@ export class PlatformAdminService {
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
     return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Impersonação (agir como um membro da org) — AUDITADA
+  // ─────────────────────────────────────────────────────────────
+  /**
+   * Emite um token de impersonação: o super-admin passa a agir como um MEMBRO
+   * real da org (sub = membro), então toda a semântica de org (membership,
+   * canais, papel) funciona sem gambiarra. O token:
+   *  - é curto (IMPERSONATION_EXPIRATION, default 30m) e SEM refresh;
+   *  - carrega `imp: { by, org }` — escopado a UMA org (OrgGuard valida);
+   *  - não acessa o console (sub não é super-admin → PlatformAdminGuard nega).
+   * Se `targetUserId` não vier, auto-seleciona um OWNER (senão ADMIN, senão
+   * qualquer membro ativo). Grava IMPERSONATION_STARTED na auditoria.
+   */
+  async impersonate(
+    organizationId: string,
+    actor: PlatformActor,
+    targetUserId?: string,
+  ) {
+    const org = await this.prisma.organization.findFirst({
+      where: { id: organizationId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!org) throw new NotFoundException('Organização não encontrada');
+
+    type Member = {
+      userId: string;
+      role: OrgRole;
+      user: { id: string; name: string; email: string; isActive: boolean };
+    };
+    let target: Member;
+
+    if (targetUserId) {
+      const m = await this.prisma.userOrganization.findUnique({
+        where: {
+          userId_organizationId: { userId: targetUserId, organizationId },
+        },
+        select: {
+          userId: true,
+          role: true,
+          user: { select: { id: true, name: true, email: true, isActive: true } },
+        },
+      });
+      if (!m) throw new NotFoundException('Usuário não é membro desta organização');
+      if (!m.user.isActive)
+        throw new BadRequestException('Usuário-alvo está inativo');
+      target = m;
+    } else {
+      const members = await this.prisma.userOrganization.findMany({
+        where: { organizationId, user: { isActive: true, deletedAt: null } },
+        select: {
+          userId: true,
+          role: true,
+          user: { select: { id: true, name: true, email: true, isActive: true } },
+        },
+      });
+      if (members.length === 0)
+        throw new BadRequestException(
+          'Organização sem membros ativos para impersonar',
+        );
+      target =
+        members.find((m) => m.role === 'OWNER') ??
+        members.find((m) => m.role === 'ADMIN') ??
+        members[0];
+    }
+
+    const expiresIn = (process.env.IMPERSONATION_EXPIRATION ??
+      '30m') as SignOptions['expiresIn'];
+    const token = await this.jwt.signAsync(
+      {
+        sub: target.userId,
+        email: target.user.email,
+        imp: { by: actor.userId, org: organizationId },
+      },
+      { secret: process.env.JWT_SECRET, expiresIn },
+    );
+
+    await this.audit(
+      actor,
+      'IMPERSONATION_STARTED',
+      'User',
+      target.userId,
+      organizationId,
+      { targetEmail: target.user.email, role: target.role, expiresIn: String(expiresIn) },
+    );
+    this.logger.warn(
+      `Impersonação iniciada: ${actor.userId} → org ${organizationId} como ${target.user.email} (${target.role})`,
+    );
+
+    return {
+      token,
+      tokenType: 'Bearer' as const,
+      expiresIn: String(expiresIn),
+      organization: { id: org.id, name: org.name },
+      actingAs: {
+        id: target.user.id,
+        name: target.user.name,
+        email: target.user.email,
+        role: target.role,
+      },
+    };
   }
 
   /**

@@ -691,6 +691,30 @@ export class TinyService {
         },
       }),
     ]);
+
+    // Resolve a conversa mais recente de cada lead (contato) desta página, num
+    // único batch, pra o front conseguir "ir para a conversa" a partir do pedido.
+    const contactIds = [
+      ...new Set(
+        rows
+          .map((d) => d.contact?.id)
+          .filter((v): v is string => typeof v === 'string'),
+      ),
+    ];
+    const convByContact = new Map<string, string>();
+    if (contactIds.length > 0) {
+      const convs = await this.prisma.conversation.findMany({
+        where: { organizationId, contactId: { in: contactIds } },
+        orderBy: { lastMessageAt: 'desc' },
+        select: { id: true, contactId: true },
+      });
+      for (const c of convs) {
+        if (c.contactId && !convByContact.has(c.contactId)) {
+          convByContact.set(c.contactId, c.id);
+        }
+      }
+    }
+
     return {
       items: rows.map((d) => ({
         id: d.id,
@@ -706,7 +730,12 @@ export class TinyService {
         matchedBy: d.matchedBy,
         // Lead vinculado do CRM (null quando não casou).
         lead: d.contact
-          ? { id: d.contact.id, name: d.contact.name, phone: d.contact.phone }
+          ? {
+              id: d.contact.id,
+              name: d.contact.name,
+              phone: d.contact.phone,
+              conversationId: convByContact.get(d.contact.id) ?? null,
+            }
           : null,
       })),
       pagination: {

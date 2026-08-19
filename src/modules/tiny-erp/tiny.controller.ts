@@ -116,6 +116,15 @@ export class TinyController {
     return this.service.getItems(orgId, id);
   }
 
+  @Post('documents/:id/conversation')
+  @ApiOperation({
+    summary:
+      'Abre (ou inicia) a conversa do lead vinculado ao pedido/orçamento',
+  })
+  openConversation(@CurrentOrg('id') orgId: string, @Param('id') id: string) {
+    return this.service.resolveOrStartConversation(orgId, id);
+  }
+
   @Delete('connection')
   @ApiOperation({ summary: 'Desconecta a integração Tiny' })
   async disconnect(@CurrentOrg('id') orgId: string) {

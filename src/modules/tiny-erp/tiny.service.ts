@@ -1,9 +1,10 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { TinyHttpClient } from './tiny.http-client';
 import { MetaCapiService } from './meta-capi/meta-capi.service';
+import { ConversationStatus } from '@prisma/client';
 
 /** Situações de pedido do Tiny v3 (código → rótulo). */
 const PEDIDO_SITUACOES: Record<string, string> = {
@@ -777,6 +778,153 @@ export class TinyService {
         totalPages: Math.max(1, Math.ceil(total / take)),
       },
     };
+  }
+
+  /**
+   * "Ver conversa" / "Chamar" a partir de um pedido/orçamento do ERP.
+   *
+   * Resolve — sob demanda — a conversa do lead vinculado ao documento:
+   *  1. Sem lead (contato) casado -> 400 (não há a quem chamar).
+   *  2. Existe QUALQUER conversa do contato (aberta OU fechada, inclusive uma
+   *     criada DEPOIS do vínculo) -> devolve a mais recente. É o "religar":
+   *     a listagem materializa o link a cada carga; aqui garantimos no clique.
+   *  3. Nenhuma conversa -> inicia uma nova no WhatsApp: escolhe o canal ativo
+   *     (reaproveita o que o contato já usa; senão o único/1º), garante o
+   *     ContactChannel pelo telefone e cria a conversa PENDING.
+   *
+   * Idempotente: nunca cria conversa duplicada — só cria quando não existe
+   * nenhuma. Devolve o id pro front navegar pra /inbox?conversationId=...
+   *
+   * @returns { conversationId, created } — created=true quando abriu uma nova.
+   */
+  async resolveOrStartConversation(
+    organizationId: string,
+    docId: string,
+  ): Promise<{ conversationId: string; created: boolean }> {
+    const doc = await this.prisma.tinyDocument.findFirst({
+      where: { id: docId, organizationId },
+      include: { contact: { select: { id: true, name: true, phone: true } } },
+    });
+    if (!doc) throw new NotFoundException('Documento não encontrado');
+    if (!doc.contact) {
+      throw new BadRequestException(
+        'Pedido sem lead vinculado — não há contato para iniciar conversa.',
+      );
+    }
+    const contact = doc.contact;
+
+    // (2) Reaproveita QUALQUER conversa existente do contato — cobre a conversa
+    //     criada depois do vínculo. Mais recente primeiro.
+    const existing = await this.prisma.conversation.findFirst({
+      where: { organizationId, contactId: contact.id },
+      orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+      select: { id: true },
+    });
+    if (existing) {
+      this.logger.log(
+        `[tiny] doc=${docId} contato=${contact.id}: conversa ${existing.id} religada`,
+      );
+      return { conversationId: existing.id, created: false };
+    }
+
+    // (3) Nenhuma conversa -> inicia no WhatsApp.
+    const phone = (contact.phone || '').replace(/\D/g, '');
+    if (!phone) {
+      throw new BadRequestException(
+        'Contato sem telefone válido — não é possível iniciar a conversa.',
+      );
+    }
+    const channelId = await this.pickWhatsappChannel(organizationId, contact.id);
+    if (!channelId) {
+      throw new BadRequestException(
+        'Nenhum canal de WhatsApp ativo para iniciar a conversa.',
+      );
+    }
+
+    // Garante o ContactChannel (chaveado pelo telefone; o LID chega quando o
+    // cliente responder e o resolvedor unifica). Falha de unicidade não bloqueia
+    // a conversa — só loga.
+    const cc = await this.prisma.contactChannel.findFirst({
+      where: { contactId: contact.id, channelId },
+      select: { id: true },
+    });
+    if (!cc) {
+      try {
+        await this.prisma.contactChannel.create({
+          data: {
+            contactId: contact.id,
+            channelId,
+            externalId: phone,
+            profileName: contact.name,
+          },
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `[tiny] ContactChannel não criado (contato=${contact.id}, canal=${channelId}): ${err?.message ?? err}`,
+        );
+      }
+    }
+
+    const protocol = `${new Date()
+      .toISOString()
+      .slice(0, 10)
+      .replace(/-/g, '')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    const conv = await this.prisma.conversation.create({
+      data: {
+        organizationId,
+        channelId,
+        contactId: contact.id,
+        status: ConversationStatus.PENDING,
+        protocol,
+        isGroup: false,
+      },
+      select: { id: true },
+    });
+    await this.prisma.conversationAuditLog.create({
+      data: {
+        conversationId: conv.id,
+        action: 'CREATED',
+        toValue: ConversationStatus.PENDING,
+        metadata: { trigger: 'tiny_erp_start', tinyDocumentId: docId },
+      },
+    });
+    this.logger.log(
+      `[tiny] doc=${docId} contato=${contact.id}: nova conversa ${conv.id} no canal ${channelId}`,
+    );
+    return { conversationId: conv.id, created: true };
+  }
+
+  /**
+   * Escolhe o canal de WhatsApp ativo pra iniciar a conversa do lead:
+   * reaproveita o canal que o contato JÁ usa (se ativo); senão o único/1º ativo.
+   * Retorna null quando a org não tem canal de WhatsApp ativo.
+   */
+  private async pickWhatsappChannel(
+    organizationId: string,
+    contactId: string,
+  ): Promise<string | null> {
+    const channels = await this.prisma.channel.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+        type: {
+          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (channels.length === 0) return null;
+    if (channels.length === 1) return channels[0].id;
+
+    // Multi-canal: prioriza o canal que o contato já usa (thread existente).
+    const ids = channels.map((c) => c.id);
+    const used = await this.prisma.contactChannel.findFirst({
+      where: { contactId, channelId: { in: ids } },
+      select: { channelId: true },
+    });
+    return used?.channelId ?? channels[0].id;
   }
 
   /**

@@ -61,7 +61,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new LoggingInterceptor(), new ResponseInterceptor());
 
   const swagger = new DocumentBuilder()
-    .setTitle('Chat BullQ API')
+    .setTitle('Kortia CRM API')
     .setDescription('Omnichannel customer service API')
     .setVersion('1.0')
     .addBearerAuth()

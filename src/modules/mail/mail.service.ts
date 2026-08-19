@@ -14,7 +14,7 @@ export interface SendEmailInput {
  * Envio de e-mail transacional via Resend (API HTTP direta, sem SDK — evita
  * dependência nova). Segredos e remetente vêm de env:
  *   - RESEND_API_KEY : chave da API (obrigatória p/ enviar de verdade)
- *   - MAIL_FROM      : remetente verificado no Resend (ex.: "ChatBullQ <no-reply@seu-dominio>")
+ *   - MAIL_FROM      : remetente verificado no Resend (ex.: "Kortia CRM <no-reply@seu-dominio>")
  *   - WEB_APP_URL    : base do app web (pra montar links, ex.: convite)
  *
  * Degradação segura: sem RESEND_API_KEY, NÃO lança — loga um warn e devolve
@@ -30,7 +30,7 @@ export class MailService {
   }
 
   private get from(): string {
-    return process.env.MAIL_FROM || 'ChatBullQ <onboarding@resend.dev>';
+    return process.env.MAIL_FROM || 'Kortia CRM <onboarding@resend.dev>';
   }
 
   private get webAppUrl(): string {
@@ -96,12 +96,12 @@ export class MailService {
     const quem = input.inviterName
       ? `${input.inviterName} convidou você`
       : 'Você foi convidado';
-    const subject = `Convite para ${input.orgName} no ChatBullQ`;
+    const subject = `Convite para ${input.orgName} no Kortia CRM`;
     const html = this.baseLayout(
       `Convite para ${input.orgName}`,
       `
       <p style="margin:0 0 16px">${quem} para participar de
-        <strong>${escapeHtml(input.orgName)}</strong> no ChatBullQ.</p>
+        <strong>${escapeHtml(input.orgName)}</strong> no Kortia CRM.</p>
       <p style="margin:0 0 24px;color:#52525b">Clique no botão abaixo para criar
         sua conta e entrar na equipe. O convite expira em 7 dias.</p>
       <a href="${link}" style="display:inline-block;background:#4f46e5;color:#fff;
@@ -113,7 +113,7 @@ export class MailService {
       `,
     );
     const text =
-      `${quem} para participar de ${input.orgName} no ChatBullQ.\n` +
+      `${quem} para participar de ${input.orgName} no Kortia CRM.\n` +
       `Acesse: ${link}\nO convite expira em 7 dias.`;
     return this.send({ to: input.to, subject, html, text });
   }
@@ -128,7 +128,7 @@ export class MailService {
             ${body}
           </div>
           <p style="text-align:center;color:#a1a1aa;font-size:12px;margin:20px 0 0">
-            ChatBullQ · e-mail automático, não responda.</p>
+            Kortia CRM · e-mail automático, não responda.</p>
         </div>
       </body></html>`;
   }

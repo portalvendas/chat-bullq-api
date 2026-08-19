@@ -109,7 +109,7 @@ export class InstagramOutboundAdapter implements OutboundChannelPort {
       throw new Error(
         `Instagram unsend failed (id=${externalMessageId}, code=${metaCode ?? 'n/a'}): ` +
           `${err?.message ?? 'unknown'}. ` +
-          'Marcamos como deletada só no Chat BullQ — Meta não permite remover ' +
+          'Marcamos como deletada só no Kortia CRM — Meta não permite remover ' +
           'mensagens já entregues no Direct via API.',
       );
     }

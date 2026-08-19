@@ -216,8 +216,13 @@ export class WhatsAppCoexistenceService {
   ): Promise<Channel> {
     const verifyToken =
       this.config.get<string>('META_WA_VERIFY_TOKEN') || 'chatbullq';
+    // O adapter de entrada valida a assinatura (X-Hub-Signature-256) com
+    // config.appSecret POR CANAL. Sem ele, TODO webhook do canal é rejeitado
+    // (mensagens/echoes/histórico não chegam). Gravamos o App Secret aqui.
+    const appSecret = this.config.get<string>('META_APP_SECRET') || '';
     const config = {
       accessToken: data.accessToken,
+      appSecret,
       phoneNumberId: data.phoneNumberId,
       businessAccountId: data.wabaId,
       displayPhoneNumber: data.displayPhoneNumber ?? null,

@@ -702,15 +702,37 @@ export class TinyService {
       ),
     ];
     const convByContact = new Map<string, string>();
+    // Última mensagem ENVIADA ao cliente (OUTBOUND), por contato — pode estar em
+    // qualquer canal do lead, então reduzimos ao mais recente entre as conversas.
+    const lastSentByContact = new Map<string, Date>();
     if (contactIds.length > 0) {
       const convs = await this.prisma.conversation.findMany({
         where: { organizationId, contactId: { in: contactIds } },
         orderBy: { lastMessageAt: 'desc' },
         select: { id: true, contactId: true },
       });
+      const convToContact = new Map<string, string>();
       for (const c of convs) {
-        if (c.contactId && !convByContact.has(c.contactId)) {
+        if (!c.contactId) continue;
+        convToContact.set(c.id, c.contactId);
+        if (!convByContact.has(c.contactId)) {
           convByContact.set(c.contactId, c.id);
+        }
+      }
+      const convIds = convs.map((c) => c.id);
+      if (convIds.length > 0) {
+        const grouped = await this.prisma.message.groupBy({
+          by: ['conversationId'],
+          where: { conversationId: { in: convIds }, direction: 'OUTBOUND' },
+          _max: { createdAt: true },
+        });
+        for (const g of grouped) {
+          const cid = convToContact.get(g.conversationId);
+          const at = g._max.createdAt;
+          if (cid && at) {
+            const cur = lastSentByContact.get(cid);
+            if (!cur || at > cur) lastSentByContact.set(cid, at);
+          }
         }
       }
     }
@@ -728,6 +750,16 @@ export class TinyService {
         clienteTelefone: d.clienteTelefone,
         vendedor: d.vendedor,
         matchedBy: d.matchedBy,
+        // Dias entre a data do documento (orçamento/pedido) e a última mensagem
+        // enviada ao cliente. null quando falta data ou nunca houve envio.
+        diasOrcamentoUltimaMsg:
+          d.contact && d.data && lastSentByContact.get(d.contact.id)
+            ? Math.round(
+                (lastSentByContact.get(d.contact.id)!.getTime() -
+                  new Date(d.data).getTime()) /
+                  86_400_000,
+              )
+            : null,
         // Lead vinculado do CRM (null quando não casou).
         lead: d.contact
           ? {

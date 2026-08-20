@@ -13,7 +13,7 @@ import {
   FUNNEL_AUDIT_QUEUE,
   FUNNEL_AUDIT_JOB,
   FunnelAuditJobData,
-} from './funnel-audit.processor';
+} from './funnel-audit.constants';
 
 const WINDOW_DAYS = 60;
 const MAX_CARDS = Number(process.env.FUNNEL_AUDIT_MAX_CARDS ?? 2000);

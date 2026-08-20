@@ -4,10 +4,8 @@ import { LlmModule } from '../ai-agents/llm/llm.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { FunnelAuditController } from './funnel-audit.controller';
 import { FunnelAuditService } from './funnel-audit.service';
-import {
-  FunnelAuditProcessor,
-  FUNNEL_AUDIT_QUEUE,
-} from './funnel-audit.processor';
+import { FunnelAuditProcessor } from './funnel-audit.processor';
+import { FUNNEL_AUDIT_QUEUE } from './funnel-audit.constants';
 
 @Module({
   imports: [

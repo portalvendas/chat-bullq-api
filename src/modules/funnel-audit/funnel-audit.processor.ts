@@ -2,14 +2,10 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { FunnelAuditService } from './funnel-audit.service';
-
-export const FUNNEL_AUDIT_QUEUE = 'funnel-audit';
-export const FUNNEL_AUDIT_JOB = 'run-audit';
-
-export interface FunnelAuditJobData {
-  runId: string;
-  organizationId: string;
-}
+import {
+  FUNNEL_AUDIT_QUEUE,
+  FunnelAuditJobData,
+} from './funnel-audit.constants';
 
 /**
  * Executa a auditoria de funil em background (fila BullMQ, padrão do projeto).

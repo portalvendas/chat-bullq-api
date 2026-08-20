@@ -349,39 +349,12 @@ export class CommercialRoutineService {
   ): Promise<{ total: number; pending: number; parados: number }> {
     if (!step.stageIds.length) return { total: 0, pending: 0, parados: 0 };
 
-    const base: Prisma.CardWhereInput = {
+    const { base, pendingWhere, paradoWhere } = this.stepWheres(
       organizationId,
-      // Quando ignoreAssignment, conta todos os leads da etapa (com ou sem
-      // responsável). Senão, só os atribuídos ao vendedor.
-      ...(ignoreAssignment ? {} : { assignedToId: userId }),
-      status: 'OPEN',
-      stageId: { in: step.stageIds },
-    };
-
-    const hasInbound: Prisma.CardWhereInput = {
-      conversation: { messages: { some: { direction: 'INBOUND' } } },
-    };
-    const noInbound: Prisma.CardWhereInput = {
-      OR: [
-        { conversationId: null },
-        { conversation: { messages: { none: { direction: 'INBOUND' } } } },
-      ],
-    };
-    const pendingWhere: Prisma.CardWhereInput =
-      step.metric === 'has_inbound'
-        ? { ...base, ...hasInbound }
-        : step.metric === 'no_inbound'
-          ? { ...base, ...noInbound }
-          : base;
-
-    const cutoff = new Date(Date.now() - step.thresholdHours * 3600_000);
-    const paradoWhere: Prisma.CardWhereInput = {
-      ...base,
-      OR: [
-        { conversation: { lastMessageAt: { lt: cutoff } } },
-        { conversationId: null, updatedAt: { lt: cutoff } },
-      ],
-    };
+      userId,
+      step,
+      ignoreAssignment,
+    );
 
     try {
       const [total, pending, parados] = await Promise.all([
@@ -418,5 +391,143 @@ export class CommercialRoutineService {
       });
     }
     return this.getToday(organizationId, userId);
+  }
+
+  /**
+   * Where de um passo (base / pendentes / parados) — MESMA lógica dos
+   * contadores, extraída para reaproveitar na listagem exata de leads.
+   */
+  private stepWheres(
+    organizationId: string,
+    userId: string,
+    step: RoutineStep,
+    ignoreAssignment = false,
+  ): {
+    base: Prisma.CardWhereInput;
+    pendingWhere: Prisma.CardWhereInput;
+    paradoWhere: Prisma.CardWhereInput;
+  } {
+    const base: Prisma.CardWhereInput = {
+      organizationId,
+      ...(ignoreAssignment ? {} : { assignedToId: userId }),
+      status: 'OPEN',
+      stageId: { in: step.stageIds },
+    };
+    const hasInbound: Prisma.CardWhereInput = {
+      conversation: { messages: { some: { direction: 'INBOUND' } } },
+    };
+    const noInbound: Prisma.CardWhereInput = {
+      OR: [
+        { conversationId: null },
+        { conversation: { messages: { none: { direction: 'INBOUND' } } } },
+      ],
+    };
+    const pendingWhere: Prisma.CardWhereInput =
+      step.metric === 'has_inbound'
+        ? { ...base, ...hasInbound }
+        : step.metric === 'no_inbound'
+          ? { ...base, ...noInbound }
+          : base;
+    const cutoff = new Date(Date.now() - step.thresholdHours * 3600_000);
+    const paradoWhere: Prisma.CardWhereInput = {
+      ...base,
+      OR: [
+        { conversation: { lastMessageAt: { lt: cutoff } } },
+        { conversationId: null, updatedAt: { lt: cutoff } },
+      ],
+    };
+    return { base, pendingWhere, paradoWhere };
+  }
+
+  /**
+   * Lista EXATA de leads de um passo e estado — os MESMOS cards que geram o
+   * contador da rotina (state='pending' = aguardando ação; 'parado' = parado).
+   * Escopo = vendedor logado (idêntico ao checklist). stepKey vazio agrega
+   * TODOS os passos (para os totais do topo). Pronto pro front renderizar.
+   */
+  async listStepLeads(
+    organizationId: string,
+    userId: string,
+    stepKey: string | undefined,
+    state: 'pending' | 'parado',
+  ) {
+    const cfg = await this.getConfig(organizationId);
+    if (!this.isActiveForUser(cfg, userId)) {
+      return { stepKey: stepKey ?? null, state, label: '', count: 0, leads: [] };
+    }
+    const targetSteps = stepKey
+      ? cfg.steps.filter((s) => s.key === stepKey)
+      : cfg.steps;
+
+    const stageIds = [...new Set(targetSteps.flatMap((s) => s.stageIds))];
+    const stageRows = stageIds.length
+      ? await this.prisma.pipelineStage.findMany({
+          where: { id: { in: stageIds } },
+          select: { id: true, name: true, pipelineId: true },
+        })
+      : [];
+    const stageInfo = new Map(stageRows.map((s) => [s.id, s]));
+
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const step of targetSteps) {
+      if (!step.stageIds.length) continue;
+      const w = this.stepWheres(
+        organizationId,
+        userId,
+        step,
+        cfg.ignoreAssignment,
+      );
+      const where = state === 'parado' ? w.paradoWhere : w.pendingWhere;
+      const cards = await this.prisma.card.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          value: true,
+          currency: true,
+          stageId: true,
+          contactId: true,
+          conversationId: true,
+          updatedAt: true,
+          contact: { select: { id: true, name: true, phone: true } },
+          conversation: { select: { id: true, lastMessageAt: true } },
+          assignedTo: { select: { id: true, name: true } },
+        },
+        orderBy: [{ updatedAt: 'asc' }],
+        take: 500,
+      });
+      for (const c of cards) {
+        if (byId.has(c.id)) continue;
+        const st = stageInfo.get(c.stageId);
+        byId.set(c.id, {
+          id: c.id,
+          title: c.title,
+          value: c.value != null ? Number(c.value) : null,
+          currency: c.currency,
+          stageId: c.stageId,
+          stageName: st?.name ?? null,
+          pipelineId: st?.pipelineId ?? null,
+          contactId: c.contactId,
+          contactName: c.contact?.name ?? null,
+          contactPhone: c.contact?.phone ?? null,
+          conversationId: c.conversationId ?? c.conversation?.id ?? null,
+          lastActivityAt: c.conversation?.lastMessageAt ?? c.updatedAt,
+          assignedToName: c.assignedTo?.name ?? null,
+          stepKey: step.key,
+        });
+      }
+    }
+
+    const leads = [...byId.values()].sort(
+      (a, b) =>
+        new Date(a.lastActivityAt as string).getTime() -
+        new Date(b.lastActivityAt as string).getTime(),
+    );
+    const label = stepKey
+      ? (targetSteps[0]?.label ?? 'Passo')
+      : state === 'parado'
+        ? 'Leads parados'
+        : 'Leads aguardando ação';
+    return { stepKey: stepKey ?? null, state, label, count: leads.length, leads };
   }
 }

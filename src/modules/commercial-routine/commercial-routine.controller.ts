@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrgRole } from '@prisma/client';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
@@ -30,6 +30,20 @@ export class CommercialRoutineController {
     @Body() body: { stepKey: string; done: boolean },
   ) {
     return this.service.toggleCheck(orgId, userId, body.stepKey, !!body.done);
+  }
+
+  @Get('leads')
+  @ApiOperation({
+    summary: 'Leads exatos de um passo/estado (aguardando ação | parado)',
+  })
+  leads(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Query('stepKey') stepKey?: string,
+    @Query('state') state?: string,
+  ) {
+    const st = state === 'parado' ? 'parado' : 'pending';
+    return this.service.listStepLeads(orgId, userId, stepKey || undefined, st);
   }
 
   @Get('config')

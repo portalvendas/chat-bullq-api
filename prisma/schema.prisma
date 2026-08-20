@@ -235,6 +235,8 @@ model Organization {
   commercialRoutineConfig CommercialRoutineConfig?
   routineDailyChecks     RoutineDailyCheck[]
   platformAuditLogs      PlatformAuditLog[]
+  funnelAuditRuns        FunnelAuditRun[]
+  funnelAuditSuggestions FunnelAuditSuggestion[]
 
   @@map("organizations")
 }
@@ -1567,6 +1569,7 @@ model Card {
   contact      Contact?      @relation("CardContact", fields: [contactId], references: [id], onDelete: SetNull)
   conversation Conversation? @relation("CardConversation", fields: [conversationId], references: [id], onDelete: SetNull)
   assignedTo   User?         @relation("CardAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  funnelAuditSuggestions FunnelAuditSuggestion[]
 
   @@index([pipelineId, stageId, order])
   @@index([organizationId, status])
@@ -2133,4 +2136,66 @@ model PlatformAuditLog {
   @@index([actorUserId])
   @@index([createdAt])
   @@map("platform_audit_logs")
+}
+
+
+enum FunnelAuditStatus {
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum FunnelSuggestionStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
+/// Auditoria de funil: uma execução (run) varre os cards e gera sugestões.
+model FunnelAuditRun {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  status         FunnelAuditStatus @default(RUNNING)
+  requestedById  String?           @map("requested_by_id")
+  windowDays     Int               @default(60) @map("window_days")
+  cardsScanned   Int               @default(0) @map("cards_scanned")
+  cardsFlagged   Int               @default(0) @map("cards_flagged")
+  suggestions    Int               @default(0)
+  aiUsed         Boolean           @default(false) @map("ai_used")
+  error          String?
+  startedAt      DateTime          @default(now()) @map("started_at")
+  finishedAt     DateTime?         @map("finished_at")
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  suggestionsList FunnelAuditSuggestion[]
+
+  @@index([organizationId, startedAt])
+  @@map("funnel_audit_runs")
+}
+
+/// Sugestão de mudança de etapa para UM card (revisão manual).
+model FunnelAuditSuggestion {
+  id               String                 @id @default(cuid())
+  runId            String                 @map("run_id")
+  organizationId   String                 @map("organization_id")
+  cardId           String                 @map("card_id")
+  pipelineId       String                 @map("pipeline_id")
+  currentStageId   String                 @map("current_stage_id")
+  suggestedStageId String?                @map("suggested_stage_id")
+  action           String
+  reason           String
+  confidence       String                 @default("MEDIUM")
+  source           String                 @default("rule")
+  status           FunnelSuggestionStatus @default(PENDING)
+  appliedAt        DateTime?              @map("applied_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  run          FunnelAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  card         Card           @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([runId])
+  @@index([cardId])
+  @@map("funnel_audit_suggestions")
 }

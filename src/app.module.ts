@@ -31,6 +31,7 @@ import { CustomFieldsModule } from './modules/custom-fields/custom-fields.module
 import { ImportsModule } from './modules/imports/imports.module';
 import { InstagramCommentsModule } from './modules/instagram-comments/instagram-comments.module';
 import { WhatsappMergeModule } from './modules/whatsapp-merge/whatsapp-merge.module';
+import { FunnelAuditModule } from './modules/funnel-audit/funnel-audit.module';
 import { WhatsappWindowModule } from './modules/whatsapp-window/whatsapp-window.module';
 import { PermissionGroupsModule } from './modules/permission-groups/permission-groups.module';
 import { TinyModule } from './modules/tiny-erp/tiny.module';
@@ -89,6 +90,7 @@ import redisConfig from './config/redis.config';
     ImportsModule,
     InstagramCommentsModule,
     WhatsappMergeModule,
+    FunnelAuditModule,
     WhatsappWindowModule,
     PermissionGroupsModule,
     TinyModule,

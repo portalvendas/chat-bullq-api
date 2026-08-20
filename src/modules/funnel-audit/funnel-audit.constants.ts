@@ -6,4 +6,6 @@ export const FUNNEL_AUDIT_JOB = 'run-audit';
 export interface FunnelAuditJobData {
   runId: string;
   organizationId: string;
+  /** Funis a analisar. Vazio/ausente = todos os ativos. */
+  pipelineIds?: string[];
 }

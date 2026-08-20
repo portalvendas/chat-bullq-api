@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -23,8 +24,12 @@ export class FunnelAuditController {
 
   @Post('run')
   @ApiOperation({ summary: 'Dispara uma auditoria de funil (background)' })
-  run(@CurrentOrg('id') orgId: string, @CurrentUser('id') userId: string) {
-    return this.service.startRun(orgId, userId);
+  run(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: { pipelineIds?: string[] },
+  ) {
+    return this.service.startRun(orgId, userId, dto?.pipelineIds);
   }
 
   @Get('latest')

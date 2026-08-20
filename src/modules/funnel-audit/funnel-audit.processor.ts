@@ -21,9 +21,9 @@ export class FunnelAuditProcessor extends WorkerHost {
   }
 
   async process(job: Job<FunnelAuditJobData>): Promise<{ ok: boolean }> {
-    const { runId, organizationId } = job.data;
+    const { runId, organizationId, pipelineIds } = job.data;
     this.logger.log(`[funnel-audit] run=${runId} org=${organizationId} iniciado`);
-    await this.service.executeRun(runId, organizationId);
+    await this.service.executeRun(runId, organizationId, pipelineIds);
     return { ok: true };
   }
 }

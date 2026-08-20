@@ -43,6 +43,16 @@ export class ChatbotFlowsController {
     return this.service.update(id, orgId, dto);
   }
 
+  @Post(':id/start')
+  @ApiOperation({ summary: 'Inicia este fluxo (salesbot) numa conversa' })
+  start(
+    @Param('id') id: string,
+    @CurrentOrg('id') orgId: string,
+    @Body() dto: { conversationId: string },
+  ) {
+    return this.service.startOnConversation(orgId, id, dto.conversationId);
+  }
+
   @Delete(':id')
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: 'Delete chatbot flow' })

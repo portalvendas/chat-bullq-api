@@ -68,7 +68,11 @@ export class FunnelAuditService {
 
   /** Cria o run (RUNNING) e enfileira o trabalho. Idempotente-ish: recusa se já
    *  houver um run RUNNING da org (evita corridas). */
-  async startRun(organizationId: string, userId?: string) {
+  async startRun(
+    organizationId: string,
+    userId?: string,
+    pipelineIds?: string[],
+  ) {
     const running = await this.prisma.funnelAuditRun.findFirst({
       where: { organizationId, status: 'RUNNING' },
       select: { id: true, startedAt: true },
@@ -88,7 +92,11 @@ export class FunnelAuditService {
       },
       select: { id: true },
     });
-    const data: FunnelAuditJobData = { runId: run.id, organizationId };
+    const data: FunnelAuditJobData = {
+      runId: run.id,
+      organizationId,
+      pipelineIds: pipelineIds?.length ? pipelineIds : undefined,
+    };
     await this.queue.add(FUNNEL_AUDIT_JOB, data, {
       removeOnComplete: 20,
       removeOnFail: 20,
@@ -98,12 +106,20 @@ export class FunnelAuditService {
 
   // ── Execução (chamada pelo processor) ──────────────────────────────
 
-  async executeRun(runId: string, organizationId: string): Promise<void> {
+  async executeRun(
+    runId: string,
+    organizationId: string,
+    pipelineIds?: string[],
+  ): Promise<void> {
     try {
       const cutoff = new Date(Date.now() - WINDOW_DAYS * 86_400_000);
 
       const pipelines = await this.prisma.pipeline.findMany({
-        where: { organizationId, archived: false },
+        where: {
+          organizationId,
+          archived: false,
+          ...(pipelineIds?.length ? { id: { in: pipelineIds } } : {}),
+        },
         select: {
           id: true,
           inactivityHours: true,

@@ -46,6 +46,20 @@ export class CommercialRoutineController {
     return this.service.listStepLeads(orgId, userId, stepKey || undefined, st);
   }
 
+  @Get('log')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({
+    summary: 'Log gerencial: quem executou o checklist e quando',
+  })
+  log(
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('userId') userId?: string,
+  ) {
+    return this.service.getExecutionLog(orgId, from, to, userId);
+  }
+
   @Get('config')
   @ApiOperation({ summary: 'Config da rotina (passos → etapas)' })
   getConfig(@CurrentOrg('id') orgId: string) {

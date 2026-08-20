@@ -530,4 +530,164 @@ export class CommercialRoutineService {
         : 'Leads aguardando ação';
     return { stepKey: stepKey ?? null, state, label, count: leads.length, leads };
   }
+
+  // ── Log gerencial (execução da rotina) ─────────────────────────────
+
+  /** Soma `delta` dias a um YYYY-MM-DD (aritmética de calendário em UTC). */
+  private shiftDay(day: string, delta: number): string {
+    const [y, m, d] = day.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1));
+    dt.setUTCDate(dt.getUTCDate() + delta);
+    return dt.toISOString().slice(0, 10);
+  }
+
+  /** Lista de dias YYYY-MM-DD de `from` a `to` inclusive (cap defensivo). */
+  private dayRange(from: string, to: string): string[] {
+    const out: string[] = [];
+    let cur = from;
+    let guard = 0;
+    while (cur <= to && guard < 400) {
+      out.push(cur);
+      cur = this.shiftDay(cur, 1);
+      guard++;
+    }
+    return out;
+  }
+
+  /**
+   * Log gerencial: quem executou o checklist e quando. Agrega as marcações
+   * (RoutineDailyCheck) por vendedor e por dia no intervalo pedido (default:
+   * últimos 14 dias). `perUser` traz a aderência recente (today/yesterday/
+   * stale/never pela última marcação de qualquer época) e `history` a grade
+   * dia × vendedor para o front desenhar. Só OWNER/ADMIN consomem.
+   */
+  async getExecutionLog(
+    organizationId: string,
+    from?: string,
+    to?: string,
+    userId?: string,
+  ) {
+    const cfg = await this.getConfig(organizationId);
+    const isDay = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const toDay = isDay(to) ? (to as string) : this.today();
+    const fromRaw = isDay(from) ? (from as string) : this.shiftDay(toDay, -13);
+    const range =
+      fromRaw <= toDay
+        ? { from: fromRaw, to: toDay }
+        : { from: toDay, to: fromRaw };
+
+    // Grade de dias (cap defensivo de 92 dias, mantendo os mais recentes).
+    const MAX_DAYS = 92;
+    let dayList = this.dayRange(range.from, range.to);
+    if (dayList.length > MAX_DAYS) {
+      dayList = dayList.slice(dayList.length - MAX_DAYS);
+      range.from = dayList[0];
+    }
+
+    // Vendedores aplicáveis (respeita escopo da config + filtro opcional).
+    const members = await this.prisma.userOrganization.findMany({
+      where: { organizationId },
+      select: { user: { select: { id: true, name: true, isActive: true } } },
+    });
+    let applicable = members.map((m) => m.user);
+    if (cfg.userMode === 'SELECTED') {
+      const allow = new Set(cfg.userIds);
+      applicable = applicable.filter((u) => allow.has(u.id));
+    }
+    if (userId) applicable = applicable.filter((u) => u.id === userId);
+    const applicableIds = applicable.map((u) => u.id);
+
+    // Marcações por (dia, vendedor) dentro do intervalo → grade.
+    const grouped = applicableIds.length
+      ? await this.prisma.routineDailyCheck.groupBy({
+          by: ['day', 'userId'],
+          where: {
+            organizationId,
+            userId: { in: applicableIds },
+            day: { gte: range.from, lte: range.to },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const countAt = new Map(
+      grouped.map((g) => [`${g.day}|${g.userId}`, g._count._all]),
+    );
+
+    // Última marcação de cada vendedor (qualquer época) → status de aderência.
+    const lastRows = applicableIds.length
+      ? await this.prisma.routineDailyCheck.groupBy({
+          by: ['userId'],
+          where: { organizationId, userId: { in: applicableIds } },
+          _max: { day: true },
+        })
+      : [];
+    const lastDayByUser = new Map(
+      lastRows.map((r) => [r.userId, r._max.day ?? null]),
+    );
+
+    const today = this.today();
+    const yesterday = this.shiftDay(today, -1);
+    const rank: Record<string, number> = {
+      today: 0,
+      yesterday: 1,
+      stale: 2,
+      never: 3,
+    };
+
+    const perUser = applicable
+      .map((u) => {
+        const lastDay = lastDayByUser.get(u.id) ?? null;
+        const status = !lastDay
+          ? 'never'
+          : lastDay >= today
+            ? 'today'
+            : lastDay === yesterday
+              ? 'yesterday'
+              : 'stale';
+        let totalChecks = 0;
+        let daysActive = 0;
+        for (const day of dayList) {
+          const c = countAt.get(`${day}|${u.id}`) ?? 0;
+          if (c > 0) {
+            totalChecks += c;
+            daysActive += 1;
+          }
+        }
+        return {
+          userId: u.id,
+          name: u.name,
+          isActive: u.isActive,
+          lastDay,
+          status,
+          totalChecks,
+          daysActive,
+        };
+      })
+      .sort((a, b) => {
+        if (rank[a.status] !== rank[b.status])
+          return rank[a.status] - rank[b.status];
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+    const history = dayList.map((day) => ({
+      day,
+      perUser: applicable.map((u) => ({
+        userId: u.id,
+        count: countAt.get(`${day}|${u.id}`) ?? 0,
+      })),
+    }));
+
+    return {
+      range,
+      enabled: cfg.enabled,
+      stepsTotal: cfg.steps.length,
+      users: applicable.map((u) => ({
+        id: u.id,
+        name: u.name,
+        isActive: u.isActive,
+      })),
+      perUser,
+      history,
+    };
+  }
 }

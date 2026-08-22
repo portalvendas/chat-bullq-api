@@ -63,7 +63,7 @@ export class MercadoLivreOAuthController {
     @Query('state') state: string,
     @Res() res: Response,
   ): Promise<void> {
-    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').replace(/\/$/, '');
+    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').split(',')[0].trim().replace(/\/$/, '');
     const done = (q: string) => res.redirect(`${webUrl}/settings/channels?${q}`);
     try {
       if (!code || !state) throw new Error('code/state ausentes');

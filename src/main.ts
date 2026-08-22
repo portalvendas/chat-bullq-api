@@ -45,8 +45,13 @@ async function bootstrap() {
       index: false,
     }),
   );
+  const corsOrigins = config
+    .get<string>('CORS_ORIGIN', 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: config.get<string>('CORS_ORIGIN', 'http://localhost:3000'),
+    origin: corsOrigins,
     credentials: true,
   });
   app.useGlobalPipes(

@@ -68,7 +68,7 @@ export class ShopeeOAuthController {
     @Query('shop_id') shopId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').replace(/\/$/, '');
+    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').split(',')[0].trim().replace(/\/$/, '');
     const done = (q: string) => res.redirect(`${webUrl}/settings/channels?${q}`);
     try {
       if (!code || !shopId) throw new Error('code/shop_id ausentes');
@@ -99,7 +99,7 @@ export class ShopeeOAuthController {
     @Query('shop_id') shopId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').replace(/\/$/, '');
+    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '').split(',')[0].trim().replace(/\/$/, '');
     try {
       if (shopId) {
         // Filtro JSON no código (Prisma JSON path é frágil quando a chave falta).

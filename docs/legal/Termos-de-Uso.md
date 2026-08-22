@@ -5,8 +5,8 @@
 > os campos entre colchetes `[ ]`. Última atualização: 2026-08-18.
 
 **Campos a preencher:**
-`ARMAZÉM DECORA LTDA` (empresa operadora do Kortia CRM) · `37.760.408/0001-71` · `Rua Adir Deola, 133, Bairro Industrial Parizotto — Nova Veneza – SC, CEP [a confirmar]` ·
-`diogoaugustin@gmail.com` · `diogoaugustin@gmail.com` · `https://chat-bullq-web.onrender.com` · `Nova Veneza – SC`.
+`ARMAZÉM DECORA LTDA` (empresa operadora do Kortia CRM) · `37.760.408/0001-71` · `Rua Adir Deola, 133, Bairro Industrial Parizotto — Ampére – PR, CEP 85640-000` ·
+`diogoaugustin@gmail.com` · `diogoaugustin@gmail.com` · `https://chat-bullq-web.onrender.com` · `Ampére – PR`.
 
 ---
 
@@ -116,6 +116,6 @@ na Plataforma). O uso continuado após a vigência da alteração implica concor
 13.1. A tolerância quanto a qualquer descumprimento não implica renúncia de direitos.
 13.2. A nulidade de uma cláusula não afeta as demais.
 13.3. Estes Termos regem-se pelas leis brasileiras. Fica eleito o foro da comarca de
-`Nova Veneza – SC`, com renúncia a qualquer outro.
+`Ampére – PR`, com renúncia a qualquer outro.
 
 **Contato:** `diogoaugustin@gmail.com` · Encarregado (DPO): `diogoaugustin@gmail.com`.

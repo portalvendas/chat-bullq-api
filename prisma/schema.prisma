@@ -163,6 +163,10 @@ model Organization {
   aiOutOfHoursMessage  String? @map("ai_out_of_hours_message")
   aiAutoDisableOnHuman Boolean @default(true) @map("ai_auto_disable_on_human")
   aiMonthlyTokenCap    Int?    @map("ai_monthly_token_cap")
+  /// Chave da API da Anthropic (Claude) DESTA empresa, cifrada em repouso
+  /// via secret-cipher (AES-256-GCM, env ENCRYPTION_KEY). BYOK: cada
+  /// empresa usa a própria chave/consumo. NULL = não configurada.
+  aiAnthropicKeyEnc    String? @map("ai_anthropic_key_enc") @db.Text
   /// Assinatura fixa anexada ao FINAL de toda resposta enviada pela IA
   /// (determinístico, no envio — não depende do modelo lembrar). NULL/vazio
   /// = sem assinatura. Ex: "Aguardamos sua compra e ficamos à disposição, Armazém Decora."

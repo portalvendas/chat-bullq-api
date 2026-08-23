@@ -324,6 +324,7 @@ export class AiAgentRunnerService {
 
         const response = await this.llm.complete({
           modelId: effectiveModelId,
+          organizationId: conversation.organizationId,
           messages,
           tools,
           temperature: agent.temperature,

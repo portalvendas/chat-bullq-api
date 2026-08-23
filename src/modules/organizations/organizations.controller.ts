@@ -15,6 +15,8 @@ import { OrgRole } from '@prisma/client';
 import { OrganizationsService } from './organizations.service';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
+import { SetAiKeyDto } from './dto/set-ai-key.dto';
+import { LlmKeyService } from '../ai-agents/llm/llm-key.service';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
 import { CurrentUser, CurrentOrg, Roles, Public } from '../../common/decorators';
@@ -24,7 +26,10 @@ import { CurrentUser, CurrentOrg, Roles, Public } from '../../common/decorators'
 @UseGuards(JwtAuthGuard, OrgGuard, RolesGuard)
 @Controller('organizations')
 export class OrganizationsController {
-  constructor(private readonly service: OrganizationsService) {}
+  constructor(
+    private readonly service: OrganizationsService,
+    private readonly llmKey: LlmKeyService,
+  ) {}
 
   @Get('current')
   @ApiOperation({ summary: 'Get current organization details' })
@@ -53,6 +58,28 @@ export class OrganizationsController {
     @Body() body: { reasons: string[] },
   ) {
     return this.service.setLossReasons(orgId, body?.reasons ?? []);
+  }
+
+  // ─── Chave da API do Claude (BYOK, por empresa) ─────────────────
+  @Get('current/ai-key')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Status da chave do Claude desta empresa (mascarado)' })
+  getAiKey(@CurrentOrg('id') orgId: string) {
+    return this.llmKey.getStatus(orgId);
+  }
+
+  @Put('current/ai-key')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Configura a chave do Claude (valida antes de gravar)' })
+  setAiKey(@CurrentOrg('id') orgId: string, @Body() dto: SetAiKeyDto) {
+    return this.llmKey.setKey(orgId, dto.apiKey, { test: dto.test });
+  }
+
+  @Delete('current/ai-key')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Remove a chave do Claude desta empresa' })
+  clearAiKey(@CurrentOrg('id') orgId: string) {
+    return this.llmKey.clearKey(orgId);
   }
 
   @Get('members')

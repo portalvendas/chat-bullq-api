@@ -19,6 +19,7 @@ import { AiAgentRunnerService } from '../../ai-agents/runner/agent-runner.servic
 import { TranscriptionService } from '../messages/transcription.service';
 import { OutboxService } from '../../automations/outbox/outbox.service';
 import { WatchdogService } from '../../routing/watchdog/watchdog.service';
+import { LlmContext } from '../../ai-agents/llm/llm-context';
 import { CadencesService } from '../../cadences/cadences.service';
 import { PipelinesService } from '../../pipelines/pipelines.service';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -119,6 +120,18 @@ export class InboundMessageProcessor extends WorkerHost {
   }
 
   async process(job: Job<InboundJobData | StatusJobData>): Promise<any> {
+    // BYOK: fixa a organização no contexto para todas as chamadas de LLM
+    // aninhadas nesta mensagem (classifier, runner, reranker, memória)
+    // resolverem a chave da Anthropic DESTA empresa.
+    const orgId = (job.data as { organizationId?: string })?.organizationId;
+    return orgId
+      ? LlmContext.run(orgId, () => this.processImpl(job))
+      : this.processImpl(job);
+  }
+
+  private async processImpl(
+    job: Job<InboundJobData | StatusJobData>,
+  ): Promise<any> {
     if (job.name === 'process-status') {
       return this.processStatus(job.data as StatusJobData);
     }

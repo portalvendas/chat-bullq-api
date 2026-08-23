@@ -1,4 +1,5 @@
 import {
+  Put,
   Body,
   Controller,
   Delete,
@@ -24,6 +25,8 @@ import { UpdatePlanDto } from './dto/update-plan.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { PurgeOrganizationDto } from './dto/purge-organization.dto';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import { SetAiKeyDto } from '../organizations/dto/set-ai-key.dto';
+import { LlmKeyService } from '../ai-agents/llm/llm-key.service';
 
 /**
  * Console de super-admin (plataforma multi-empresa). TODAS as rotas exigem
@@ -35,7 +38,10 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 @UseGuards(JwtAuthGuard, PlatformAdminGuard)
 @Controller('platform-admin')
 export class PlatformAdminController {
-  constructor(private readonly service: PlatformAdminService) {}
+  constructor(
+    private readonly service: PlatformAdminService,
+    private readonly llmKey: LlmKeyService,
+  ) {}
 
   /** Resolve o ator (super-admin + IP) para a trilha de auditoria. */
   private actor(req: Request, userId: string): PlatformActor {
@@ -115,6 +121,25 @@ export class PlatformAdminController {
     @Req() req: Request,
   ) {
     return this.service.reactivateOrganization(id, this.actor(req, userId));
+  }
+
+  // ─── Chave do Claude por empresa (suporte) ──────────────────────
+  @Get('organizations/:id/ai-key')
+  @ApiOperation({ summary: 'Status da chave do Claude de uma empresa (mascarado)' })
+  getOrgAiKey(@Param('id') id: string) {
+    return this.llmKey.getStatus(id);
+  }
+
+  @Put('organizations/:id/ai-key')
+  @ApiOperation({ summary: 'Configura a chave do Claude de uma empresa' })
+  setOrgAiKey(@Param('id') id: string, @Body() dto: SetAiKeyDto) {
+    return this.llmKey.setKey(id, dto.apiKey, { test: dto.test });
+  }
+
+  @Delete('organizations/:id/ai-key')
+  @ApiOperation({ summary: 'Remove a chave do Claude de uma empresa' })
+  clearOrgAiKey(@Param('id') id: string) {
+    return this.llmKey.clearKey(id);
   }
 
   @Patch('organizations/:id/plan')

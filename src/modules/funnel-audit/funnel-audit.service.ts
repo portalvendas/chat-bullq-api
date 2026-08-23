@@ -206,7 +206,7 @@ export class FunnelAuditService {
       for (let i = 0; i < toAnalyze.length; i += AI_CONCURRENCY) {
         const batch = toAnalyze.slice(i, i + AI_CONCURRENCY);
         const results = await Promise.all(
-          batch.map((c) => this.analyzeCandidate(c)),
+          batch.map((c) => this.analyzeCandidate(c, organizationId)),
         );
         for (const r of results) {
           if (!r) continue;
@@ -254,7 +254,10 @@ export class FunnelAuditService {
 
   // ── Análise de um candidato (IA + fallback determinístico) ─────────
 
-  private async analyzeCandidate(c: Candidate): Promise<DraftSuggestion | null> {
+  private async analyzeCandidate(
+    c: Candidate,
+    organizationId: string,
+  ): Promise<DraftSuggestion | null> {
     const idleDays = Math.round(c.idleHours / 24);
     try {
       const messages = c.conversationId
@@ -296,6 +299,7 @@ export class FunnelAuditService {
 
       const res = await this.llm.complete({
         modelId: MODEL_ID,
+        organizationId,
         maxTokens: 220,
         temperature: 0,
         messages: [

@@ -55,6 +55,12 @@ export interface LlmToolDefinition {
 
 export interface LlmCompletionRequest {
   modelId: string;
+  /**
+   * Org dona desta chamada (BYOK). Quando presente, o LlmService resolve
+   * a chave da Anthropic DESTA empresa. Se ausente, cai no contexto ALS
+   * (LlmContext). Sem nenhum dos dois, usa o comportamento de fallback.
+   */
+  organizationId?: string;
   messages: LlmMessage[];
   tools?: LlmToolDefinition[];
   temperature?: number;

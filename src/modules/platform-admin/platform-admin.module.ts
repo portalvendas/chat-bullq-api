@@ -4,9 +4,11 @@ import { ConfigService } from '@nestjs/config';
 import type { SignOptions } from 'jsonwebtoken';
 import { PlatformAdminController } from './platform-admin.controller';
 import { PlatformAdminService } from './platform-admin.service';
+import { LlmModule } from '../ai-agents/llm/llm.module';
 
 @Module({
   imports: [
+    LlmModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { FunnelAuditService } from './funnel-audit.service';
+import { LlmContext } from '../ai-agents/llm/llm-context';
 import {
   FUNNEL_AUDIT_QUEUE,
   FunnelAuditJobData,
@@ -23,7 +24,9 @@ export class FunnelAuditProcessor extends WorkerHost {
   async process(job: Job<FunnelAuditJobData>): Promise<{ ok: boolean }> {
     const { runId, organizationId, pipelineIds } = job.data;
     this.logger.log(`[funnel-audit] run=${runId} org=${organizationId} iniciado`);
-    await this.service.executeRun(runId, organizationId, pipelineIds);
+    await LlmContext.run(organizationId, () =>
+      this.service.executeRun(runId, organizationId, pipelineIds),
+    );
     return { ok: true };
   }
 }

@@ -2,9 +2,14 @@ import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+
+import { PrismaService } from '../../../database/prisma.service';
+import { decryptString } from '../../../common/crypto/secret-cipher';
+import { LlmContext } from './llm-context';
 
 import {
   LlmCompletionRequest,
@@ -26,21 +31,121 @@ import {
  *   tools com cache no último elemento.
  * - Custo calculado client-side (Anthropic não retorna `cost` no response).
  */
+type OrgClientCache = {
+  client: Anthropic;
+  /** Valor cifrado atual (fingerprint) — rebuild do client se mudar. */
+  fingerprint: string;
+  fetchedAt: number;
+};
+
+/** TTL do cache de client por org — evita read no banco a cada chamada. */
+const ORG_CLIENT_TTL_MS = 30_000;
+
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly client: Anthropic;
-  private readonly hasApiKey: boolean;
+  private readonly globalClient: Anthropic;
+  private readonly globalApiKey?: string;
+  /**
+   * Se true (default), orgs SEM chave própria usam a chave global da
+   * plataforma. LLM_ALLOW_PLATFORM_FALLBACK=false força BYOK estrito: org sem
+   * chave própria é bloqueada (503) em vez de cair na chave global.
+   */
+  private readonly allowPlatformFallback: boolean;
+  /** Cache de client Anthropic por org (evita rebuild + read a cada chamada). */
+  private readonly orgClients = new Map<string, OrgClientCache>();
 
-  constructor(config: ConfigService) {
-    const apiKey = config.get<string>('ANTHROPIC_API_KEY');
-    this.hasApiKey = !!apiKey;
-    if (!apiKey) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
+    this.globalApiKey =
+      this.config.get<string>('ANTHROPIC_API_KEY') || undefined;
+    this.allowPlatformFallback =
+      (this.config.get<string>('LLM_ALLOW_PLATFORM_FALLBACK') ?? 'true')
+        .toLowerCase() !== 'false';
+    if (!this.globalApiKey) {
       this.logger.warn(
-        'ANTHROPIC_API_KEY not set — AI agents will fail at runtime',
+        'ANTHROPIC_API_KEY (global) não setada — orgs sem chave própria falharão',
       );
     }
-    this.client = new Anthropic({ apiKey: apiKey ?? 'missing' });
+    this.globalClient = new Anthropic({
+      apiKey: this.globalApiKey ?? 'missing',
+    });
+  }
+
+  /** Invalida o client cacheado de uma org (chamar após salvar/remover chave). */
+  invalidateOrg(organizationId: string): void {
+    this.orgClients.delete(organizationId);
+  }
+
+  /**
+   * Resolve o client Anthropic da chamada:
+   *  - org (explícita em req.organizationId ou via LlmContext) COM chave
+   *    própria → client da org (cache 30s, rebuild se a chave mudar);
+   *  - org SEM chave → fallback global se permitido, senão bloqueia (503);
+   *  - sem org (evals/interno) → client global.
+   */
+  private async resolveClient(explicitOrgId?: string): Promise<Anthropic> {
+    const orgId = explicitOrgId ?? LlmContext.organizationId();
+    if (!orgId) return this.requireGlobal();
+
+    const cached = this.orgClients.get(orgId);
+    if (cached && Date.now() - cached.fetchedAt < ORG_CLIENT_TTL_MS) {
+      return cached.client;
+    }
+
+    let enc: string | null = null;
+    let readFailed = false;
+    try {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { aiAnthropicKeyEnc: true },
+      });
+      enc = org?.aiAnthropicKeyEnc ?? null;
+    } catch (err) {
+      readFailed = true;
+      this.logger.error(
+        `Falha ao ler chave da org ${orgId}: ${(err as Error)?.message}`,
+      );
+    }
+
+    // Glitch transitório no banco: se já temos um client em cache, reusa
+    // (stale) em vez de bloquear/derrubar uma org que TEM chave.
+    if (readFailed && cached) return cached.client;
+
+    if (enc) {
+      // Reaproveita o client se a chave (fingerprint) não mudou.
+      if (cached && cached.fingerprint === enc) {
+        cached.fetchedAt = Date.now();
+        return cached.client;
+      }
+      const apiKey = decryptString(enc);
+      const client = new Anthropic({ apiKey });
+      this.orgClients.set(orgId, {
+        client,
+        fingerprint: enc,
+        fetchedAt: Date.now(),
+      });
+      return client;
+    }
+
+    // Org sem chave própria.
+    if (this.allowPlatformFallback && this.globalApiKey) {
+      return this.globalClient;
+    }
+    throw new ServiceUnavailableException(
+      'IA não configurada para esta empresa: defina a chave da API do Claude em Configurações → IA.',
+    );
+  }
+
+  private requireGlobal(): Anthropic {
+    if (!this.globalApiKey) {
+      throw new ServiceUnavailableException(
+        'IA indisponível: chave da Anthropic não configurada.',
+      );
+    }
+    return this.globalClient;
   }
 
   async complete(req: LlmCompletionRequest): Promise<LlmCompletionResponse> {
@@ -54,9 +159,11 @@ export class LlmService {
     // e a API retorna 400. Omitir quando o modelo for Opus 4.7+.
     const supportsTemperature = !this.isOpus47(modelId);
 
+    const client = await this.resolveClient(req.organizationId);
+
     let response: Anthropic.Message;
     try {
-      response = await this.client.messages.create({
+      response = await client.messages.create({
         model: modelId,
         max_tokens: req.maxTokens ?? 2048,
         ...(supportsTemperature

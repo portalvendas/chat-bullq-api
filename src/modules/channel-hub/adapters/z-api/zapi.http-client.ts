@@ -63,6 +63,27 @@ export class ZApiHttpClient {
     return response.data;
   }
 
+  /**
+   * QR de pareamento do Z-API (data-URI base64). Endpoint:
+   * `GET /qr-code/image` → `{ value: "data:image/png;base64,..." }`.
+   * Retorna null quando a instância já está conectada (Z-API não emite QR).
+   */
+  async getQrImage(channel: Channel): Promise<string | null> {
+    const client = this.createClient(channel);
+    try {
+      const { data } = await client.get('/qr-code/image');
+      const val =
+        (data && (data.value ?? data.qrcode ?? data.image)) ??
+        (typeof data === 'string' ? data : null);
+      if (!val || typeof val !== 'string') return null;
+      return val.startsWith('data:') ? val : `data:image/png;base64,${val}`;
+    } catch (err: any) {
+      // 4xx quando já conectada é esperado — trata como "sem QR".
+      this.logger.warn(`Z-API qr-code/image: ${err.response?.status ?? ''} ${err.message}`);
+      return null;
+    }
+  }
+
   /** Baixa mídia a partir da URL entregue no webhook (Fase 2). */
   async getMediaBuffer(_channel: Channel, mediaUrl: string): Promise<Buffer> {
     const response = await axios.get(mediaUrl, {

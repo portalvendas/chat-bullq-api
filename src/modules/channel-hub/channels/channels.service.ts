@@ -316,6 +316,52 @@ export class ChannelsService {
     return { job };
   }
 
+  /**
+   * QR + status de conexão para pareamento DENTRO do CRM (WhatsApp não-oficial
+   * por QR: Zappfy/Uazapi e Z-API). O front chama isso em polling e mostra o
+   * QR (data-URI) até o status virar `connected`.
+   *
+   * Retorno: { supported, connected, status, qrcode }.
+   *  - supported=false quando o tipo de canal não usa QR (ex.: WhatsApp oficial).
+   */
+  async getQr(id: string, organizationId: string) {
+    const channel = await this.findOne(id, organizationId);
+    switch (channel.type) {
+      case ChannelType.WHATSAPP_ZAPPFY: {
+        const { connected, qrcode } =
+          await this.zappfyHttpClient.getInstanceQr(channel);
+        return {
+          supported: true,
+          connected,
+          status: connected ? 'connected' : qrcode ? 'connecting' : 'disconnected',
+          qrcode: qrcode ?? null,
+        };
+      }
+      case ChannelType.WHATSAPP_ZAPI: {
+        const status = await this.zapiHttpClient
+          .getInstanceStatus(channel)
+          .catch(() => null);
+        if (status?.connected === true) {
+          return { supported: true, connected: true, status: 'connected', qrcode: null };
+        }
+        const qrcode = await this.zapiHttpClient.getQrImage(channel);
+        return {
+          supported: true,
+          connected: false,
+          status: qrcode ? 'connecting' : 'disconnected',
+          qrcode: qrcode ?? null,
+        };
+      }
+      default:
+        return {
+          supported: false,
+          connected: false,
+          status: 'unsupported',
+          qrcode: null,
+        };
+    }
+  }
+
   async testConnection(id: string, organizationId: string) {
     const channel = await this.findOne(id, organizationId);
 

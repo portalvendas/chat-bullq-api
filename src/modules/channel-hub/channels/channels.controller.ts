@@ -105,6 +105,14 @@ export class ChannelsController {
     return this.service.cancelSync(id, orgId);
   }
 
+  @Get(':id/qr')
+  @ApiOperation({
+    summary: 'QR + status de pareamento (WhatsApp por QR: Zappfy/Z-API). Polling.',
+  })
+  getQr(@Param('id') id: string, @CurrentOrg('id') orgId: string) {
+    return this.service.getQr(id, orgId);
+  }
+
   @Post(':id/test')
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: 'Test channel connection' })

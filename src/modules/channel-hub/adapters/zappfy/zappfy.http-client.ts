@@ -44,6 +44,39 @@ export class ZappfyHttpClient {
     }
   }
 
+  /**
+   * QR + status de conexão da instância Uazapi (pareamento dentro do CRM).
+   *
+   * Uazapi entrega `qrcode` no /instance/status quando NÃO conectada; se não
+   * vier, dispara `POST /instance/connect` pra (re)gerar. Retorno normalizado:
+   * `{ connected, qrcode }` — qrcode é data-URI (ou base64 cru) pronto pra img.
+   */
+  async getInstanceQr(
+    channel: Channel,
+  ): Promise<{ connected: boolean; qrcode: string | null; raw: any }> {
+    const client = this.createClient(channel);
+    let statusData: any = null;
+    try {
+      statusData = (await client.get('/instance/status')).data;
+    } catch (err: any) {
+      this.logger.warn(`Uazapi status (qr) falhou: ${err.message}`);
+    }
+    const connected = uazapiConnected(statusData);
+    if (connected) return { connected: true, qrcode: null, raw: statusData };
+
+    let qr = extractUazapiQr(statusData);
+    if (!qr) {
+      try {
+        const conn = (await client.post('/instance/connect', {})).data;
+        qr = extractUazapiQr(conn) ?? qr;
+        statusData = conn ?? statusData;
+      } catch (err: any) {
+        this.logger.warn(`Uazapi connect (qr) falhou: ${err.message}`);
+      }
+    }
+    return { connected, qrcode: qr, raw: statusData };
+  }
+
   async fetchChats(
     channel: Channel,
     options: { limit?: number; offset?: number; isGroup?: boolean } = {},
@@ -130,4 +163,25 @@ export class ZappfyHttpClient {
       id: externalMessageId,
     });
   }
+}
+
+
+/** Normaliza vários formatos de status do Uazapi para "conectado?". */
+function uazapiConnected(data: any): boolean {
+  if (!data) return false;
+  const inst = data.instance ?? data;
+  const st = inst?.status ?? inst?.state ?? data?.status ?? data?.state;
+  const s = typeof st === 'string' ? st.toLowerCase() : '';
+  return s === 'connected' || s === 'open' || inst?.connected === true;
+}
+
+/** Extrai o QR (data-URI ou base64) de vários formatos do Uazapi. */
+function extractUazapiQr(data: any): string | null {
+  if (!data) return null;
+  const inst = data.instance ?? data;
+  const raw =
+    inst?.qrcode ?? inst?.qrCode ?? inst?.base64 ?? data?.qrcode ??
+    data?.qrCode ?? data?.base64 ?? null;
+  if (!raw || typeof raw !== 'string') return null;
+  return raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`;
 }

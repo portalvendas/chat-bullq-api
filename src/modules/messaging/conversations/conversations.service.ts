@@ -898,4 +898,167 @@ export class ConversationsService {
     );
     return { conversationId, channelId: target.id, channelType: target.type };
   }
+
+  /**
+   * TIMELINE UNIFICADA da conversa: junta em ordem cronológica tudo que rodou
+   * no chat — execuções de IA (AiAgentRun + tool calls), Salesbot/cadências
+   * (CadenceRun com o gatilho), e eventos auditados (atribuição, status, IA
+   * on/off, mudança de etapa do funil, Tiny, handoffs) do ConversationAuditLog.
+   * Só leitura; usado pelo painel "Logs da conversa".
+   */
+  async getTimeline(conversationId: string, organizationId: string) {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
+      select: { id: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+
+    const [runs, cadenceRuns, audits] = await Promise.all([
+      this.prisma.aiAgentRun.findMany({
+        where: { conversationId },
+        orderBy: { startedAt: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          status: true,
+          finalAction: true,
+          errorMessage: true,
+          inputTokens: true,
+          outputTokens: true,
+          costUsd: true,
+          durationMs: true,
+          startedAt: true,
+          agent: { select: { name: true } },
+          toolCalls: {
+            orderBy: { createdAt: 'asc' },
+            select: { toolName: true, error: true },
+          },
+        },
+      }),
+      this.prisma.cadenceRun.findMany({
+        where: { conversationId },
+        orderBy: { startedAt: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          status: true,
+          stoppedReason: true,
+          startedAt: true,
+          finishedAt: true,
+          cadence: { select: { name: true, triggerType: true, triggerValue: true } },
+        },
+      }),
+      this.prisma.conversationAuditLog.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: {
+          id: true,
+          action: true,
+          fromValue: true,
+          toValue: true,
+          metadata: true,
+          actorId: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    type Ev = {
+      id: string;
+      kind: 'ai' | 'cadence' | 'audit';
+      at: Date;
+      title: string;
+      detail: string | null;
+      status: string | null;
+      meta: Record<string, any>;
+    };
+    const events: Ev[] = [];
+
+    for (const r of runs) {
+      const tools = r.toolCalls.map((t) => t.toolName);
+      const failed = r.toolCalls.filter((t) => t.error).length;
+      events.push({
+        id: `ai:${r.id}`,
+        kind: 'ai',
+        at: r.startedAt,
+        title: `IA · ${r.agent?.name ?? 'Agente'}`,
+        detail:
+          (r.finalAction ? `Ação: ${r.finalAction}` : null) ??
+          (tools.length ? `Ferramentas: ${tools.join(', ')}` : 'Sem ação'),
+        status: r.errorMessage ? 'ERROR' : r.status,
+        meta: {
+          finalAction: r.finalAction,
+          error: r.errorMessage,
+          tools,
+          failedTools: failed,
+          inputTokens: r.inputTokens,
+          outputTokens: r.outputTokens,
+          costUsd: Number(r.costUsd),
+          durationMs: r.durationMs,
+        },
+      });
+    }
+
+    const TRIGGER_LABEL: Record<string, string> = {
+      MANUAL: 'disparo manual',
+      TAG_ADDED: 'tag adicionada',
+      STAGE_ENTERED: 'entrou na etapa',
+      INACTIVITY: 'inatividade',
+    };
+    for (const c of cadenceRuns) {
+      const trg = c.cadence?.triggerType ?? 'MANUAL';
+      const trgLabel = TRIGGER_LABEL[trg] ?? trg;
+      events.push({
+        id: `cad:${c.id}`,
+        kind: 'cadence',
+        at: c.startedAt,
+        title: `Salesbot · ${c.cadence?.name ?? 'Cadência'}`,
+        detail: `Disparado por: ${trgLabel}${c.cadence?.triggerValue ? ` (${c.cadence.triggerValue})` : ''}`,
+        status: c.status,
+        meta: {
+          triggerType: trg,
+          triggerValue: c.cadence?.triggerValue ?? null,
+          stoppedReason: c.stoppedReason,
+          finishedAt: c.finishedAt,
+        },
+      });
+    }
+
+    const AUDIT_LABEL: Record<string, string> = {
+      ASSIGNED: 'Atribuída a atendente',
+      UNASSIGNED: 'Atribuição removida',
+      STATUS_CHANGED: 'Status alterado',
+      CLOSED: 'Conversa encerrada',
+      REOPENED: 'Conversa reaberta',
+      AI_ENABLED: 'IA ativada',
+      AI_DISABLED: 'IA pausada',
+      STAGE_MOVED: 'Etapa do funil alterada',
+      CADENCE_STARTED: 'Salesbot iniciado',
+      HANDOFF: 'Transferência entre agentes',
+      CHATBOT_STARTED: 'Chatbot iniciado',
+      TINY_LINKED: 'Vinculado a documento Tiny',
+    };
+    const humanize = (a: string) =>
+      AUDIT_LABEL[a] ??
+      a.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (m) => m.toUpperCase());
+    for (const a of audits) {
+      const fromTo =
+        a.fromValue || a.toValue
+          ? `${a.fromValue ?? '—'} → ${a.toValue ?? '—'}`
+          : null;
+      events.push({
+        id: `aud:${a.id}`,
+        kind: 'audit',
+        at: a.createdAt,
+        title: humanize(a.action),
+        detail: fromTo,
+        status: null,
+        meta: { action: a.action, actorId: a.actorId, ...(a.metadata as object) },
+      });
+    }
+
+    events.sort((x, y) => y.at.getTime() - x.at.getTime());
+    return events.slice(0, 200).map((e) => ({ ...e, at: e.at.toISOString() }));
+  }
 }

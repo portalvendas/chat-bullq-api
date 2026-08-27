@@ -393,6 +393,24 @@ export class CadencesService implements OnModuleInit {
       },
     });
     await this.enqueueAdvance(run.id, entry.id, 0);
+    // Auditoria: registra o disparo do Salesbot na timeline da conversa,
+    // com o GATILHO — assim o painel "Logs da conversa" mostra por que a
+    // automação rodou (entrou na etapa, tag, inatividade, manual). Best-effort.
+    void this.prisma.conversationAuditLog
+      .create({
+        data: {
+          conversationId,
+          action: 'CADENCE_STARTED',
+          toValue: cadence.name,
+          metadata: {
+            cadenceId: id,
+            cadenceRunId: run.id,
+            triggerType: cadence.triggerType,
+            triggerValue: cadence.triggerValue ?? null,
+          },
+        },
+      })
+      .catch(() => undefined);
     this.logger.log(
       `Salesbot "${cadence.name}" iniciado (run ${run.id}) conv ${conversationId}`,
     );

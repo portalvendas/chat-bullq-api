@@ -640,9 +640,36 @@ export class PipelinesService {
     // com o "executar robô ao mover para a etapa" do Kommo). Só quando o card
     // realmente mudou de etapa e está vinculado a uma conversa.
     if (!sameStage && card.conversationId) {
+      const convId = card.conversationId;
+      // Auditoria: registra a mudança de etapa do funil na timeline da conversa.
+      void (async () => {
+        try {
+          const [fromS, toS] = await Promise.all([
+            this.prisma.pipelineStage.findUnique({
+              where: { id: fromStageId },
+              select: { name: true },
+            }),
+            this.prisma.pipelineStage.findUnique({
+              where: { id: dto.toStageId },
+              select: { name: true },
+            }),
+          ]);
+          await this.prisma.conversationAuditLog.create({
+            data: {
+              conversationId: convId,
+              action: 'STAGE_MOVED',
+              fromValue: fromS?.name ?? fromStageId,
+              toValue: toS?.name ?? dto.toStageId,
+              metadata: { cardId, status: newStatus },
+            },
+          });
+        } catch {
+          /* best-effort: auditoria nunca quebra o move */
+        }
+      })();
       void this.cadences.onStageEntered(
         organizationId,
-        card.conversationId,
+        convId,
         dto.toStageId,
       );
     }

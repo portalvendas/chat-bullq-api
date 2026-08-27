@@ -199,6 +199,12 @@ export class ConversationsController {
     return this.service.findOne(id, orgId, access);
   }
 
+  @Get(':id/timeline')
+  @ApiOperation({ summary: 'Timeline unificada da conversa (IA, Salesbot, etapa, status, Tiny)' })
+  getTimeline(@Param('id') id: string, @CurrentOrg('id') orgId: string) {
+    return this.service.getTimeline(id, orgId);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update conversation (assign, change status, department)' })
   update(

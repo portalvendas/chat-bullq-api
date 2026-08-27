@@ -391,6 +391,244 @@ export class DashboardService {
     };
   }
 
+  /**
+   * DASHBOARD COMERCIAL (Fase 1 — 100% nativo, sem dependência externa).
+   * Cruza Leads (cards) × Origem × Campanha com Orçamentos/Pedidos (Tiny ERP),
+   * qualidade (avanço no funil + leadScore/temperatura + gerou orçamento/pedido)
+   * e conversão. Agregação server-side em SQL (p95 baixo) — o frontend só renderiza.
+   *
+   * Origem   = metadata.source (landing_page, facebook_leadads…) ou 'organico'.
+   * Campanha = metadata.tracking.utm_campaign OU metadata.campaignName (Lead Ads).
+   * Qualificado = avançou da etapa de entrada OU leadScore>=40 OU virou orçamento/pedido OU ganho.
+   *
+   * Colunas de GASTO/CAC/ROAS ficam de fora (Fase 2 — Meta Ads API); o frontend
+   * já reserva o espaço.
+   */
+  async getCommercial(organizationId: string, range: DateRange) {
+    const { from, to } = range;
+
+    const [overviewRows, tinyRows, originRows, campaignRows] = await Promise.all([
+      // ── Cards (leads) + qualidade ──────────────────────────────
+      this.prisma.$queryRaw<
+        {
+          leads: number;
+          qualificados: number;
+          avancaram: number;
+          ganhos: number;
+          perdidos: number;
+          com_doc: number;
+          quentes: number;
+          mornos: number;
+          frios: number;
+          sem_score: number;
+          valor_ganho: number;
+        }[]
+      >`
+        WITH entry AS (
+          SELECT pipeline_id, MIN("order") AS entry_order
+          FROM pipeline_stages GROUP BY pipeline_id
+        ),
+        tiny AS (
+          SELECT contact_id,
+                 bool_or(kind = 'ORCAMENTO') AS ho,
+                 bool_or(kind = 'PEDIDO') AS hp
+          FROM tiny_documents
+          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
+          GROUP BY contact_id
+        ),
+        base AS (
+          SELECT c.id, c.status, c.value,
+                 s."order" AS so, e.entry_order AS eo,
+                 CASE WHEN (c.metadata->>'leadScore') ~ '^[0-9]+$'
+                      THEN (c.metadata->>'leadScore')::int END AS ls,
+                 COALESCE(t.ho, false) AS ho,
+                 COALESCE(t.hp, false) AS hp
+          FROM cards c
+          JOIN pipeline_stages s ON s.id = c.stage_id
+          JOIN entry e ON e.pipeline_id = c.pipeline_id
+          LEFT JOIN tiny t ON t.contact_id = c.contact_id
+          WHERE c.organization_id = ${organizationId}
+            AND c.created_at BETWEEN ${from} AND ${to}
+        )
+        SELECT
+          count(*)::int AS leads,
+          count(*) FILTER (WHERE so > eo OR status = 'WON' OR ls >= 40 OR ho OR hp)::int AS qualificados,
+          count(*) FILTER (WHERE so > eo)::int AS avancaram,
+          count(*) FILTER (WHERE status = 'WON')::int AS ganhos,
+          count(*) FILTER (WHERE status = 'LOST')::int AS perdidos,
+          count(*) FILTER (WHERE ho OR hp)::int AS com_doc,
+          count(*) FILTER (WHERE ls >= 70)::int AS quentes,
+          count(*) FILTER (WHERE ls >= 40 AND ls < 70)::int AS mornos,
+          count(*) FILTER (WHERE ls IS NOT NULL AND ls < 40)::int AS frios,
+          count(*) FILTER (WHERE ls IS NULL)::int AS sem_score,
+          COALESCE(sum(value) FILTER (WHERE status = 'WON'), 0)::float8 AS valor_ganho
+        FROM base
+      `,
+      // ── Orçamentos / Pedidos (Tiny) no período ─────────────────
+      this.prisma.$queryRaw<
+        {
+          orcamentos: number;
+          orcamentos_valor: number;
+          pedidos: number;
+          pedidos_valor: number;
+        }[]
+      >`
+        SELECT
+          count(*) FILTER (WHERE kind = 'ORCAMENTO')::int AS orcamentos,
+          COALESCE(sum(valor) FILTER (WHERE kind = 'ORCAMENTO'), 0)::float8 AS orcamentos_valor,
+          count(*) FILTER (WHERE kind = 'PEDIDO')::int AS pedidos,
+          COALESCE(sum(valor) FILTER (WHERE kind = 'PEDIDO'), 0)::float8 AS pedidos_valor
+        FROM tiny_documents
+        WHERE organization_id = ${organizationId}
+          AND data BETWEEN ${from} AND ${to}
+      `,
+      // ── Por ORIGEM ─────────────────────────────────────────────
+      this.prisma.$queryRaw<
+        {
+          origem: string;
+          leads: number;
+          ganhos: number;
+          orcamentos: number;
+          pedidos: number;
+          valor_ganho: number;
+        }[]
+      >`
+        WITH tiny AS (
+          SELECT contact_id,
+                 bool_or(kind = 'ORCAMENTO') AS ho,
+                 bool_or(kind = 'PEDIDO') AS hp
+          FROM tiny_documents
+          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
+          GROUP BY contact_id
+        )
+        SELECT
+          COALESCE(NULLIF(c.metadata->>'source', ''), 'organico') AS origem,
+          count(*)::int AS leads,
+          count(*) FILTER (WHERE c.status = 'WON')::int AS ganhos,
+          count(*) FILTER (WHERE COALESCE(t.ho, false))::int AS orcamentos,
+          count(*) FILTER (WHERE COALESCE(t.hp, false))::int AS pedidos,
+          COALESCE(sum(c.value) FILTER (WHERE c.status = 'WON'), 0)::float8 AS valor_ganho
+        FROM cards c
+        LEFT JOIN tiny t ON t.contact_id = c.contact_id
+        WHERE c.organization_id = ${organizationId}
+          AND c.created_at BETWEEN ${from} AND ${to}
+        GROUP BY 1
+        ORDER BY leads DESC
+        LIMIT 20
+      `,
+      // ── Por CAMPANHA ───────────────────────────────────────────
+      this.prisma.$queryRaw<
+        {
+          campanha: string;
+          leads: number;
+          ganhos: number;
+          orcamentos: number;
+          pedidos: number;
+          valor_ganho: number;
+        }[]
+      >`
+        WITH tiny AS (
+          SELECT contact_id,
+                 bool_or(kind = 'ORCAMENTO') AS ho,
+                 bool_or(kind = 'PEDIDO') AS hp
+          FROM tiny_documents
+          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
+          GROUP BY contact_id
+        )
+        SELECT
+          COALESCE(
+            NULLIF(c.metadata->'tracking'->>'utm_campaign', ''),
+            NULLIF(c.metadata->>'campaignName', ''),
+            '(sem campanha)'
+          ) AS campanha,
+          count(*)::int AS leads,
+          count(*) FILTER (WHERE c.status = 'WON')::int AS ganhos,
+          count(*) FILTER (WHERE COALESCE(t.ho, false))::int AS orcamentos,
+          count(*) FILTER (WHERE COALESCE(t.hp, false))::int AS pedidos,
+          COALESCE(sum(c.value) FILTER (WHERE c.status = 'WON'), 0)::float8 AS valor_ganho
+        FROM cards c
+        LEFT JOIN tiny t ON t.contact_id = c.contact_id
+        WHERE c.organization_id = ${organizationId}
+          AND c.created_at BETWEEN ${from} AND ${to}
+        GROUP BY 1
+        ORDER BY leads DESC
+        LIMIT 20
+      `,
+    ]);
+
+    const o = overviewRows[0] ?? {
+      leads: 0, qualificados: 0, avancaram: 0, ganhos: 0, perdidos: 0,
+      com_doc: 0, quentes: 0, mornos: 0, frios: 0, sem_score: 0, valor_ganho: 0,
+    };
+    const t = tinyRows[0] ?? {
+      orcamentos: 0, orcamentos_valor: 0, pedidos: 0, pedidos_valor: 0,
+    };
+
+    const pct = (num: number, den: number) =>
+      den > 0 ? Math.round((num / den) * 1000) / 10 : 0;
+
+    return {
+      overview: {
+        leads: o.leads,
+        qualificados: o.qualificados,
+        qualificadosPct: pct(o.qualificados, o.leads),
+        orcamentos: t.orcamentos,
+        orcamentosValor: t.orcamentos_valor,
+        pedidos: t.pedidos,
+        pedidosValor: t.pedidos_valor,
+        ganhos: o.ganhos,
+        perdidos: o.perdidos,
+        valorGanho: o.valor_ganho,
+        ticketMedio: t.pedidos > 0 ? Math.round((t.pedidos_valor / t.pedidos) * 100) / 100 : 0,
+        gasto: null as number | null,
+        cac: null as number | null,
+        roas: null as number | null,
+      },
+      funnel: {
+        leads: o.leads,
+        orcamentos: t.orcamentos,
+        pedidos: t.pedidos,
+        leadParaOrcamentoPct: pct(t.orcamentos, o.leads),
+        orcamentoParaPedidoPct: pct(t.pedidos, t.orcamentos),
+        leadParaPedidoPct: pct(t.pedidos, o.leads),
+      },
+      quality: {
+        avancaram: o.avancaram,
+        naoAvancaram: Math.max(o.leads - o.avancaram, 0),
+        comOrcamentoOuPedido: o.com_doc,
+        ganhos: o.ganhos,
+        perdidos: o.perdidos,
+        temperatura: {
+          quente: o.quentes,
+          morno: o.mornos,
+          frio: o.frios,
+          semScore: o.sem_score,
+        },
+      },
+      byOrigin: originRows.map((r) => ({
+        origem: r.origem,
+        leads: r.leads,
+        ganhos: r.ganhos,
+        orcamentos: r.orcamentos,
+        pedidos: r.pedidos,
+        valorGanho: r.valor_ganho,
+        conversaoPct: pct(r.pedidos, r.leads),
+      })),
+      byCampaign: campaignRows.map((r) => ({
+        campanha: r.campanha,
+        leads: r.leads,
+        ganhos: r.ganhos,
+        orcamentos: r.orcamentos,
+        pedidos: r.pedidos,
+        valorGanho: r.valor_ganho,
+        conversaoPct: pct(r.pedidos, r.leads),
+        gasto: null as number | null,
+        cac: null as number | null,
+        roas: null as number | null,
+      })),
+    };
+  }
+
   async getVolumeByChannel(organizationId: string, range: DateRange) {
     const result = await this.prisma.conversation.groupBy({
       by: ['channelId'],

@@ -19,6 +19,13 @@ export class DashboardController {
     };
   }
 
+  @Get('commercial')
+  @ApiOperation({ summary: 'Comercial: leads × campanha × origem, orçamentos, pedidos, conversão' })
+  @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
+  getCommercial(@CurrentOrg('id') orgId: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.getCommercial(orgId, this.parseRange(from, to));
+  }
+
   @Get('overview')
   @ApiOperation({ summary: 'Get dashboard overview metrics' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })

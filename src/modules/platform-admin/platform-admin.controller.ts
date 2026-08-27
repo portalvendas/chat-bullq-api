@@ -25,6 +25,7 @@ import { UpdatePlanDto } from './dto/update-plan.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { PurgeOrganizationDto } from './dto/purge-organization.dto';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import { ResendInvitationDto } from './dto/resend-invitation.dto';
 import { SetAiKeyDto } from '../organizations/dto/set-ai-key.dto';
 import { LlmKeyService } from '../ai-agents/llm/llm-key.service';
 
@@ -73,6 +74,22 @@ export class PlatformAdminController {
     @Req() req: Request,
   ) {
     return this.service.createOrganization(dto, this.actor(req, userId));
+  }
+
+  @Post('organizations/:id/resend-invite')
+  @ApiOperation({
+    summary: 'Reenvia o convite do dono (OWNER) de uma empresa existente (novo token)',
+  })
+  resendInvite(
+    @Param('id') id: string,
+    @Body() dto: ResendInvitationDto,
+    @CurrentUser('id') userId: string,
+    @Req() req: Request,
+  ) {
+    return this.service.resendOwnerInvitation(id, this.actor(req, userId), {
+      ownerEmail: dto.ownerEmail,
+      role: dto.role,
+    });
   }
 
   @Get('organizations/:id')

@@ -599,6 +599,104 @@ export class PlatformAdminService {
   }
 
   /**
+   * REENVIO de convite do dono (OWNER) para uma empresa JÁ existente. Regenera
+   * um token novo (o link antigo pode ter sido invalidado por exclusão do
+   * convidante, expiração ou limpeza) e reenvia o e-mail. Revoga convites
+   * PENDENTES antigos do mesmo e-mail nessa org pra não haver ambiguidade.
+   * Se `ownerEmail` não vier, reaproveita o e-mail do último convite da org.
+   * Devolve o link mesmo que o e-mail falhe, pra o console copiar.
+   */
+  async resendOwnerInvitation(
+    id: string,
+    actor: PlatformActor,
+    input?: { ownerEmail?: string; role?: OrgRole },
+  ) {
+    const org = await this.prisma.organization.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!org) throw new NotFoundException('Organização não encontrada');
+
+    const role: OrgRole = input?.role ?? 'OWNER';
+    let email = input?.ownerEmail?.trim().toLowerCase();
+    if (!email) {
+      const last = await this.prisma.invitation.findFirst({
+        where: { organizationId: org.id },
+        orderBy: { createdAt: 'desc' },
+        select: { email: true },
+      });
+      email = last?.email;
+    }
+    if (!email) {
+      throw new BadRequestException(
+        'Informe o e-mail do convidado: não há convite anterior nesta empresa para reaproveitar.',
+      );
+    }
+
+    // Já é membro? Então não há o que reenviar.
+    const already = await this.prisma.userOrganization.findFirst({
+      where: { organizationId: org.id, user: { email } },
+      select: { id: true },
+    });
+    if (already) {
+      throw new ConflictException(
+        'Esse e-mail já é membro da empresa — não precisa de convite.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const invitation = await this.prisma.$transaction(async (tx) => {
+      await tx.invitation.updateMany({
+        where: { organizationId: org.id, email, status: 'PENDING' },
+        data: { status: 'REVOKED' },
+      });
+      return tx.invitation.create({
+        data: {
+          organizationId: org.id,
+          email,
+          role,
+          token,
+          invitedById: actor.userId,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+    });
+
+    await this.audit(
+      actor,
+      'INVITATION_RESENT',
+      'Organization',
+      org.id,
+      org.id,
+      { email, role },
+    );
+
+    const emailSent = await this.mail.sendInvitation({
+      to: email,
+      orgName: org.name,
+      token: invitation.token,
+      role,
+    });
+
+    this.logger.warn(
+      `Convite reenviado: org ${org.id} (${org.slug}) -> ${email} (email=${emailSent}) por ${actor.userId}`,
+    );
+
+    const webAppUrl = (
+      process.env.WEB_APP_URL || 'https://chat-bullq-web.onrender.com'
+    ).replace(/\/$/, '');
+
+    return {
+      organizationId: org.id,
+      ownerEmail: email,
+      role,
+      inviteToken: invitation.token,
+      inviteUrl: `${webAppUrl}/register?invite=${encodeURIComponent(invitation.token)}`,
+      emailSent,
+    };
+  }
+
+  /**
    * LGPD/offboarding: EXCLUSAO DEFINITIVA da org e de tudo relacionado. O delete
    * cascateia no banco (FKs onDelete: Cascade), entao e atomico. Irreversivel —
    * exige confirmacao com o slug e e auditado ANTES (o platform_audit_log

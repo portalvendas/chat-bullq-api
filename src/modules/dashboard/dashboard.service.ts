@@ -520,7 +520,37 @@ export class DashboardService {
     // Lista completa de origens (independe do filtro), p/ os chips do frontend.
     const origins = [...new Set(allRows.map((r) => r.origem))].sort();
 
-    const rows = origemFilter ? allRows.filter((r) => r.origem === origemFilter) : allRows;
+    const filtered = origemFilter
+      ? allRows.filter((r) => r.origem === origemFilter)
+      : allRows;
+
+    // FUSÃO DE LEAD: um mesmo contato pode ter o card do WhatsApp (porta de
+    // entrada, sem UTM) e o card do formulário (com UTM) — é o MESMO lead.
+    // Conta como 1 lead e a ORIGEM IDENTIFICADA (com UTM) vence a "Orgânico".
+    const ORGANICO = 'Orgânico / Direto';
+    const byContactRep = new Map<string, Row>();
+    const noContactRows: Row[] = [];
+    for (const r of filtered) {
+      if (!r.contactId) {
+        noContactRows.push(r);
+        continue;
+      }
+      const cur = byContactRep.get(r.contactId);
+      if (!cur) {
+        byContactRep.set(r.contactId, r);
+        continue;
+      }
+      const curIdent = cur.origem !== ORGANICO;
+      const rIdent = r.origem !== ORGANICO;
+      let winner = cur;
+      if (rIdent && !curIdent) winner = r;
+      else if (rIdent === curIdent) {
+        if (r.status === 'WON' && cur.status !== 'WON') winner = r;
+        else if (r.status === cur.status && r.value > cur.value) winner = r;
+      }
+      byContactRep.set(r.contactId, winner);
+    }
+    const rows = [...byContactRep.values(), ...noContactRows];
 
     // Orçamentos/Pedidos (Tiny) dos contatos desses leads.
     const contactIds = [...new Set(rows.map((r) => r.contactId).filter(Boolean))] as string[];

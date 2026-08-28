@@ -468,8 +468,11 @@ export class DashboardService {
     const normOrigem = (m: any, channelType?: string | null): string => {
       const hay = `${String(m?.source ?? '')} ${String(m?.tracking?.utm_source ?? '')}`.toLowerCase();
       const hasG = !!m?.tracking?.gclid;
+      const hasFb = !!m?.tracking?.fbclid;
       if (/insta/.test(hay)) return 'Instagram';
-      if (/face|fb|leadads|meta/.test(hay)) return 'Facebook';
+      // Auto-tagging: sem UTM, o click-id identifica a plataforma
+      // (fbclid = Meta/Facebook, gclid = Google).
+      if (/face|fb|leadads|meta/.test(hay) || hasFb) return 'Facebook';
       if (/google|adwords|gclid/.test(hay) || hasG) return 'Google';
       if (/tiktok/.test(hay)) return 'TikTok';
       if (/landing|(^|[^a-z])lp([^a-z]|$)/.test(hay)) return 'Landing Page';

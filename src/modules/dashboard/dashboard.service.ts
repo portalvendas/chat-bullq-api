@@ -453,6 +453,7 @@ export class DashboardService {
       where: { organizationId, createdAt: { gte: from, lte: to } },
       select: {
         id: true,
+        createdAt: true,
         contactId: true,
         status: true,
         value: true,
@@ -488,6 +489,7 @@ export class DashboardService {
     };
 
     type Row = {
+      createdAt: Date;
       contactId: string | null;
       status: string;
       value: number;
@@ -502,6 +504,7 @@ export class DashboardService {
       const lsRaw = m?.leadScore;
       const ls = /^\d+$/.test(String(lsRaw)) ? parseInt(String(lsRaw), 10) : null;
       return {
+        createdAt: c.createdAt,
         contactId: c.contactId,
         status: String(c.status),
         value: c.value ? Number(c.value) : 0,
@@ -594,9 +597,76 @@ export class DashboardService {
         .slice(0, 30);
     };
 
+    // ── Série temporal (evolução) por origem ──────────────────────
+    const spanDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
+    const weekly = spanDays > 45;
+    const bucketKey = (d: Date): string => {
+      const t = new Date(d.getTime());
+      if (weekly) t.setUTCDate(t.getUTCDate() - t.getUTCDay());
+      return t.toISOString().slice(0, 10);
+    };
+    const bucketList: string[] = [];
+    {
+      const step = weekly ? 7 : 1;
+      const start = new Date(from.getTime());
+      start.setUTCHours(0, 0, 0, 0);
+      if (weekly) start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+      for (let t = start.getTime(); t <= to.getTime(); t += step * 86400000) {
+        bucketList.push(new Date(t).toISOString().slice(0, 10));
+      }
+    }
+    const leadsByOrigem = new Map<string, number>();
+    for (const r of rows) leadsByOrigem.set(r.origem, (leadsByOrigem.get(r.origem) ?? 0) + 1);
+    const topOrigins = [...leadsByOrigem.entries()]
+      .sort((a2, b2) => b2[1] - a2[1])
+      .slice(0, 6)
+      .map(([o]) => o);
+    const topSet = new Set(topOrigins);
+    const labelFor = (o: string) => (topSet.has(o) ? o : 'Outros');
+    const seriesOrigins = [...topOrigins];
+    if (rows.some((r) => !topSet.has(r.origem))) seriesOrigins.push('Outros');
+
+    const acc = new Map<string, Map<string, { leads: number; orc: number; ped: number }>>();
+    for (const bk of bucketList) acc.set(bk, new Map());
+    for (const r of rows) {
+      const bk = bucketKey(r.createdAt);
+      let m = acc.get(bk);
+      if (!m) {
+        m = new Map();
+        acc.set(bk, m);
+      }
+      const lab = labelFor(r.origem);
+      const cur = m.get(lab) ?? { leads: 0, orc: 0, ped: 0 };
+      cur.leads += 1;
+      if (hasOrc(r.contactId)) cur.orc += 1;
+      if (hasPed(r.contactId)) cur.ped += 1;
+      m.set(lab, cur);
+    }
+    const conversionSeries = bucketList.map((bk) => {
+      const point: Record<string, number | string | null> = { date: bk };
+      const m = acc.get(bk);
+      for (const o of seriesOrigins) {
+        const v = m?.get(o);
+        point[o] = v && v.leads > 0 ? Math.round((v.ped / v.leads) * 1000) / 10 : null;
+      }
+      return point;
+    });
+    const orcamentosSeries = bucketList.map((bk) => {
+      const point: Record<string, number | string> = { date: bk };
+      const m = acc.get(bk);
+      for (const o of seriesOrigins) point[o] = m?.get(o)?.orc ?? 0;
+      return point;
+    });
+
     return {
       origins,
       appliedOrigem: origemFilter,
+      series: {
+        origins: seriesOrigins,
+        weekly,
+        conversion: conversionSeries,
+        orcamentos: orcamentosSeries,
+      },
       overview: {
         leads,
         qualificados,

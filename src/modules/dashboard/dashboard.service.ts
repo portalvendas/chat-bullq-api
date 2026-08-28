@@ -472,16 +472,18 @@ export class DashboardService {
       if (/face|fb|leadads|meta/.test(hay)) return 'Facebook';
       if (/google|adwords|gclid/.test(hay) || hasG) return 'Google';
       if (/tiktok/.test(hay)) return 'TikTok';
-      if (/whats/.test(hay)) return 'WhatsApp';
       if (/landing|(^|[^a-z])lp([^a-z]|$)/.test(hay)) return 'Landing Page';
-      const src = String(m?.source ?? '').trim();
-      if (src) return src.charAt(0).toUpperCase() + src.slice(1);
+      const src = String(m?.source ?? '').trim().toLowerCase();
+      if (src && src !== 'organico' && src !== 'organic') {
+        return src.charAt(0).toUpperCase() + src.slice(1);
+      }
+      // Marketplaces são canais de VENDA legítimos — origem própria.
       const ct = String(channelType ?? '').toUpperCase();
-      if (ct.includes('INSTAGRAM')) return 'Instagram';
-      if (ct.includes('WHATSAPP') || ct.includes('ZAPPFY') || ct.includes('ZAPI')) return 'WhatsApp';
       if (ct.includes('MERCADO')) return 'Mercado Livre';
       if (ct.includes('SHOPEE')) return 'Shopee';
-      return 'Orgânico';
+      // WhatsApp/Instagram/Telegram são DESTINO (porta de entrada após o
+      // formulário), NÃO origem. Sem UTM identificável => Orgânico / Direto.
+      return 'Orgânico / Direto';
     };
     const campOf = (m: any): string => {
       const c = m?.tracking?.utm_campaign || m?.campaignName;

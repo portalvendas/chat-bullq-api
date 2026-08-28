@@ -755,6 +755,69 @@ export class DashboardService {
     };
   }
 
+  /**
+   * DIAGNÓSTICO DE CAPTAÇÃO (n8n -> /public/leads -> CRM). Confere, nos leads
+   * dos últimos 30 dias, se estão chegando com telefone (fusão com WhatsApp) e
+   * com utm_source/utm_campaign (origem). Só leitura; telefone mascarado.
+   */
+  async getIntakeHealth(organizationId: string) {
+    const since = new Date(Date.now() - 30 * 86400000);
+    const cards = await this.prisma.card.findMany({
+      where: { organizationId, createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        createdAt: true,
+        title: true,
+        metadata: true,
+        contact: { select: { phone: true, name: true } },
+      },
+    });
+    let comUtmSource = 0;
+    let comUtmCampaign = 0;
+    let comTelefone = 0;
+    const sample: Array<{
+      date: string;
+      nome: string | null;
+      telefone: string | null;
+      utmSource: string | null;
+      utmCampaign: string | null;
+      source: string | null;
+    }> = [];
+    for (const c of cards) {
+      const m = (c.metadata ?? {}) as any;
+      const utmS = (m?.tracking?.utm_source as string) || null;
+      const utmC = (m?.tracking?.utm_campaign as string) || (m?.campaignName as string) || null;
+      const phone = c.contact?.phone || null;
+      if (utmS) comUtmSource += 1;
+      if (utmC) comUtmCampaign += 1;
+      if (phone) comTelefone += 1;
+      if (sample.length < 12) {
+        sample.push({
+          date: c.createdAt.toISOString(),
+          nome: c.contact?.name || c.title || null,
+          telefone: phone ? phone.replace(/.(?=.{4})/g, '•') : null,
+          utmSource: utmS,
+          utmCampaign: utmC,
+          source: (m?.source as string) || null,
+        });
+      }
+    }
+    const total = cards.length;
+    const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
+    return {
+      total,
+      janelaDias: 30,
+      comTelefone,
+      comTelefonePct: pct(comTelefone),
+      comUtmSource,
+      comUtmSourcePct: pct(comUtmSource),
+      comUtmCampaign,
+      comUtmCampaignPct: pct(comUtmCampaign),
+      sample,
+    };
+  }
+
   async getVolumeByChannel(organizationId: string, range: DateRange) {
     const result = await this.prisma.conversation.groupBy({
       by: ['channelId'],

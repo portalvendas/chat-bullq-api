@@ -31,6 +31,12 @@ export class DashboardController {
     return this.service.getCommercial(orgId, this.parseRange(from, to), { origem });
   }
 
+  @Get('lead-intake-health')
+  @ApiOperation({ summary: 'Diagnóstico de captação: % de leads com telefone/utm_source/utm_campaign' })
+  getIntakeHealth(@CurrentOrg('id') orgId: string) {
+    return this.service.getIntakeHealth(orgId);
+  }
+
   @Get('overview')
   @ApiOperation({ summary: 'Get dashboard overview metrics' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })

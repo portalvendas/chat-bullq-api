@@ -430,223 +430,221 @@ export class DashboardService {
    * Colunas de GASTO/CAC/ROAS ficam de fora (Fase 2 — Meta Ads API); o frontend
    * já reserva o espaço.
    */
-  async getCommercial(organizationId: string, range: DateRange) {
+  async getCommercial(
+    organizationId: string,
+    range: DateRange,
+    opts?: { origem?: string },
+  ) {
     const { from, to } = range;
+    const origemFilter = opts?.origem && opts.origem !== 'all' ? opts.origem : null;
 
-    const [overviewRows, tinyRows, originRows, campaignRows] = await Promise.all([
-      // ── Cards (leads) + qualidade ──────────────────────────────
-      this.prisma.$queryRaw<
-        {
-          leads: number;
-          qualificados: number;
-          avancaram: number;
-          ganhos: number;
-          perdidos: number;
-          com_doc: number;
-          quentes: number;
-          mornos: number;
-          frios: number;
-          sem_score: number;
-          valor_ganho: number;
-        }[]
-      >`
-        WITH entry AS (
-          SELECT pipeline_id, MIN("order") AS entry_order
-          FROM pipeline_stages GROUP BY pipeline_id
-        ),
-        tiny AS (
-          SELECT contact_id,
-                 bool_or(kind = 'ORCAMENTO') AS ho,
-                 bool_or(kind = 'PEDIDO') AS hp
-          FROM tiny_documents
-          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
-          GROUP BY contact_id
-        ),
-        base AS (
-          SELECT c.id, c.status, c.value,
-                 s."order" AS so, e.entry_order AS eo,
-                 CASE WHEN (c.metadata->>'leadScore') ~ '^[0-9]+$'
-                      THEN (c.metadata->>'leadScore')::int END AS ls,
-                 COALESCE(t.ho, false) AS ho,
-                 COALESCE(t.hp, false) AS hp
-          FROM cards c
-          JOIN pipeline_stages s ON s.id = c.stage_id
-          JOIN entry e ON e.pipeline_id = c.pipeline_id
-          LEFT JOIN tiny t ON t.contact_id = c.contact_id
-          WHERE c.organization_id = ${organizationId}
-            AND c.created_at BETWEEN ${from} AND ${to}
-        )
-        SELECT
-          count(*)::int AS leads,
-          count(*) FILTER (WHERE so > eo OR status = 'WON' OR ls >= 40 OR ho OR hp)::int AS qualificados,
-          count(*) FILTER (WHERE so > eo)::int AS avancaram,
-          count(*) FILTER (WHERE status = 'WON')::int AS ganhos,
-          count(*) FILTER (WHERE status = 'LOST')::int AS perdidos,
-          count(*) FILTER (WHERE ho OR hp)::int AS com_doc,
-          count(*) FILTER (WHERE ls >= 70)::int AS quentes,
-          count(*) FILTER (WHERE ls >= 40 AND ls < 70)::int AS mornos,
-          count(*) FILTER (WHERE ls IS NOT NULL AND ls < 40)::int AS frios,
-          count(*) FILTER (WHERE ls IS NULL)::int AS sem_score,
-          COALESCE(sum(value) FILTER (WHERE status = 'WON'), 0)::float8 AS valor_ganho
-        FROM base
-      `,
-      // ── Orçamentos / Pedidos (Tiny) no período ─────────────────
-      this.prisma.$queryRaw<
-        {
-          orcamentos: number;
-          orcamentos_valor: number;
-          pedidos: number;
-          pedidos_valor: number;
-        }[]
-      >`
-        SELECT
-          count(*) FILTER (WHERE kind = 'ORCAMENTO')::int AS orcamentos,
-          COALESCE(sum(valor) FILTER (WHERE kind = 'ORCAMENTO'), 0)::float8 AS orcamentos_valor,
-          count(*) FILTER (WHERE kind = 'PEDIDO')::int AS pedidos,
-          COALESCE(sum(valor) FILTER (WHERE kind = 'PEDIDO'), 0)::float8 AS pedidos_valor
-        FROM tiny_documents
-        WHERE organization_id = ${organizationId}
-          AND data BETWEEN ${from} AND ${to}
-      `,
-      // ── Por ORIGEM ─────────────────────────────────────────────
-      this.prisma.$queryRaw<
-        {
-          origem: string;
-          leads: number;
-          ganhos: number;
-          orcamentos: number;
-          pedidos: number;
-          valor_ganho: number;
-        }[]
-      >`
-        WITH tiny AS (
-          SELECT contact_id,
-                 bool_or(kind = 'ORCAMENTO') AS ho,
-                 bool_or(kind = 'PEDIDO') AS hp
-          FROM tiny_documents
-          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
-          GROUP BY contact_id
-        )
-        SELECT
-          COALESCE(NULLIF(c.metadata->>'source', ''), 'organico') AS origem,
-          count(*)::int AS leads,
-          count(*) FILTER (WHERE c.status = 'WON')::int AS ganhos,
-          count(*) FILTER (WHERE COALESCE(t.ho, false))::int AS orcamentos,
-          count(*) FILTER (WHERE COALESCE(t.hp, false))::int AS pedidos,
-          COALESCE(sum(c.value) FILTER (WHERE c.status = 'WON'), 0)::float8 AS valor_ganho
-        FROM cards c
-        LEFT JOIN tiny t ON t.contact_id = c.contact_id
-        WHERE c.organization_id = ${organizationId}
-          AND c.created_at BETWEEN ${from} AND ${to}
-        GROUP BY 1
-        ORDER BY leads DESC
-        LIMIT 20
-      `,
-      // ── Por CAMPANHA ───────────────────────────────────────────
-      this.prisma.$queryRaw<
-        {
-          campanha: string;
-          leads: number;
-          ganhos: number;
-          orcamentos: number;
-          pedidos: number;
-          valor_ganho: number;
-        }[]
-      >`
-        WITH tiny AS (
-          SELECT contact_id,
-                 bool_or(kind = 'ORCAMENTO') AS ho,
-                 bool_or(kind = 'PEDIDO') AS hp
-          FROM tiny_documents
-          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
-          GROUP BY contact_id
-        )
-        SELECT
-          COALESCE(
-            NULLIF(c.metadata->'tracking'->>'utm_campaign', ''),
-            NULLIF(c.metadata->>'campaignName', ''),
-            '(sem campanha)'
-          ) AS campanha,
-          count(*)::int AS leads,
-          count(*) FILTER (WHERE c.status = 'WON')::int AS ganhos,
-          count(*) FILTER (WHERE COALESCE(t.ho, false))::int AS orcamentos,
-          count(*) FILTER (WHERE COALESCE(t.hp, false))::int AS pedidos,
-          COALESCE(sum(c.value) FILTER (WHERE c.status = 'WON'), 0)::float8 AS valor_ganho
-        FROM cards c
-        LEFT JOIN tiny t ON t.contact_id = c.contact_id
-        WHERE c.organization_id = ${organizationId}
-          AND c.created_at BETWEEN ${from} AND ${to}
-        GROUP BY 1
-        ORDER BY leads DESC
-        LIMIT 20
-      `,
-    ]);
+    // Etapa de entrada por funil (menor order) — p/ "avançou no funil".
+    const entryRows = await this.prisma.pipelineStage.groupBy({
+      by: ['pipelineId'],
+      _min: { order: true },
+      where: { pipeline: { organizationId } },
+    });
+    const entryOrder = new Map<string, number>(
+      entryRows.map((r) => [r.pipelineId, r._min.order ?? 0]),
+    );
 
-    const o = overviewRows[0] ?? {
-      leads: 0, qualificados: 0, avancaram: 0, ganhos: 0, perdidos: 0,
-      com_doc: 0, quentes: 0, mornos: 0, frios: 0, sem_score: 0, valor_ganho: 0,
+    // Cards (leads) do período + canal da conversa (p/ derivar a origem).
+    const cards = await this.prisma.card.findMany({
+      where: { organizationId, createdAt: { gte: from, lte: to } },
+      select: {
+        id: true,
+        contactId: true,
+        status: true,
+        value: true,
+        metadata: true,
+        stage: { select: { order: true, pipelineId: true } },
+        conversation: { select: { channel: { select: { type: true } } } },
+      },
+      take: 8000,
+    });
+
+    // Normaliza a ORIGEM: utm_source > source > tipo do canal.
+    const normOrigem = (m: any, channelType?: string | null): string => {
+      const hay = `${String(m?.source ?? '')} ${String(m?.tracking?.utm_source ?? '')}`.toLowerCase();
+      const hasG = !!m?.tracking?.gclid;
+      if (/insta/.test(hay)) return 'Instagram';
+      if (/face|fb|leadads|meta/.test(hay)) return 'Facebook';
+      if (/google|adwords|gclid/.test(hay) || hasG) return 'Google';
+      if (/tiktok/.test(hay)) return 'TikTok';
+      if (/whats/.test(hay)) return 'WhatsApp';
+      if (/landing|(^|[^a-z])lp([^a-z]|$)/.test(hay)) return 'Landing Page';
+      const src = String(m?.source ?? '').trim();
+      if (src) return src.charAt(0).toUpperCase() + src.slice(1);
+      const ct = String(channelType ?? '').toUpperCase();
+      if (ct.includes('INSTAGRAM')) return 'Instagram';
+      if (ct.includes('WHATSAPP') || ct.includes('ZAPPFY') || ct.includes('ZAPI')) return 'WhatsApp';
+      if (ct.includes('MERCADO')) return 'Mercado Livre';
+      if (ct.includes('SHOPEE')) return 'Shopee';
+      return 'Orgânico';
     };
-    const t = tinyRows[0] ?? {
-      orcamentos: 0, orcamentos_valor: 0, pedidos: 0, pedidos_valor: 0,
+    const campOf = (m: any): string => {
+      const c = m?.tracking?.utm_campaign || m?.campaignName;
+      return c && String(c).trim() ? String(c).trim() : '(sem campanha)';
     };
+
+    type Row = {
+      contactId: string | null;
+      status: string;
+      value: number;
+      origem: string;
+      campanha: string;
+      ls: number | null;
+      avancou: boolean;
+    };
+    const allRows: Row[] = cards.map((c) => {
+      const m = (c.metadata ?? {}) as any;
+      const eo = entryOrder.get(c.stage.pipelineId) ?? 0;
+      const lsRaw = m?.leadScore;
+      const ls = /^\d+$/.test(String(lsRaw)) ? parseInt(String(lsRaw), 10) : null;
+      return {
+        contactId: c.contactId,
+        status: String(c.status),
+        value: c.value ? Number(c.value) : 0,
+        origem: normOrigem(m, c.conversation?.channel?.type),
+        campanha: campOf(m),
+        ls,
+        avancou: c.stage.order > eo,
+      };
+    });
+
+    // Lista completa de origens (independe do filtro), p/ os chips do frontend.
+    const origins = [...new Set(allRows.map((r) => r.origem))].sort();
+
+    const rows = origemFilter ? allRows.filter((r) => r.origem === origemFilter) : allRows;
+
+    // Orçamentos/Pedidos (Tiny) dos contatos desses leads.
+    const contactIds = [...new Set(rows.map((r) => r.contactId).filter(Boolean))] as string[];
+    const tinyDocs = contactIds.length
+      ? await this.prisma.tinyDocument.findMany({
+          where: {
+            organizationId,
+            contactId: { in: contactIds },
+            kind: { in: ['ORCAMENTO', 'PEDIDO'] },
+          },
+          select: { contactId: true, kind: true, valor: true },
+        })
+      : [];
+    const orcByContact = new Map<string, { count: number; val: number }>();
+    const pedByContact = new Map<string, { count: number; val: number }>();
+    for (const d of tinyDocs) {
+      if (!d.contactId) continue;
+      const map = d.kind === 'ORCAMENTO' ? orcByContact : pedByContact;
+      const cur = map.get(d.contactId) ?? { count: 0, val: 0 };
+      cur.count += 1;
+      cur.val += d.valor ? Number(d.valor) : 0;
+      map.set(d.contactId, cur);
+    }
+    const hasOrc = (cid: string | null) => !!(cid && orcByContact.has(cid));
+    const hasPed = (cid: string | null) => !!(cid && pedByContact.has(cid));
 
     const pct = (num: number, den: number) =>
       den > 0 ? Math.round((num / den) * 1000) / 10 : 0;
+    const sumMap = (m: Map<string, { count: number; val: number }>, k: 'count' | 'val') =>
+      [...m.values()].reduce((s, x) => s + x[k], 0);
+
+    const leads = rows.length;
+    const avancaram = rows.filter((r) => r.avancou).length;
+    const ganhos = rows.filter((r) => r.status === 'WON').length;
+    const perdidos = rows.filter((r) => r.status === 'LOST').length;
+    const comDoc = rows.filter((r) => hasOrc(r.contactId) || hasPed(r.contactId)).length;
+    const qualificados = rows.filter(
+      (r) =>
+        r.avancou ||
+        r.status === 'WON' ||
+        (r.ls != null && r.ls >= 40) ||
+        hasOrc(r.contactId) ||
+        hasPed(r.contactId),
+    ).length;
+    const orcamentos = sumMap(orcByContact, 'count');
+    const orcamentosValor = sumMap(orcByContact, 'val');
+    const pedidos = sumMap(pedByContact, 'count');
+    const pedidosValor = sumMap(pedByContact, 'val');
+    const valorGanho = rows
+      .filter((r) => r.status === 'WON')
+      .reduce((s, r) => s + r.value, 0);
+
+    const quentes = rows.filter((r) => r.ls != null && r.ls >= 70).length;
+    const mornos = rows.filter((r) => r.ls != null && r.ls >= 40 && r.ls < 70).length;
+    const frios = rows.filter((r) => r.ls != null && r.ls < 40).length;
+    const semScore = rows.filter((r) => r.ls == null).length;
+
+    const groupBy = (key: 'origem' | 'campanha') => {
+      const g = new Map<string, Row[]>();
+      for (const r of rows) {
+        const k = r[key];
+        (g.get(k) ?? g.set(k, []).get(k)!).push(r);
+      }
+      return [...g.entries()]
+        .map(([name, rs]) => ({
+          name,
+          leads: rs.length,
+          ganhos: rs.filter((r) => r.status === 'WON').length,
+          orcamentos: rs.filter((r) => hasOrc(r.contactId)).length,
+          pedidos: rs.filter((r) => hasPed(r.contactId)).length,
+          valorGanho: rs
+            .filter((r) => r.status === 'WON')
+            .reduce((s, r) => s + r.value, 0),
+        }))
+        .sort((a, b) => b.leads - a.leads)
+        .slice(0, 30);
+    };
 
     return {
+      origins,
+      appliedOrigem: origemFilter,
       overview: {
-        leads: o.leads,
-        qualificados: o.qualificados,
-        qualificadosPct: pct(o.qualificados, o.leads),
-        orcamentos: t.orcamentos,
-        orcamentosValor: t.orcamentos_valor,
-        pedidos: t.pedidos,
-        pedidosValor: t.pedidos_valor,
-        ganhos: o.ganhos,
-        perdidos: o.perdidos,
-        valorGanho: o.valor_ganho,
-        ticketMedio: t.pedidos > 0 ? Math.round((t.pedidos_valor / t.pedidos) * 100) / 100 : 0,
+        leads,
+        qualificados,
+        qualificadosPct: pct(qualificados, leads),
+        orcamentos,
+        orcamentosValor,
+        pedidos,
+        pedidosValor,
+        ganhos,
+        perdidos,
+        valorGanho,
+        ticketMedio: pedidos > 0 ? Math.round((pedidosValor / pedidos) * 100) / 100 : 0,
         gasto: null as number | null,
         cac: null as number | null,
         roas: null as number | null,
       },
       funnel: {
-        leads: o.leads,
-        orcamentos: t.orcamentos,
-        pedidos: t.pedidos,
-        leadParaOrcamentoPct: pct(t.orcamentos, o.leads),
-        orcamentoParaPedidoPct: pct(t.pedidos, t.orcamentos),
-        leadParaPedidoPct: pct(t.pedidos, o.leads),
+        leads,
+        orcamentos,
+        pedidos,
+        leadParaOrcamentoPct: pct(orcamentos, leads),
+        orcamentoParaPedidoPct: pct(pedidos, orcamentos),
+        leadParaPedidoPct: pct(pedidos, leads),
       },
       quality: {
-        avancaram: o.avancaram,
-        naoAvancaram: Math.max(o.leads - o.avancaram, 0),
-        comOrcamentoOuPedido: o.com_doc,
-        ganhos: o.ganhos,
-        perdidos: o.perdidos,
-        temperatura: {
-          quente: o.quentes,
-          morno: o.mornos,
-          frio: o.frios,
-          semScore: o.sem_score,
-        },
+        avancaram,
+        naoAvancaram: Math.max(leads - avancaram, 0),
+        comOrcamentoOuPedido: comDoc,
+        ganhos,
+        perdidos,
+        temperatura: { quente: quentes, morno: mornos, frio: frios, semScore },
       },
-      byOrigin: originRows.map((r) => ({
-        origem: r.origem,
+      byOrigin: groupBy('origem').map((r) => ({
+        origem: r.name,
         leads: r.leads,
         ganhos: r.ganhos,
         orcamentos: r.orcamentos,
         pedidos: r.pedidos,
-        valorGanho: r.valor_ganho,
+        valorGanho: r.valorGanho,
         conversaoPct: pct(r.pedidos, r.leads),
       })),
-      byCampaign: campaignRows.map((r) => ({
-        campanha: r.campanha,
+      byCampaign: groupBy('campanha').map((r) => ({
+        campanha: r.name,
         leads: r.leads,
         ganhos: r.ganhos,
         orcamentos: r.orcamentos,
         pedidos: r.pedidos,
-        valorGanho: r.valor_ganho,
+        valorGanho: r.valorGanho,
         conversaoPct: pct(r.pedidos, r.leads),
         gasto: null as number | null,
         cac: null as number | null,

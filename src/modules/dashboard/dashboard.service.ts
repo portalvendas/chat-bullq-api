@@ -6,6 +6,32 @@ export interface DateRange {
   to: Date;
 }
 
+/** Formato de aiBusinessHours: { monday: { enabled, windows:[["09:00","18:00"]] }, ... }. */
+type BusinessHoursConfig = Record<
+  string,
+  { enabled: boolean; windows?: Array<[string, string]> }
+>;
+
+const DTF_CACHE = new Map<string, Intl.DateTimeFormat>();
+function tzFmt(tz: string): Intl.DateTimeFormat {
+  let f = DTF_CACHE.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    DTF_CACHE.set(tz, f);
+  }
+  return f;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
@@ -857,18 +883,107 @@ export class DashboardService {
       .slice(0, limit);
   }
 
+  /**
+   * TEMPO DE 1ª RESPOSTA = MEDIANA dos minutos DENTRO DO HORÁRIO COMERCIAL entre
+   * a criação da conversa (1ª mensagem do cliente) e a 1ª resposta.
+   * - Mediana (não média): robusta a outliers — poucas conversas respondidas no
+   *   dia seguinte não inflam mais o número.
+   * - Horário comercial: madrugada/fim de semana fechado não conta. Usa
+   *   org.aiBusinessHours + org.aiTimezone. Sem config => 24/7.
+   */
   private async getAvgFirstResponseTime(organizationId: string, range: DateRange): Promise<number | null> {
-    const convs = await this.prisma.conversation.findMany({
-      where: {
-        organizationId,
-        firstResponseAt: { not: null },
-        createdAt: { gte: range.from, lte: range.to },
-      },
-      select: { createdAt: true, firstResponseAt: true },
-    });
+    const [convs, org] = await Promise.all([
+      this.prisma.conversation.findMany({
+        where: {
+          organizationId,
+          firstResponseAt: { not: null },
+          createdAt: { gte: range.from, lte: range.to },
+        },
+        select: { createdAt: true, firstResponseAt: true },
+      }),
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { aiBusinessHours: true, aiTimezone: true },
+      }),
+    ]);
     if (convs.length === 0) return null;
-    const total = convs.reduce((s, c) => s + (c.firstResponseAt!.getTime() - c.createdAt.getTime()), 0);
-    return Math.round(total / convs.length / 60000);
+
+    const bh = (org?.aiBusinessHours as BusinessHoursConfig | null) ?? null;
+    const tz = org?.aiTimezone || 'America/Sao_Paulo';
+
+    const minutes = convs
+      .map((c) => this.businessMinutesBetween(c.createdAt, c.firstResponseAt!, bh, tz))
+      .filter((m) => Number.isFinite(m))
+      .sort((a, b) => a - b);
+    if (minutes.length === 0) return null;
+
+    const mid = Math.floor(minutes.length / 2);
+    const median =
+      minutes.length % 2 === 0 ? (minutes[mid - 1] + minutes[mid]) / 2 : minutes[mid];
+    return Math.round(median);
+  }
+
+  /** Minutos de expediente entre dois instantes (config no formato aiBusinessHours). */
+  private businessMinutesBetween(
+    start: Date,
+    end: Date,
+    config: BusinessHoursConfig | null,
+    tz: string,
+  ): number {
+    const s = start.getTime();
+    const e = end.getTime();
+    if (e <= s) return 0;
+    if (!config) return (e - s) / 60000; // 24/7
+
+    const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    let total = 0;
+    let cursor = this.zonedStartOfDay(s, tz);
+    for (let i = 0; i < 60 && cursor <= e; i++) {
+      const { year, month, day, weekday } = this.zonedParts(cursor, tz);
+      const cfg = config[DAYS[weekday]];
+      if (cfg && cfg.enabled) {
+        const windows =
+          cfg.windows && cfg.windows.length > 0 ? cfg.windows : ([['00:00', '24:00']] as Array<[string, string]>);
+        for (const [from, to] of windows) {
+          const [fh, fm] = from.split(':').map((v) => parseInt(v, 10));
+          const [th, tm] = to.split(':').map((v) => parseInt(v, 10));
+          const winStart = this.zonedTimeToUtc(year, month, day, fh || 0, fm || 0, tz);
+          const winEnd = this.zonedTimeToUtc(year, month, day, th || 0, tm || 0, tz);
+          const os = Math.max(s, winStart);
+          const oe = Math.min(e, winEnd);
+          if (oe > os) total += oe - os;
+        }
+      }
+      cursor = this.zonedStartOfDay(cursor + 26 * 3600000, tz); // avança p/ o próximo dia local
+    }
+    return total / 60000;
+  }
+
+  private zonedParts(utcMs: number, tz: string): { year: number; month: number; day: number; weekday: number } {
+    const map: Record<string, string> = {};
+    for (const p of tzFmt(tz).formatToParts(new Date(utcMs))) map[p.type] = p.value;
+    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(map.weekday);
+    return { year: +map.year, month: +map.month, day: +map.day, weekday: wd < 0 ? 0 : wd };
+  }
+
+  private zonedStartOfDay(utcMs: number, tz: string): number {
+    const { year, month, day } = this.zonedParts(utcMs, tz);
+    return this.zonedTimeToUtc(year, month, day, 0, 0, tz);
+  }
+
+  /** Horário de parede (na tz) -> instante UTC (ms). */
+  private zonedTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, tz: string): number {
+    const guess = Date.UTC(year, month - 1, day, hour, minute, 0);
+    return guess - this.tzOffsetMs(guess, tz);
+  }
+
+  private tzOffsetMs(utcMs: number, tz: string): number {
+    const map: Record<string, string> = {};
+    for (const p of tzFmt(tz).formatToParts(new Date(utcMs))) map[p.type] = p.value;
+    let h = +map.hour;
+    if (h === 24) h = 0; // quirk do Intl (meia-noite às vezes vem como "24")
+    const asUTC = Date.UTC(+map.year, +map.month - 1, +map.day, h, +map.minute, +map.second);
+    return asUTC - utcMs;
   }
 
   private async getAvgResolutionTime(organizationId: string, range: DateRange): Promise<number | null> {

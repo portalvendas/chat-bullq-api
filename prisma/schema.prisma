@@ -2203,3 +2203,19 @@ model FunnelAuditSuggestion {
   @@index([cardId])
   @@map("funnel_audit_suggestions")
 }
+
+/// Integração Meta Ads por empresa (leitura de gasto p/ CAC/ROAS). Acessada via
+/// SQL cru no dashboard; modelo existe p/ prisma generate/migrate. Token cifrado.
+model MetaAdsIntegration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()::text"))
+  organizationId String    @unique @map("organization_id")
+  adAccountId    String    @map("ad_account_id")
+  accessTokenEnc String    @map("access_token_enc") @db.Text
+  status         String    @default("active")
+  lastError      String?   @map("last_error") @db.Text
+  lastSyncAt     DateTime? @map("last_sync_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("meta_ads_integrations")
+}

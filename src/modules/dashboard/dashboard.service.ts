@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { MetaAdsService } from './meta-ads.service';
 
 export interface DateRange {
   from: Date;
@@ -34,7 +35,10 @@ function tzFmt(tz: string): Intl.DateTimeFormat {
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metaAds: MetaAdsService,
+  ) {}
 
   async getOverview(organizationId: string, range: DateRange) {
     const where = { organizationId, createdAt: { gte: range.from, lte: range.to } };
@@ -693,6 +697,21 @@ export class DashboardService {
       return point;
     });
 
+    // Gasto de anúncios (Meta) no período → CAC/ROAS. Best-effort: null se não
+    // configurado ou se a API falhar (o dashboard segue normal).
+    const spend = await this.metaAds
+      .getSpend(organizationId, range)
+      .catch(() => null);
+    const metaGasto = spend?.total ?? null;
+    const cac =
+      metaGasto != null && pedidos > 0
+        ? Math.round((metaGasto / pedidos) * 100) / 100
+        : null;
+    const roas =
+      metaGasto != null && metaGasto > 0
+        ? Math.round((pedidosValor / metaGasto) * 100) / 100
+        : null;
+
     return {
       origins,
       appliedOrigem: origemFilter,
@@ -714,9 +733,9 @@ export class DashboardService {
         perdidos,
         valorGanho,
         ticketMedio: pedidos > 0 ? Math.round((pedidosValor / pedidos) * 100) / 100 : 0,
-        gasto: null as number | null,
-        cac: null as number | null,
-        roas: null as number | null,
+        gasto: metaGasto,
+        cac,
+        roas,
       },
       funnel: {
         leads,
@@ -751,9 +770,15 @@ export class DashboardService {
         pedidos: r.pedidos,
         valorGanho: r.valorGanho,
         conversaoPct: pct(r.pedidos, r.leads),
-        gasto: null as number | null,
-        cac: null as number | null,
-        roas: null as number | null,
+        gasto: spend ? spend.byCampaign[r.name] ?? null : null,
+        cac:
+          spend && spend.byCampaign[r.name] && r.pedidos > 0
+            ? Math.round((spend.byCampaign[r.name] / r.pedidos) * 100) / 100
+            : null,
+        roas:
+          spend && spend.byCampaign[r.name]
+            ? Math.round((r.valorGanho / spend.byCampaign[r.name]) * 100) / 100
+            : null,
       })),
     };
   }

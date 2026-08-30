@@ -712,6 +712,40 @@ export class DashboardService {
         ? Math.round((pedidosValor / metaGasto) * 100) / 100
         : null;
 
+    // Gasto POR CAMPANHA (fonte de verdade: Meta). Cada campanha que gastou no
+    // período aparece com seu valor, mesmo quando os leads não trazem
+    // utm_campaign — assim o gasto vem linkado por campanha de forma confiável.
+    // Onde o nome da campanha do Meta casa com o de um lead, enriquecemos com
+    // leads/pedidos/CAC/ROAS; senão, mostra só o gasto (métricas de lead zeradas).
+    const campaignGroups = groupBy('campanha');
+    const campaignLeads = new Map(
+      campaignGroups.map((r) => [r.name, r] as [string, typeof r]),
+    );
+    const spendByCampaign = spend
+      ? Object.entries(spend.byCampaign)
+          .map(([campanha, raw]) => {
+            const gasto = Math.round((raw ?? 0) * 100) / 100;
+            const lead = campaignLeads.get(campanha);
+            const pedidos = lead?.pedidos ?? 0;
+            const valorGanho = lead?.valorGanho ?? 0;
+            return {
+              campanha,
+              gasto,
+              leads: lead?.leads ?? 0,
+              orcamentos: lead?.orcamentos ?? 0,
+              pedidos,
+              valorGanho,
+              cac:
+                gasto > 0 && pedidos > 0
+                  ? Math.round((gasto / pedidos) * 100) / 100
+                  : null,
+              roas:
+                gasto > 0 ? Math.round((valorGanho / gasto) * 100) / 100 : null,
+            };
+          })
+          .sort((a, b) => b.gasto - a.gasto)
+      : [];
+
     return {
       origins,
       appliedOrigem: origemFilter,
@@ -762,7 +796,7 @@ export class DashboardService {
         valorGanho: r.valorGanho,
         conversaoPct: pct(r.pedidos, r.leads),
       })),
-      byCampaign: groupBy('campanha').map((r) => ({
+      byCampaign: campaignGroups.map((r) => ({
         campanha: r.name,
         leads: r.leads,
         ganhos: r.ganhos,
@@ -780,6 +814,7 @@ export class DashboardService {
             ? Math.round((r.valorGanho / spend.byCampaign[r.name]) * 100) / 100
             : null,
       })),
+      spendByCampaign,
     };
   }
 

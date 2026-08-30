@@ -20,7 +20,10 @@ interface Row {
 
 export interface MetaAdsStatus {
   configured: boolean;
+  /** CSV cru como gravado (retrocompat). Prefira adAccountIds. */
   adAccountId: string | null;
+  /** Lista normalizada de contas (act_<id>) que a org lê. */
+  adAccountIds: string[];
   status: string | null;
   lastError: string | null;
   lastSyncAt: string | null;
@@ -42,6 +45,19 @@ export class MetaAdsService {
   private normAct(id: string): string {
     return `act_${String(id ?? '').trim().replace(/^act_/, '')}`;
   }
+  /**
+   * Divide uma lista de contas (CSV, espaço, ; ou nova linha) em act_<id>
+   * únicos e válidos. Uma org pode rodar criativos em várias contas de anúncio
+   * (ex: CA, H5) — todas somam pro gasto do dashboard, com o MESMO token.
+   */
+  private parseAccts(raw: string): string[] {
+    const out: string[] = [];
+    for (const part of String(raw ?? '').split(/[\s,;]+/)) {
+      const act = this.normAct(part.trim());
+      if (/^act_\d+$/.test(act) && !out.includes(act)) out.push(act);
+    }
+    return out;
+  }
   private safeDecrypt(v: string): string {
     try {
       return isEncrypted(v) ? decryptString(v) : v;
@@ -62,6 +78,7 @@ export class MetaAdsService {
     return {
       configured: !!r,
       adAccountId: r?.ad_account_id ?? null,
+      adAccountIds: r ? this.parseAccts(r.ad_account_id) : [],
       status: r?.status ?? null,
       lastError: r?.last_error ?? null,
       lastSyncAt: r?.last_sync_at ? new Date(r.last_sync_at).toISOString() : null,
@@ -73,33 +90,41 @@ export class MetaAdsService {
     organizationId: string,
     input: { adAccountId: string; accessToken: string },
   ): Promise<MetaAdsStatus> {
-    const act = this.normAct(input.adAccountId);
+    const accts = this.parseAccts(input.adAccountId);
     const token = String(input.accessToken ?? '').trim();
     if (!token) throw new BadRequestException('Token obrigatório.');
-    if (!/^act_\d+$/.test(act)) {
-      throw new BadRequestException('ID da conta de anúncios inválido (use só o número).');
+    if (accts.length === 0) {
+      throw new BadRequestException(
+        'Informe ao menos um ID de conta de anúncios (só o número; separe várias por vírgula).',
+      );
     }
-    // Valida token + acesso à conta com uma chamada mínima.
-    try {
-      await axios.get(`${GRAPH}/${act}`, {
-        params: { fields: 'name,currency', access_token: token },
-        timeout: 15000,
-      });
-    } catch (err: any) {
-      const msg = err?.response?.data?.error?.message || err?.message || 'erro';
-      throw new BadRequestException(`Não consegui acessar ${act}: ${msg}`);
+    // Valida token + acesso a CADA conta com uma chamada mínima. Se qualquer
+    // uma falhar, aborta com a mensagem da conta problemática (não grava nada).
+    for (const act of accts) {
+      try {
+        await axios.get(`${GRAPH}/${act}`, {
+          params: { fields: 'name,currency', access_token: token },
+          timeout: 15000,
+        });
+      } catch (err: any) {
+        const msg = err?.response?.data?.error?.message || err?.message || 'erro';
+        throw new BadRequestException(`Não consegui acessar ${act}: ${msg}`);
+      }
     }
+    const joined = accts.join(',');
     const enc = encryptString(token);
     await this.prisma.$executeRaw`
       INSERT INTO meta_ads_integrations (organization_id, ad_account_id, access_token_enc, status, updated_at)
-      VALUES (${organizationId}, ${act}, ${enc}, 'active', now())
+      VALUES (${organizationId}, ${joined}, ${enc}, 'active', now())
       ON CONFLICT (organization_id) DO UPDATE SET
         ad_account_id = EXCLUDED.ad_account_id,
         access_token_enc = EXCLUDED.access_token_enc,
         status = 'active',
         last_error = NULL,
         updated_at = now()`;
-    this.logger.log(`Meta Ads configurada p/ org ${organizationId} (${act})`);
+    this.logger.log(
+      `Meta Ads configurada p/ org ${organizationId} (${accts.length} conta(s): ${joined})`,
+    );
     return this.getStatus(organizationId);
   }
 
@@ -118,44 +143,63 @@ export class MetaAdsService {
   ): Promise<{ total: number; byCampaign: Record<string, number> } | null> {
     const r = await this.row(organizationId);
     if (!r || r.status !== 'active') return null;
+    const accts = this.parseAccts(r.ad_account_id);
+    if (accts.length === 0) return null;
     const token = this.safeDecrypt(r.access_token_enc);
     const since = range.from.toISOString().slice(0, 10);
     const until = range.to.toISOString().slice(0, 10);
-    try {
-      let url: string | null = `${GRAPH}/${r.ad_account_id}/insights`;
-      let params: Record<string, unknown> | undefined = {
-        level: 'campaign',
-        fields: 'campaign_name,spend',
-        time_range: JSON.stringify({ since, until }),
-        access_token: token,
-        limit: 500,
-      };
-      let total = 0;
-      const byCampaign: Record<string, number> = {};
-      let guard = 0;
-      while (url && guard < 25) {
-        guard += 1;
-        const resp: any = await axios.get(url, { params, timeout: 20000 });
-        params = undefined; // paging.next já traz tudo
-        for (const d of resp.data?.data ?? []) {
-          const spend = parseFloat(d.spend ?? '0') || 0;
-          total += spend;
-          const name = d.campaign_name || '(sem nome)';
-          byCampaign[name] = (byCampaign[name] ?? 0) + spend;
+
+    let total = 0;
+    const byCampaign: Record<string, number> = {};
+    const errors: string[] = [];
+    let anyOk = false;
+
+    // Agrega o gasto de TODAS as contas da org (mesmo token). Falha numa conta
+    // não derruba as outras — best-effort, o dashboard nunca quebra por isso.
+    for (const act of accts) {
+      try {
+        let url: string | null = `${GRAPH}/${act}/insights`;
+        let params: Record<string, unknown> | undefined = {
+          level: 'campaign',
+          fields: 'campaign_name,spend',
+          time_range: JSON.stringify({ since, until }),
+          access_token: token,
+          limit: 500,
+        };
+        let guard = 0;
+        while (url && guard < 25) {
+          guard += 1;
+          const resp: any = await axios.get(url, { params, timeout: 20000 });
+          params = undefined; // paging.next já traz tudo
+          for (const d of resp.data?.data ?? []) {
+            const spend = parseFloat(d.spend ?? '0') || 0;
+            total += spend;
+            const name = d.campaign_name || '(sem nome)';
+            byCampaign[name] = (byCampaign[name] ?? 0) + spend;
+          }
+          url = resp.data?.paging?.next ?? null;
         }
-        url = resp.data?.paging?.next ?? null;
+        anyOk = true;
+      } catch (err: any) {
+        const msg = err?.response?.data?.error?.message || err?.message || 'erro';
+        errors.push(`${act}: ${msg}`);
+        this.logger.warn(
+          `Meta insights falhou (org ${organizationId}, ${act}): ${msg}`,
+        );
       }
+    }
+
+    // Nenhuma conta respondeu = falha real: marca erro e devolve null.
+    if (!anyOk) {
       await this.prisma
-        .$executeRaw`UPDATE meta_ads_integrations SET last_sync_at = now(), last_error = NULL WHERE organization_id = ${organizationId}`
-        .catch(() => undefined);
-      return { total: Math.round(total * 100) / 100, byCampaign };
-    } catch (err: any) {
-      const msg = err?.response?.data?.error?.message || err?.message || 'erro';
-      this.logger.warn(`Meta insights falhou (org ${organizationId}): ${msg}`);
-      await this.prisma
-        .$executeRaw`UPDATE meta_ads_integrations SET last_error = ${String(msg).slice(0, 500)}, status = 'error' WHERE organization_id = ${organizationId}`
+        .$executeRaw`UPDATE meta_ads_integrations SET last_error = ${errors.join(' | ').slice(0, 500)}, status = 'error' WHERE organization_id = ${organizationId}`
         .catch(() => undefined);
       return null;
     }
+    // Sucesso total ou parcial: grava sync; erro de conta vira aviso (não bloqueia).
+    await this.prisma
+      .$executeRaw`UPDATE meta_ads_integrations SET last_sync_at = now(), last_error = ${errors.length ? errors.join(' | ').slice(0, 500) : null}, status = 'active' WHERE organization_id = ${organizationId}`
+      .catch(() => undefined);
+    return { total: Math.round(total * 100) / 100, byCampaign };
   }
 }

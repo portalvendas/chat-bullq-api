@@ -438,7 +438,10 @@ export class ConversationsService {
       .run({
         conversation: conversation as Conversation,
         triggerMessage,
-        extraKnowledge: [trimmed],
+        // O complemento do operador é tratado como COMANDO prioritário desta
+        // regeneração (não só como fato). A gravação como FATO pendente acima
+        // segue valendo pras próximas perguntas, depois da validação humana.
+        operatorDirective: trimmed,
       })
       .catch((err) =>
         this.logger.error(

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import {
+  ChannelType,
   MessageContentType,
   MessageDirection,
   MessageStatus,
@@ -11,6 +12,23 @@ import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { AiTool, ToolContext, ToolResult } from '../tool.types';
 import { containsMetaTalk, findForbiddenUrlHosts } from '../../runner/text-guards';
 import { PendingActionService } from '../../confirmations/pending-action.service';
+
+/**
+ * Domínios de permalink dos marketplaces suportados. Um link de anúncio do
+ * NOSSO próprio catálogo (ex: permalink do Mercado Livre) é legítimo e precisa
+ * passar pelo guard de URL, mesmo quando a org tem uma whitelist restritiva —
+ * senão o replyToConversation falha com `url_not_whitelisted` e a IA regenera a
+ * resposta SEM o link. Chaveado por ChannelType; casamento é por sufixo de host.
+ */
+const MARKETPLACE_URL_DOMAINS: Partial<Record<ChannelType, string[]>> = {
+  [ChannelType.MERCADO_LIVRE]: [
+    'mercadolivre.com.br',
+    'mercadolibre.com',
+    'mercadolivre.com',
+    'mercadolibre.com.br',
+    'mlstatic.com',
+  ],
+};
 
 /**
  * Sends a TEXT message to the contact on behalf of the agent. The message
@@ -81,7 +99,7 @@ export class ReplyToConversationTool implements AiTool {
       };
     }
 
-    const [agent, contactChannel, conversation] = await Promise.all([
+    const [agent, contactChannel, conversation, channel] = await Promise.all([
       this.prisma.aiAgent.findUnique({
         where: { id: ctx.agentId },
         select: { name: true },
@@ -103,6 +121,10 @@ export class ReplyToConversationTool implements AiTool {
           },
         },
       }),
+      this.prisma.channel.findUnique({
+        where: { id: ctx.channelId },
+        select: { type: true },
+      }),
     ]);
 
     // Assinatura fixa da org no FINAL de toda resposta (determinístico, não
@@ -122,9 +144,20 @@ export class ReplyToConversationTool implements AiTool {
     // cujo host não bate com a lista (sufixo). Visto em prod (Daniel Souza,
     // 2026-05-08 20:39): IA mandou "https://alunos.bravy.co" que não existe.
     // null/[] = modo permissivo (não bloqueia, só loga warning).
-    const whitelist =
+    // Whitelist de URLs da org (modo restritivo quando preenchida). Além dela,
+    // liberamos SEMPRE os domínios do próprio marketplace do canal — um permalink
+    // de anúncio do NOSSO catálogo (ML) é legítimo e não pode ser barrado como se
+    // fosse link inventado. null/[] segue permissivo (não bloqueia nada).
+    const orgWhitelist =
       (conversation?.organization?.allowedUrlDomains as string[] | null) ??
       null;
+    const marketplaceDomains = channel?.type
+      ? (MARKETPLACE_URL_DOMAINS[channel.type] ?? [])
+      : [];
+    const whitelist =
+      orgWhitelist && orgWhitelist.length > 0
+        ? [...orgWhitelist, ...marketplaceDomains]
+        : orgWhitelist;
     const forbidden = findForbiddenUrlHosts(text, whitelist);
     if (forbidden.length > 0) {
       this.logger.warn(

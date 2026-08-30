@@ -68,6 +68,14 @@ interface RunInput {
    * depender de já estar VALIDATED no banco.
    */
   extraKnowledge?: string[];
+  /**
+   * Instrução PRIORITÁRIA do operador para ESTA regeneração (campo "Regerar
+   * com info" do inbox). Diferente de extraKnowledge/knowledgeNotes (que são
+   * FATOS autoritativos): é uma ORDEM de COMO refazer a resposta (ex: "busque
+   * os links dos anúncios, remova preços"). Entra no TOPO de prioridade do
+   * prompt e vale só neste run.
+   */
+  operatorDirective?: string;
 }
 
 const MAX_CHAIN_DEPTH = 3;
@@ -113,6 +121,7 @@ export class AiAgentRunnerService {
     triggerMessage,
     chainDepth = 0,
     extraKnowledge = [],
+    operatorDirective,
   }: RunInput): Promise<void> {
     // Fase 2: usa o agentRouter (com IntentClassifier) pra escolher o agent.
     // Auto-chains (chainDepth > 0) NÃO classificam de novo — já tem activeAgentId.
@@ -272,6 +281,7 @@ export class AiAgentRunnerService {
       skillInstructions,
       catalog,
       knowledgeNotes,
+      operatorDirective,
     });
 
     // Fase 2.5: augmenta o system message com Security Layer (prepend)

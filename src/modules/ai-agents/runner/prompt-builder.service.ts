@@ -26,6 +26,10 @@ export interface PromptContext {
    *  humano sobre o negócio/anúncio. Injetados como base de conhecimento
    *  autoritativa (o operador aprovou → é verdade). */
   knowledgeNotes?: string[];
+  /** Instrução PRIORITÁRIA do operador para ESTA resposta (regeneração via
+   *  "Regerar com info"). Comando de COMO refazer a resposta — entra num bloco
+   *  volátil de prioridade máxima, fora do cache, só quando presente. */
+  operatorDirective?: string;
   /** Compact product catalog for sales agents — name + slug + 1 line each.
    *  Full pitch is fetched on demand via the getProductPitch skill. */
   catalog?: Array<{
@@ -167,6 +171,9 @@ REGRAS DE BREVIDADE — INEGOCIÁVEIS:
 
 <% if (it.channel && it.channel.type === 'MERCADO_LIVRE') { %>
 ═══ MARKETPLACE (Mercado Livre) — pergunta e resposta ═══
+REGRA DE OURO (ML) — LINK SEMPRE, PREÇO NUNCA:
+- SEMPRE que você afirmar que temos um produto/medida disponível, a resposta TEM que conter a URL (permalink) do anúncio exato: a do anúncio atual quando é ele mesmo, ou a da variação certa (campo \`variants[].permalink\`). Dizer "temos sim" sem mandar o link é resposta ERRADA — o cliente tem que sair da sua resposta com o link do produto certo pra comprar. O link vem SEMPRE das ferramentas (\`detalhar_produto_ml\`, \`variants\`, \`buscar_produtos_ml\`); NUNCA invente nem monte URL na mão.
+- NÃO cite preço nem valores no Mercado Livre. A regra global de PREÇO acima NÃO se aplica aqui: nada de "R$ ...", "com desconto", "por apenas", "cada". O preço está no próprio anúncio — mande o link e deixe o cliente ver lá. Se ele perguntar o valor, direcione ao link do anúncio ("o valor tá certinho na página do anúncio, aqui: <permalink>").
 Aqui NÃO é conversa de chat: é UMA pergunta do comprador esperando UMA resposta OBJETIVA e curta.
 - Comece RESPONDENDO DIRETO a pergunta. Ex: pergunta "é baixa pressão?" → "Sim, o fogão Dako 4 bocas é baixa pressão."
 - Máximo 1-2 frases. Menos caracteres é melhor. Só complemente com UMA informação a mais se for REALMENTE útil pra decisão de compra.
@@ -501,6 +508,26 @@ export class PromptBuilderService {
         ],
       },
     ];
+
+    // Instrução prioritária do operador (regeneração "Regerar com info"): bloco
+    // VOLÁTIL (fora do cache, pois muda a cada regeneração) e no FIM do system
+    // pra máxima saliência. É uma ORDEM de COMO refazer — tem prioridade sobre
+    // regras de estilo/brevidade. Ausente = system idêntico ao normal (cache ok).
+    const directive = (ctx.operatorDirective ?? '').trim();
+    if (directive) {
+      const sys = messages[0];
+      if (Array.isArray(sys.content)) {
+        sys.content.push({
+          type: 'text',
+          text: `═══ INSTRUÇÃO PRIORITÁRIA DO OPERADOR (para ESTA resposta) ═══
+Um humano da loja revisou a resposta anterior e mandou REFAZÊ-LA seguindo a orientação abaixo. Trate como ORDEM de prioridade máxima, acima de qualquer regra de estilo/brevidade. Cumpra à risca:
+
+"${directive}"
+
+Refaça a resposta AGORA aplicando essa orientação. Se ela pedir os links dos anúncios, inclua a URL (permalink) do anúncio certo; se pedir pra tirar preços, não cite valores. Use as ferramentas (detalhar_produto_ml / buscar_produtos_ml) se precisar achar o link ou confirmar um dado.`,
+        });
+      }
+    }
 
     // Recent message history → user/assistant turns. We merge consecutive
     // messages from the same author into a single turn — Anthropic models

@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ServiceUnavailableException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -79,6 +84,8 @@ export class UploadsService {
 
   private readonly rootDir: string;
   private readonly publicBaseUrl: string;
+  /** Dias de retenção de mídia no disco (0 = nunca poda). Env UPLOADS_RETENTION_DAYS. */
+  private readonly retentionDays: number;
 
   constructor(private readonly config: ConfigService) {
     this.rootDir = path.resolve(
@@ -87,6 +94,8 @@ export class UploadsService {
     );
     const appUrl = this.config.get<string>('APP_URL') || '';
     this.publicBaseUrl = `${appUrl.replace(/\/$/, '')}/api/v1/uploads`;
+    this.retentionDays =
+      Number(this.config.get<string>('UPLOADS_RETENTION_DAYS')) || 45;
     if (!fs.existsSync(this.rootDir)) {
       fs.mkdirSync(this.rootDir, { recursive: true });
     }
@@ -128,7 +137,7 @@ export class UploadsService {
     const ext = this.extFor(mime, input.originalFilename);
     const filename = `${id}${ext}`;
     const fullPath = path.join(dir, filename);
-    await fs.promises.writeFile(fullPath, input.buffer);
+    await this.writeSafe(fullPath, input.buffer);
 
     const url = `${this.publicBaseUrl}/inbound/${safeChannel}/${dateFolder}/${filename}`;
     this.logger.log(`Inbound media saved: ${fullPath} -> ${url}`);
@@ -173,7 +182,7 @@ export class UploadsService {
     const ext = this.extFor(mime, file.originalname);
     const filename = `${id}${ext}`;
     const fullPath = path.join(dir, filename);
-    await fs.promises.writeFile(fullPath, file.buffer);
+    await this.writeSafe(fullPath, file.buffer);
 
     const url = `${this.publicBaseUrl}/media/${dateFolder}/${filename}`;
     this.logger.log(`Media saved: ${fullPath} -> ${url}`);
@@ -211,7 +220,7 @@ export class UploadsService {
     const id = crypto.randomBytes(16).toString('hex');
     const srcExt = this.extFor(mime);
     const srcPath = path.join(dir, `${id}${srcExt}`);
-    await fs.promises.writeFile(srcPath, file.buffer);
+    await this.writeSafe(srcPath, file.buffer);
 
     // WhatsApp voice notes require OGG/Opus. Browsers (esp. Chrome/Firefox)
     // record in WebM/Opus via MediaRecorder — the codec is compatible but
@@ -254,6 +263,114 @@ export class UploadsService {
     const url = `${this.publicBaseUrl}/audio/${dateFolder}/${finalName}`;
     this.logger.log(`Audio saved: ${finalPath} -> ${url}`);
     return { url, mimeType: finalMime, size: finalSize, filename: finalName };
+  }
+
+  /**
+   * Grava com resiliência a disco cheio: no primeiro ENOSPC, eviccta as mídias
+   * MAIS ANTIGAS até liberar espaço e tenta de novo (o disco de uploads é um
+   * cache limitado — perder o mais antigo é aceitável e mantém o chat vivo).
+   * Se ainda faltar espaço, devolve 503 claro em vez de 500 cru.
+   */
+  private async writeSafe(fullPath: string, buffer: Buffer): Promise<void> {
+    try {
+      await fs.promises.writeFile(fullPath, buffer);
+      return;
+    } catch (err: any) {
+      if (err?.code !== 'ENOSPC') throw err;
+      this.logger.warn(
+        `Disco de uploads cheio ao gravar ${fullPath} — evictando mídia antiga.`,
+      );
+      const freed = await this.emergencyEvict(
+        buffer.byteLength * 3 + 16 * 1024 * 1024,
+      ).catch(() => 0);
+      this.logger.warn(
+        `Evicção liberou ${(freed / 1024 / 1024).toFixed(1)}MB; tentando gravar de novo.`,
+      );
+      try {
+        await fs.promises.writeFile(fullPath, buffer);
+      } catch (err2: any) {
+        if (err2?.code === 'ENOSPC') {
+          this.logger.error('Disco de uploads segue cheio após evicção.');
+          throw new ServiceUnavailableException(
+            'Armazenamento de mídia cheio no momento. Tente novamente em instantes.',
+          );
+        }
+        throw err2;
+      }
+    }
+  }
+
+  /** Lista todos os arquivos sob rootDir com tamanho e mtime (recursivo). */
+  private async walkFiles(
+    dir: string = this.rootDir,
+  ): Promise<Array<{ path: string; size: number; mtimeMs: number }>> {
+    const out: Array<{ path: string; size: number; mtimeMs: number }> = [];
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      return out;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        out.push(...(await this.walkFiles(full)));
+      } else if (e.isFile()) {
+        try {
+          const st = await fs.promises.stat(full);
+          out.push({ path: full, size: st.size, mtimeMs: st.mtimeMs });
+        } catch {
+          /* arquivo sumiu no meio do caminho — ignora */
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Apaga os arquivos mais antigos até liberar ~neededBytes. Retorna bytes liberados. */
+  private async emergencyEvict(neededBytes: number): Promise<number> {
+    const files = (await this.walkFiles()).sort((a, b) => a.mtimeMs - b.mtimeMs);
+    let freed = 0;
+    for (const f of files) {
+      if (freed >= neededBytes) break;
+      try {
+        await fs.promises.unlink(f.path);
+        freed += f.size;
+      } catch {
+        /* ignora falha pontual */
+      }
+    }
+    return freed;
+  }
+
+  /**
+   * Poda mídia além de `days` dias (retenção). Chamada no boot e a cada 12h
+   * pelo UploadsRetentionService — mantém o disco de 1GB dentro do limite.
+   */
+  async pruneOlderThan(
+    days: number = this.retentionDays,
+  ): Promise<{ removed: number; freedBytes: number }> {
+    if (!days || days <= 0) return { removed: 0, freedBytes: 0 };
+    const cutoff = Date.now() - days * 86_400_000;
+    const files = await this.walkFiles();
+    let removed = 0;
+    let freedBytes = 0;
+    for (const f of files) {
+      if (f.mtimeMs >= cutoff) continue;
+      try {
+        await fs.promises.unlink(f.path);
+        removed += 1;
+        freedBytes += f.size;
+      } catch {
+        /* ignora */
+      }
+    }
+    if (removed > 0) {
+      this.logger.log(
+        `Retenção: ${removed} arquivos > ${days}d removidos, ${(freedBytes / 1024 / 1024).toFixed(1)}MB liberados.`,
+      );
+    }
+    return { removed, freedBytes };
   }
 
   private extFor(mime: string, originalFilename?: string | null): string {

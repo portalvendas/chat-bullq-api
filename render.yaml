@@ -34,8 +34,9 @@ services:
     autoDeployTrigger: commit  # deploy automático a cada push (deploy via GitHub)
     disk:
       name: uploads            # mídias re-hospedadas (WhatsApp/áudios) persistem
-      mountPath: /app/uploads
-      # Disco só CRESCE (Render não reduz). Retenção+evicção no código mantêm dentro do limite.
+      # Serviço vivo monta em /var/data; o app grava no subdir uploads (UPLOADS_DIR).
+      mountPath: /var/data
+      # Disco só CRESCE (Render não reduz). Retenção+evicção+compressão no código seguram o limite.
       sizeGB: 10
     envVars:
       - key: NODE_ENV
@@ -66,7 +67,7 @@ services:
       - key: JWT_REFRESH_EXPIRATION
         value: 7d
       - key: UPLOADS_DIR
-        value: /app/uploads
+        value: /var/data/uploads
       # Preencha no painel (Dashboard pede na criação) — depende do domínio do front
       - key: CORS_ORIGIN
         sync: false            # ex.: https://chat-bullq-web.onrender.com

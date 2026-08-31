@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import { createHmac } from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import {
   decryptString,
@@ -65,6 +66,18 @@ export class MetaAdsService {
       return v;
     }
   }
+  /**
+   * appsecret_proof — exigido quando o app tem "Require App Secret proof for
+   * API calls" ligado (trava de segurança). HMAC-SHA256(app_secret, token).
+   * Só é incluído quando META_APP_SECRET está setado no ambiente; sem ele as
+   * chamadas seguem sem proof (apps que não exigem). Assim não precisamos
+   * desligar a trava do app (que é compartilhado com o WhatsApp de produção).
+   */
+  private proof(token: string): string | undefined {
+    const secret = process.env.META_APP_SECRET;
+    if (!secret) return undefined;
+    return createHmac('sha256', secret).update(token).digest('hex');
+  }
 
   private async row(organizationId: string): Promise<Row | null> {
     const rows = await this.prisma.$queryRaw<Row[]>`
@@ -98,12 +111,17 @@ export class MetaAdsService {
         'Informe ao menos um ID de conta de anúncios (só o número; separe várias por vírgula).',
       );
     }
+    const proof = this.proof(token);
     // Valida token + acesso a CADA conta com uma chamada mínima. Se qualquer
     // uma falhar, aborta com a mensagem da conta problemática (não grava nada).
     for (const act of accts) {
       try {
         await axios.get(`${GRAPH}/${act}`, {
-          params: { fields: 'name,currency', access_token: token },
+          params: {
+            fields: 'name,currency',
+            access_token: token,
+            ...(proof ? { appsecret_proof: proof } : {}),
+          },
           timeout: 15000,
         });
       } catch (err: any) {
@@ -146,6 +164,7 @@ export class MetaAdsService {
     const accts = this.parseAccts(r.ad_account_id);
     if (accts.length === 0) return null;
     const token = this.safeDecrypt(r.access_token_enc);
+    const proof = this.proof(token);
     const since = range.from.toISOString().slice(0, 10);
     const until = range.to.toISOString().slice(0, 10);
 
@@ -165,12 +184,14 @@ export class MetaAdsService {
           time_range: JSON.stringify({ since, until }),
           access_token: token,
           limit: 500,
+          ...(proof ? { appsecret_proof: proof } : {}),
         };
         let guard = 0;
         while (url && guard < 25) {
           guard += 1;
           const resp: any = await axios.get(url, { params, timeout: 20000 });
-          params = undefined; // paging.next já traz tudo
+          // paging.next já traz access_token + filtros; só re-anexa o proof.
+          params = proof ? { appsecret_proof: proof } : undefined;
           for (const d of resp.data?.data ?? []) {
             const spend = parseFloat(d.spend ?? '0') || 0;
             total += spend;

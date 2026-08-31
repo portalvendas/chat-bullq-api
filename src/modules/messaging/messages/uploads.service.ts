@@ -373,6 +373,83 @@ export class UploadsService {
     return { removed, freedBytes };
   }
 
+  /**
+   * Diagnóstico de uso do disco de uploads: total, quebra por categoria
+   * (inbound/media/audio) e por canal (dentro de inbound), maiores arquivos e
+   * quanto a retenção atual liberaria. Só leitura — não apaga nada.
+   */
+  async getDiskStats(topN = 15): Promise<{
+    rootDir: string;
+    retentionDays: number;
+    totalFiles: number;
+    totalMB: number;
+    oldest: string | null;
+    newest: string | null;
+    freeableByRetentionMB: number;
+    freeableByRetentionFiles: number;
+    byCategory: Array<{ category: string; files: number; mb: number }>;
+    byChannel: Array<{ channel: string; files: number; mb: number }>;
+    largest: Array<{ path: string; mb: number; mtime: string }>;
+  }> {
+    const files = await this.walkFiles();
+    const mb = (b: number) => Math.round((b / 1024 / 1024) * 100) / 100;
+    let totalBytes = 0;
+    let oldest = Number.POSITIVE_INFINITY;
+    let newest = 0;
+    const cutoff = Date.now() - (this.retentionDays || 45) * 86_400_000;
+    let freeableBytes = 0;
+    let freeableFiles = 0;
+    const cat = new Map<string, { files: number; bytes: number }>();
+    const chan = new Map<string, { files: number; bytes: number }>();
+    for (const f of files) {
+      totalBytes += f.size;
+      if (f.mtimeMs < oldest) oldest = f.mtimeMs;
+      if (f.mtimeMs > newest) newest = f.mtimeMs;
+      if (this.retentionDays > 0 && f.mtimeMs < cutoff) {
+        freeableBytes += f.size;
+        freeableFiles += 1;
+      }
+      const rel = path.relative(this.rootDir, f.path);
+      const seg = rel.split(path.sep);
+      const category = seg[0] || 'root';
+      const c = cat.get(category) ?? { files: 0, bytes: 0 };
+      c.files += 1;
+      c.bytes += f.size;
+      cat.set(category, c);
+      if (category === 'inbound' && seg[1]) {
+        const ch = chan.get(seg[1]) ?? { files: 0, bytes: 0 };
+        ch.files += 1;
+        ch.bytes += f.size;
+        chan.set(seg[1], ch);
+      }
+    }
+    const largest = [...files]
+      .sort((a, b) => b.size - a.size)
+      .slice(0, topN)
+      .map((f) => ({
+        path: path.relative(this.rootDir, f.path),
+        mb: mb(f.size),
+        mtime: new Date(f.mtimeMs).toISOString(),
+      }));
+    return {
+      rootDir: this.rootDir,
+      retentionDays: this.retentionDays,
+      totalFiles: files.length,
+      totalMB: mb(totalBytes),
+      oldest: files.length ? new Date(oldest).toISOString() : null,
+      newest: files.length ? new Date(newest).toISOString() : null,
+      freeableByRetentionMB: mb(freeableBytes),
+      freeableByRetentionFiles: freeableFiles,
+      byCategory: [...cat.entries()]
+        .map(([category, v]) => ({ category, files: v.files, mb: mb(v.bytes) }))
+        .sort((a, b) => b.mb - a.mb),
+      byChannel: [...chan.entries()]
+        .map(([channel, v]) => ({ channel, files: v.files, mb: mb(v.bytes) }))
+        .sort((a, b) => b.mb - a.mb),
+      largest,
+    };
+  }
+
   private extFor(mime: string, originalFilename?: string | null): string {
     // Prefer the extension from the provider-given filename when present —
     // it survives mime-sniffing oddities (e.g., Meta sometimes returns

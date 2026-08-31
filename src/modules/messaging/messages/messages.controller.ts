@@ -23,7 +23,9 @@ import {
   CurrentUser,
   CurrentOrg,
   CurrentChannelAccess,
+  Roles,
 } from '../../../common/decorators';
+import { OrgRole } from '@prisma/client';
 import type { ChannelAccess } from '../../iam/channel-access/channel-access.service';
 
 @ApiTags('Messages')
@@ -90,6 +92,16 @@ export class MessagesController {
       mimetype: file.mimetype,
       originalname: file.originalname,
     });
+  }
+
+  @Get('uploads/stats')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Uso do disco de uploads: total, por categoria/canal, maiores arquivos e quanto a retencao liberaria.',
+  })
+  getUploadStats() {
+    return this.uploads.getDiskStats();
   }
 
   @Get(':id/media')

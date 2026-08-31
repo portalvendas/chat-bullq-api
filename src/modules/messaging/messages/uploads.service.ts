@@ -9,6 +9,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import * as crypto from 'crypto';
 
 const execFileAsync = promisify(execFile);
@@ -150,6 +151,62 @@ export class UploadsService {
   }
 
   /**
+   * Comprime imagem do operador NA ENTRADA (o grosso do disco é media/, quase
+   * tudo imagem enviada pela operação). Reencoda com ffmpeg (já é dependência),
+   * cap de 2000px, format-preserving (JPEG->JPEG, PNG->PNG, WebP->WebP) pra não
+   * quebrar o envio nos providers. Se não reduzir ou falhar, devolve o original
+   * — compressão NUNCA bloqueia o upload.
+   */
+  private async compressImage(buffer: Buffer, mime: string): Promise<Buffer> {
+    const COMPRESSIBLE = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+    ]);
+    const MAX_DIM = 2000;
+    const MIN_BYTES = 150 * 1024; // abaixo disso não compensa
+    if (!COMPRESSIBLE.has(mime) || buffer.byteLength < MIN_BYTES) return buffer;
+    const id = crypto.randomBytes(8).toString('hex');
+    const ext = this.extFor(mime);
+    const inPath = path.join(os.tmpdir(), `cmp_${id}_in${ext}`);
+    const outPath = path.join(os.tmpdir(), `cmp_${id}_out${ext}`);
+    try {
+      await fs.promises.writeFile(inPath, buffer);
+      const args = [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-i',
+        inPath,
+        '-vf',
+        `scale='min(${MAX_DIM},iw)':'min(${MAX_DIM},ih)':force_original_aspect_ratio=decrease`,
+      ];
+      if (mime === 'image/webp') args.push('-quality', '80');
+      else if (mime !== 'image/png') args.push('-q:v', '4'); // JPEG ~q82
+      args.push(outPath);
+      await execFileAsync('ffmpeg', args, { timeout: 30_000 });
+      const out = await fs.promises.readFile(outPath);
+      if (out.byteLength > 0 && out.byteLength < buffer.byteLength) {
+        this.logger.log(
+          `Imagem comprimida: ${(buffer.byteLength / 1024).toFixed(0)}KB -> ${(out.byteLength / 1024).toFixed(0)}KB (${mime})`,
+        );
+        return out;
+      }
+      return buffer;
+    } catch (err: any) {
+      this.logger.warn(
+        `Compressão de imagem falhou (${mime}): ${err?.message ?? err}`,
+      );
+      return buffer;
+    } finally {
+      fs.promises.unlink(inPath).catch(() => undefined);
+      fs.promises.unlink(outPath).catch(() => undefined);
+    }
+  }
+
+  /**
    * Upload de mídia do operador (anexo do chat): imagem, vídeo ou documento.
    * Áudio gravado no app continua indo pelo saveAudio (que transcoda pra
    * OGG/Opus voice note); aqui é o caminho do clipe de papel.
@@ -174,6 +231,10 @@ export class UploadsService {
       throw new BadRequestException(`Unsupported file type: ${mime}`);
     }
 
+    // Compressão na entrada (imagem = 79% do disco). Se não reduzir, mantém o
+    // original; falha na compressão nunca bloqueia o upload.
+    const buffer = await this.compressImage(file.buffer, mime);
+
     const dateFolder = new Date().toISOString().slice(0, 10);
     const dir = path.join(this.rootDir, 'media', dateFolder);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -182,14 +243,14 @@ export class UploadsService {
     const ext = this.extFor(mime, file.originalname);
     const filename = `${id}${ext}`;
     const fullPath = path.join(dir, filename);
-    await this.writeSafe(fullPath, file.buffer);
+    await this.writeSafe(fullPath, buffer);
 
     const url = `${this.publicBaseUrl}/media/${dateFolder}/${filename}`;
     this.logger.log(`Media saved: ${fullPath} -> ${url}`);
     return {
       url,
       mimeType: mime,
-      size: file.buffer.byteLength,
+      size: buffer.byteLength,
       filename: file.originalname || filename,
     };
   }

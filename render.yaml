@@ -35,7 +35,8 @@ services:
     disk:
       name: uploads            # mídias re-hospedadas (WhatsApp/áudios) persistem
       mountPath: /app/uploads
-      sizeGB: 1
+      # Disco só CRESCE (Render não reduz). Retenção+evicção no código mantêm dentro do limite.
+      sizeGB: 10
     envVars:
       - key: NODE_ENV
         value: production

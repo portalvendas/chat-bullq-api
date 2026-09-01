@@ -85,6 +85,15 @@ export class TinyController {
     return this.service.backfillDates(orgId);
   }
 
+  @Post('reconcile-deleted')
+  @ApiOperation({
+    summary:
+      'Reconciliação: marca como Removido os pedidos excluídos no Tiny (órfãos) que ainda contam nos totais. Idempotente.',
+  })
+  reconcileDeleted(@CurrentOrg('id') orgId: string) {
+    return this.service.reconcileDeletedPedidos(orgId);
+  }
+
   @Get('documents')
   @ApiOperation({ summary: 'Pedidos e orçamentos vinculados a um lead' })
   documents(

@@ -21,11 +21,16 @@ const PEDIDO_SITUACOES: Record<string, string> = {
 };
 
 /** Situações de pedido que NÃO contam como venda efetiva. */
-const PEDIDO_STATUS_EXCLUIDOS = ['Cancelada', 'Dados Incompletos'];
+const PEDIDO_STATUS_EXCLUIDOS = ['Cancelada', 'Dados Incompletos', 'Removido'];
 
 /** Canais de venda (marketplaces) cuja origem deve ser excluída da tela. */
 const MARKETPLACE_RE =
   /(mercado ?livre|shopee|magalu|magazine ?luiza|amazon|americanas|b2w|via ?varejo)/i;
+
+/** Throttle em memória da reconciliação de exclusões (por org). Evita varrer
+ *  todos os pedidos do Tiny a cada ciclo de 15min — 1x a cada 6h basta. */
+const RECONCILE_THROTTLE_MS = 6 * 3600 * 1000;
+const reconcileLastRunAt = new Map<string, number>();
 
 interface DateRange {
   gte?: Date;
@@ -167,6 +172,23 @@ export class TinyService {
         await this.enrichDetails(organizationId, 40);
       } catch (err: any) {
         this.logger.warn(`enrichDetails falhou (best-effort): ${err?.message ?? err}`);
+      }
+      // Reconciliação de exclusões (throttle 6h): pedidos apagados no Tiny não
+      // geram evento no sync incremental e seguiriam contando. Isolado —
+      // best-effort, nunca derruba o sync.
+      try {
+        const last = reconcileLastRunAt.get(organizationId) ?? 0;
+        if (Date.now() - last > RECONCILE_THROTTLE_MS) {
+          reconcileLastRunAt.set(organizationId, Date.now());
+          const rec = await this.reconcileDeletedPedidos(organizationId);
+          if (rec.removed > 0) {
+            this.logger.log(
+              `reconcileDeleted org=${organizationId} removeu ${rec.removed} pedido(s) orfao(s)`,
+            );
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`reconcileDeleted falhou (best-effort): ${err?.message ?? err}`);
       }
       // Meta CAPI: emite Purchase/AddToCart pros documentos que casam com a
       // config (no-op se desligado). Isolado — nunca derruba o sync.
@@ -598,6 +620,73 @@ export class TinyService {
   }
 
   /**
+   * Reconciliação de exclusões do Tiny. Pedidos apagados no ERP somem da API
+   * (viram 404) mas permanecem no banco e seguem contando nos totais — pior,
+   * o Tiny reaproveita o número para outro pedido. Aqui:
+   *   1) lista TODOS os pedidos vivos no Tiny (sem filtro de dataAtualizacao);
+   *   2) cruza com o banco e junta os "suspeitos" (tinyId ausente da lista);
+   *   3) CONFIRMA cada suspeito via getPedido — só marca 'Removido' quem der
+   *      404 de fato. Esse passo elimina falso-positivo por paginação parcial.
+   * Idempotente. @example { live: 3910, scanned: 4102, removed: 3 }
+   */
+  async reconcileDeletedPedidos(
+    organizationId: string,
+  ): Promise<{ live: number; scanned: number; removed: number }> {
+    // 1) ids vivos no Tiny.
+    const liveIds = new Set<string>();
+    let offset = 0;
+    const limit = 100;
+    let total = Infinity;
+    while (offset < total) {
+      const page = await this.http.listarPedidos(organizationId, { offset, limit });
+      const itens = page.itens ?? [];
+      total = page.paginacao?.total ?? itens.length;
+      for (const p of itens) if (p?.id != null) liveIds.add(String(p.id));
+      if (itens.length < limit) break;
+      offset += limit;
+    }
+    // Guarda: lista vazia (erro/instabilidade) — aborta sem marcar nada.
+    if (liveIds.size === 0) {
+      this.logger.warn('reconcileDeleted: nenhum pedido vivo retornado — abortando');
+      return { live: 0, scanned: 0, removed: 0 };
+    }
+
+    // 2) candidatos no banco (ainda não marcados como removidos).
+    const candidatos = await this.prisma.tinyDocument.findMany({
+      where: { organizationId, kind: 'PEDIDO', situacao: { not: 'Removido' } },
+      select: { id: true, tinyId: true },
+    });
+    const suspeitos = candidatos.filter((c) => !liveIds.has(c.tinyId));
+
+    // 3) confirma cada suspeito via detalhe (404 = realmente excluído).
+    const paraRemover: string[] = [];
+    for (const c of suspeitos) {
+      try {
+        await this.http.getPedido(organizationId, c.tinyId);
+        // Existe (paginação incompleta / criado durante a varredura) — mantém.
+      } catch (err: any) {
+        if (err?.statusCode === 404) paraRemover.push(c.id);
+        // Outros erros: não marca, tenta na próxima rodada.
+      }
+    }
+
+    let removed = 0;
+    const CHUNK = 500;
+    for (let i = 0; i < paraRemover.length; i += CHUNK) {
+      const slice = paraRemover.slice(i, i + CHUNK);
+      const r = await this.prisma.tinyDocument.updateMany({
+        where: { id: { in: slice } },
+        data: { situacao: 'Removido' },
+      });
+      removed += r.count;
+    }
+    this.logger.log(
+      `reconcileDeleted org=${organizationId} live=${liveIds.size} scanned=${candidatos.length} suspeitos=${suspeitos.length} removed=${removed}`,
+    );
+    return { live: liveIds.size, scanned: candidatos.length, removed };
+  }
+
+  /**
    * Resumo pros cards do topo: totais (valor + contagem) de pedidos e
    * propostas, mais o breakdown por vendedor. Respeita o período e os filtros
    * de venda efetiva. @example { pedidos:{count,total}, orcamentos:{...},
@@ -702,6 +791,14 @@ export class TinyService {
           },
         });
       } catch (err: any) {
+        // 404 = pedido excluído no Tiny (número pode ser reaproveitado). Marca
+        // como Removido pra sair dos totais em vez de retentar pra sempre.
+        if (err?.statusCode === 404) {
+          await this.prisma.tinyDocument
+            .update({ where: { id: d.id }, data: { situacao: 'Removido' } })
+            .catch(() => undefined);
+          continue;
+        }
         this.logger.warn(`enrich pedido ${d.tinyId} falhou: ${err?.message ?? err}`);
       }
     }

@@ -486,7 +486,18 @@ export class TinyService {
   }
   private parseDate(v?: string | null): Date | null {
     if (!v) return null;
-    const d = new Date(v);
+    const s = String(v).trim();
+    if (!s) return null;
+    // O Tiny manda a data como dia-calendário BR (naive), ex.: "2026-08-31" ou
+    // "31/08/2026 20:56:18". `new Date("2026-08-31")` interpreta como MEIA-NOITE
+    // UTC → no Brasil (UTC-3) recua um dia (exibia 30/08 no lugar de 31/08).
+    // Extraímos só o dia-calendário como o Tiny reporta e ancoramos ao MEIO-DIA
+    // UTC — que cai no MESMO dia em qualquer fuso de exibição (evita off-by-one).
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12, 0, 0));
+    m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], 12, 0, 0));
+    const d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
   }
   private parseDecimal(v?: string | number | null): number | null {

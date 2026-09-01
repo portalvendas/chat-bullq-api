@@ -30,6 +30,9 @@ const MARKETPLACE_RE =
 /** Throttle em memória da reconciliação de exclusões (por org). Evita varrer
  *  todos os pedidos do Tiny a cada ciclo de 15min — 1x a cada 6h basta. */
 const RECONCILE_THROTTLE_MS = 6 * 3600 * 1000;
+
+/** Valor sentinela do filtro por vendedor = pedidos/orçamentos sem vendedor. */
+const SEM_VENDEDOR = '__sem__';
 const reconcileLastRunAt = new Map<string, number>();
 
 interface DateRange {
@@ -151,7 +154,10 @@ export class TinyService {
    * documento com um Contact e faz upsert em TinyDocument. Best-effort e
    * idempotente — reexecutar não duplica (unique org+kind+tinyId).
    */
-  async syncNow(organizationId: string): Promise<{ pedidos: number; orcamentos: number }> {
+  async syncNow(
+    organizationId: string,
+    opts?: { reconcile?: boolean },
+  ): Promise<{ pedidos: number; orcamentos: number }> {
     const integ = await this.prisma.tinyIntegration.findUnique({
       where: { organizationId },
     });
@@ -173,22 +179,23 @@ export class TinyService {
       } catch (err: any) {
         this.logger.warn(`enrichDetails falhou (best-effort): ${err?.message ?? err}`);
       }
-      // Reconciliação de exclusões (throttle 6h): pedidos apagados no Tiny não
-      // geram evento no sync incremental e seguiriam contando. Isolado —
-      // best-effort, nunca derruba o sync.
-      try {
-        const last = reconcileLastRunAt.get(organizationId) ?? 0;
-        if (Date.now() - last > RECONCILE_THROTTLE_MS) {
-          reconcileLastRunAt.set(organizationId, Date.now());
-          const rec = await this.reconcileDeletedPedidos(organizationId);
-          if (rec.removed > 0) {
-            this.logger.log(
-              `reconcileDeleted org=${organizationId} removeu ${rec.removed} pedido(s) orfao(s)`,
-            );
+      // Reconciliação de exclusões (throttle 6h) — SÓ no sync em background
+      // (cron). Fora do caminho manual pra não somar ao timeout da request.
+      if (opts?.reconcile) {
+        try {
+          const last = reconcileLastRunAt.get(organizationId) ?? 0;
+          if (Date.now() - last > RECONCILE_THROTTLE_MS) {
+            reconcileLastRunAt.set(organizationId, Date.now());
+            const rec = await this.reconcileDeletedPedidos(organizationId);
+            if (rec.removed > 0) {
+              this.logger.log(
+                `reconcileDeleted org=${organizationId} removeu ${rec.removed} pedido(s) orfao(s)`,
+              );
+            }
           }
+        } catch (err: any) {
+          this.logger.warn(`reconcileDeleted falhou (best-effort): ${err?.message ?? err}`);
         }
-      } catch (err: any) {
-        this.logger.warn(`reconcileDeleted falhou (best-effort): ${err?.message ?? err}`);
       }
       // Meta CAPI: emite Purchase/AddToCart pros documentos que casam com a
       // config (no-op se desligado). Isolado — nunca derruba o sync.
@@ -600,7 +607,16 @@ export class TinyService {
    * exclui origem marketplace e exige natureza de operação "Venda". Aplicado
    * na tela e nos totais pra refletir só vendas reais.
    */
-  private pedidoWhere(organizationId: string, range?: DateRange) {
+  /** Cláusula de filtro por vendedor. Vazio/undefined = todos; SEM_VENDEDOR =
+   *  sem vendedor (null ou '—', o sentinela de "resolvido sem vendedor");
+   *  senão, nome exato. */
+  private vendedorClause(vendedor?: string): Record<string, any> {
+    if (!vendedor) return {};
+    if (vendedor === SEM_VENDEDOR) return { OR: [{ vendedor: null }, { vendedor: '—' }] };
+    return { vendedor };
+  }
+
+  private pedidoWhere(organizationId: string, range?: DateRange, vendedor?: string) {
     return {
       organizationId,
       kind: 'PEDIDO',
@@ -608,14 +624,16 @@ export class TinyService {
       isMarketplace: false,
       natureza: { contains: 'venda', mode: 'insensitive' as const },
       ...(range ? { data: range } : {}),
+      ...this.vendedorClause(vendedor),
     };
   }
 
-  private orcamentoWhere(organizationId: string, range?: DateRange) {
+  private orcamentoWhere(organizationId: string, range?: DateRange, vendedor?: string) {
     return {
       organizationId,
       kind: 'ORCAMENTO',
       ...(range ? { data: range } : {}),
+      ...this.vendedorClause(vendedor),
     };
   }
 
@@ -687,15 +705,46 @@ export class TinyService {
   }
 
   /**
+   * Lista de vendedores distintos (venda efetiva + propostas) no período, pra
+   * popular o dropdown do filtro. Ignora o próprio filtro de vendedor pra a
+   * lista de opções não encolher quando um vendedor já está selecionado.
+   * @example { vendedores: ['GABRIELLA ...', 'Kelen ...'], hasSemVendedor: true }
+   */
+  async vendors(
+    organizationId: string,
+    from?: string,
+    to?: string,
+  ): Promise<{ vendedores: string[]; hasSemVendedor: boolean }> {
+    const range = this.buildRange(from, to);
+    const pw = this.pedidoWhere(organizationId, range);
+    const ow = this.orcamentoWhere(organizationId, range);
+    const [vp, vo] = await Promise.all([
+      this.prisma.tinyDocument.groupBy({ by: ['vendedor'], where: pw }),
+      this.prisma.tinyDocument.groupBy({ by: ['vendedor'], where: ow }),
+    ]);
+    const set = new Set<string>();
+    let hasSemVendedor = false;
+    for (const r of [...vp, ...vo]) {
+      const v = r.vendedor?.trim();
+      if (v && v !== '—') set.add(v);
+      else hasSemVendedor = true;
+    }
+    return {
+      vendedores: [...set].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      hasSemVendedor,
+    };
+  }
+
+  /**
    * Resumo pros cards do topo: totais (valor + contagem) de pedidos e
    * propostas, mais o breakdown por vendedor. Respeita o período e os filtros
    * de venda efetiva. @example { pedidos:{count,total}, orcamentos:{...},
    * porVendedor:[{ vendedor, pedidosCount, pedidosTotal, propostasCount, propostasTotal }] }
    */
-  async summary(organizationId: string, from?: string, to?: string) {
+  async summary(organizationId: string, from?: string, to?: string, vendedor?: string) {
     const range = this.buildRange(from, to);
-    const pw = this.pedidoWhere(organizationId, range);
-    const ow = this.orcamentoWhere(organizationId, range);
+    const pw = this.pedidoWhere(organizationId, range, vendedor);
+    const ow = this.orcamentoWhere(organizationId, range, vendedor);
 
     const [pedidos, orcamentos, vendPed, vendOrc] = await Promise.all([
       this.prisma.tinyDocument.aggregate({
@@ -827,12 +876,13 @@ export class TinyService {
     limit = 30,
     from?: string,
     to?: string,
+    vendedor?: string,
   ) {
     const range = this.buildRange(from, to);
     const where =
       kind === 'PEDIDO'
-        ? this.pedidoWhere(organizationId, range)
-        : this.orcamentoWhere(organizationId, range);
+        ? this.pedidoWhere(organizationId, range, vendedor)
+        : this.orcamentoWhere(organizationId, range, vendedor);
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
     const [total, rows] = await Promise.all([

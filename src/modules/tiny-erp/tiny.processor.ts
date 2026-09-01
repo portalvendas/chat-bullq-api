@@ -28,7 +28,7 @@ export class TinyProcessor extends WorkerHost {
     });
     for (const { organizationId } of integs) {
       try {
-        const r = await this.service.syncNow(organizationId);
+        const r = await this.service.syncNow(organizationId, { reconcile: true });
         this.logger.log(
           `tiny_sync org=${organizationId} pedidos=${r.pedidos} orcamentos=${r.orcamentos}`,
         );

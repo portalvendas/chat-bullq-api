@@ -2039,6 +2039,8 @@ model TinyDocument {
   natureza        String?
   /// Vendedor responsável (pedido: vem na listagem; orçamento: no detalhe).
   vendedor        String?
+  /// Vendedor definido manualmente na tela — o sync NÃO sobrescreve.
+  vendedorManual  Boolean  @default(false) @map("vendedor_manual")
   /// id do contato no Tiny (chave pra resolver orçamentos).
   tinyContatoId   String?  @map("tiny_contato_id")
   /// Contact do CRM vinculado (null = ainda não casou com lead).

@@ -16,6 +16,7 @@ import { Response } from 'express';
 import {
   Body,
   Put,
+  Patch,
 } from '@nestjs/common';
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
 import { Public, CurrentOrg } from '../../common/decorators';
@@ -110,8 +111,19 @@ export class TinyController {
     @CurrentOrg('id') orgId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('vendedor') vendedor?: string,
   ) {
-    return this.service.summary(orgId, from, to);
+    return this.service.summary(orgId, from, to, vendedor);
+  }
+
+  @Get('vendors')
+  @ApiOperation({ summary: 'Vendedores distintos no período (opções do filtro)' })
+  vendors(
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.vendors(orgId, from, to);
   }
 
   @Get('orders')
@@ -123,9 +135,23 @@ export class TinyController {
     @Query('limit') limit = '30',
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('vendedor') vendedor?: string,
   ) {
     const k = kind === 'ORCAMENTO' ? 'ORCAMENTO' : 'PEDIDO';
-    return this.service.listDocuments(orgId, k, Number(page) || 1, Number(limit) || 30, from, to);
+    return this.service.listDocuments(orgId, k, Number(page) || 1, Number(limit) || 30, from, to, vendedor);
+  }
+
+  @Patch('documents/:id/vendedor')
+  @ApiOperation({
+    summary:
+      'Define manualmente o vendedor de um pedido/orçamento (o sync do Tiny não sobrescreve).',
+  })
+  setVendedor(
+    @CurrentOrg('id') orgId: string,
+    @Param('id') id: string,
+    @Body() dto: { vendedor?: string | null },
+  ) {
+    return this.service.setVendedor(orgId, id, dto?.vendedor ?? null);
   }
 
   @Get('documents/:id/items')

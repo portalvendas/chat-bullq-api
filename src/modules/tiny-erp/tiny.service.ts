@@ -278,7 +278,6 @@ export class TinyService {
       clienteEmail: cli.email ?? null,
       tinyContatoId: cli.id != null ? String(cli.id) : null,
       isMarketplace: isMkt,
-      vendedor,
       contactId: match?.contactId ?? null,
       matchedBy: match?.matchedBy ?? null,
       raw: p,
@@ -291,11 +290,21 @@ export class TinyService {
           tinyId: String(p.id),
         },
       },
-      create: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), ...common },
-      // natureza NÃO é sobrescrita aqui (vem do enriquecimento). vendedor só
-      // atualiza se veio na listagem (senão preserva o que o detalhe trouxe).
-      update: { ...common, ...(vendedor ? {} : { vendedor: undefined }) },
+      // vendedor só é semeado na criação; no update é tratado à parte pra
+      // respeitar edição manual (vendedorManual). natureza NÃO é sobrescrita
+      // aqui (vem do enriquecimento).
+      create: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), vendedor, ...common },
+      update: common,
     });
+    // Atualiza o vendedor a partir do Tiny apenas quando veio um valor E o
+    // registro NÃO foi editado manualmente na tela. Se o Tiny mandou vazio,
+    // preserva o que já existe (inclusive a edição manual).
+    if (vendedor) {
+      await this.prisma.tinyDocument.updateMany({
+        where: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), vendedorManual: false },
+        data: { vendedor },
+      });
+    }
   }
 
   /** True quando a origem do pedido é um marketplace (ML/Shopee/Magalu/Amazon…). */
@@ -702,6 +711,25 @@ export class TinyService {
       `reconcileDeleted org=${organizationId} live=${liveIds.size} scanned=${candidatos.length} suspeitos=${suspeitos.length} removed=${removed}`,
     );
     return { live: liveIds.size, scanned: candidatos.length, removed };
+  }
+
+  /**
+   * Define manualmente o vendedor de um pedido/orçamento. Marca
+   * vendedorManual=true pra o sync do Tiny não sobrescrever depois. Passar
+   * vendedor vazio/null grava "sem vendedor" (também travado). Escopado por org.
+   */
+  async setVendedor(
+    organizationId: string,
+    docId: string,
+    vendedor: string | null,
+  ): Promise<{ ok: true; vendedor: string | null }> {
+    const v = vendedor && vendedor.trim() ? vendedor.trim() : null;
+    const res = await this.prisma.tinyDocument.updateMany({
+      where: { id: docId, organizationId },
+      data: { vendedor: v, vendedorManual: true },
+    });
+    if (res.count === 0) throw new NotFoundException('Documento não encontrado');
+    return { ok: true, vendedor: v };
   }
 
   /**

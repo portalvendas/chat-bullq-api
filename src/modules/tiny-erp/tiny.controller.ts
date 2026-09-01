@@ -86,6 +86,15 @@ export class TinyController {
     return this.service.backfillDates(orgId);
   }
 
+  @Post('backfill-vendedores-orcamento')
+  @ApiOperation({
+    summary:
+      'Backfill único: preenche o vendedor das propostas que ficaram sem nome (resolve id->nome pelos pedidos). Idempotente.',
+  })
+  backfillVendedoresOrcamento(@CurrentOrg('id') orgId: string) {
+    return this.service.backfillVendedoresOrcamento(orgId);
+  }
+
   @Post('reconcile-deleted')
   @ApiOperation({
     summary:

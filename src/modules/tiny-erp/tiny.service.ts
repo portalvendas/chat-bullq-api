@@ -829,6 +829,70 @@ export class TinyService {
   }
 
   /**
+   * Mapa id->nome dos vendedores, derivado do `raw` dos PEDIDOS (a listagem de
+   * pedidos traz vendedor {id, nome}). O detalhe do ORÇAMENTO só traz
+   * vendedor.id — sem nome — e o endpoint /vendedores do Tiny não devolve nome;
+   * por isso resolvemos o nome por este mapa. Consulta barata (poucos
+   * vendedores) via JSON no Postgres.
+   */
+  private async buildVendedorMap(organizationId: string): Promise<Map<string, string>> {
+    const rows = await this.prisma.$queryRaw<Array<{ id: string | null; nome: string | null }>>`
+      SELECT DISTINCT raw->'vendedor'->>'id' AS id, raw->'vendedor'->>'nome' AS nome
+      FROM tiny_documents
+      WHERE organization_id = ${organizationId}
+        AND kind = 'PEDIDO'
+        AND raw->'vendedor'->>'id' IS NOT NULL
+        AND raw->'vendedor'->>'nome' IS NOT NULL
+    `;
+    const map = new Map<string, string>();
+    for (const r of rows) if (r.id && r.nome) map.set(String(r.id), r.nome);
+    return map;
+  }
+
+  /**
+   * Backfill único: reprocessa as PROPOSTAS que ficaram sem vendedor ('—' ou
+   * null) — relê o detalhe, pega vendedor.id e resolve o nome pelo mapa dos
+   * pedidos. Só grava quando resolve um nome (não sobrescreve com null).
+   * Idempotente. @example { scanned: 151, updated: 151 }
+   */
+  async backfillVendedoresOrcamento(
+    organizationId: string,
+  ): Promise<{ scanned: number; updated: number }> {
+    const vendMap = await this.buildVendedorMap(organizationId);
+    const pend = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        kind: 'ORCAMENTO',
+        OR: [{ vendedor: null }, { vendedor: '—' }],
+      },
+      select: { id: true, tinyId: true },
+    });
+    let updated = 0;
+    for (const d of pend) {
+      try {
+        const det = await this.http.getOrcamento(organizationId, d.tinyId);
+        const vid = det?.vendedor?.id != null ? String(det.vendedor.id) : null;
+        const nome = det?.vendedor?.nome ?? (vid ? vendMap.get(vid) : undefined) ?? null;
+        if (nome) {
+          await this.prisma.tinyDocument.update({
+            where: { id: d.id },
+            data: { vendedor: nome },
+          });
+          updated++;
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `backfill vendedor orçamento ${d.tinyId} falhou: ${err?.message ?? err}`,
+        );
+      }
+    }
+    this.logger.log(
+      `backfillVendedoresOrcamento org=${organizationId} scanned=${pend.length} updated=${updated}`,
+    );
+    return { scanned: pend.length, updated };
+  }
+
+  /**
    * Enriquecimento sob demanda via detalhe do Tiny (capado por rodada):
    *  - PEDIDO candidato (não cancelado/incompleto, não-marketplace) sem
    *    natureza → busca detalhe e preenche natureza (+ vendedor se faltar).
@@ -879,13 +943,20 @@ export class TinyService {
         this.logger.warn(`enrich pedido ${d.tinyId} falhou: ${err?.message ?? err}`);
       }
     }
+    // Mapa id->nome (o detalhe do orçamento só traz vendedor.id).
+    const vendMap =
+      orcamentos.length > 0
+        ? await this.buildVendedorMap(organizationId)
+        : new Map<string, string>();
     for (const d of orcamentos) {
       try {
         const det = await this.http.getOrcamento(organizationId, d.tinyId);
-        // '—' pra sinalizar "resolvido sem vendedor" e não retentar pra sempre.
+        const vid = det?.vendedor?.id != null ? String(det.vendedor.id) : null;
+        // '—' sinaliza "resolvido sem vendedor" e evita retentar pra sempre.
+        const nome = det?.vendedor?.nome ?? (vid ? vendMap.get(vid) : undefined) ?? '—';
         await this.prisma.tinyDocument.update({
           where: { id: d.id },
-          data: { vendedor: det?.vendedor?.nome ?? '—' },
+          data: { vendedor: nome },
         });
       } catch (err: any) {
         this.logger.warn(`enrich orçamento ${d.tinyId} falhou: ${err?.message ?? err}`);

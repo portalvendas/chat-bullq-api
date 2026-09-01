@@ -484,6 +484,53 @@ export class TinyService {
   private digits(v?: string | null): string {
     return (v ?? '').replace(/\D/g, '');
   }
+  /**
+   * Backfill único da coluna `data` dos TinyDocument: relê a data-origem do
+   * `raw` já salvo (pedido -> raw.dataCriacao; orçamento -> raw.data) e reescreve
+   * `data` com a lógica corrigida (parseDate ancorado ao meio-dia UTC),
+   * consertando o off-by-one de fuso nos registros ANTIGOS sem re-buscar no Tiny.
+   * Idempotente; toca só a coluna `data`. Paginado por cursor (500/lote).
+   */
+  async backfillDates(
+    organizationId: string,
+  ): Promise<{ scanned: number; updated: number }> {
+    const BATCH = 500;
+    let cursor: string | undefined;
+    let scanned = 0;
+    let updated = 0;
+    for (;;) {
+      const rows = await this.prisma.tinyDocument.findMany({
+        where: { organizationId },
+        select: { id: true, kind: true, data: true, raw: true },
+        orderBy: { id: 'asc' },
+        take: BATCH,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+      if (rows.length === 0) break;
+      for (const r of rows) {
+        scanned += 1;
+        const raw = (r.raw ?? {}) as Record<string, any>;
+        const src = r.kind === 'ORCAMENTO' ? raw?.data : raw?.dataCriacao;
+        const parsed = this.parseDate(typeof src === 'string' ? src : null);
+        const cur = r.data ? r.data.getTime() : null;
+        const next = parsed ? parsed.getTime() : null;
+        if (cur !== next) {
+          await this.prisma.tinyDocument.update({
+            where: { id: r.id },
+            data: { data: parsed },
+          });
+          updated += 1;
+        }
+      }
+      cursor = rows[rows.length - 1].id;
+      if (rows.length < BATCH) break;
+    }
+    this.logger.log(
+      `Tiny backfill datas org ${organizationId}: scanned=${scanned} updated=${updated}`,
+    );
+    return { scanned, updated };
+  }
+
   private parseDate(v?: string | null): Date | null {
     if (!v) return null;
     const s = String(v).trim();

@@ -76,6 +76,15 @@ export class TinyController {
     return this.service.syncNow(orgId);
   }
 
+  @Post('backfill-dates')
+  @ApiOperation({
+    summary:
+      'Backfill único: corrige o fuso da data dos pedidos/orçamentos já salvos (relê do raw). Idempotente.',
+  })
+  backfillDates(@CurrentOrg('id') orgId: string) {
+    return this.service.backfillDates(orgId);
+  }
+
   @Get('documents')
   @ApiOperation({ summary: 'Pedidos e orçamentos vinculados a um lead' })
   documents(

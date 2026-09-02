@@ -43,6 +43,8 @@ export class PublicLeadsService {
     'user_agent',
     'fbp',
     'fbc',
+    '_fbp',
+    '_fbc',
     'ga_client_id',
   ];
 
@@ -70,7 +72,16 @@ export class PublicLeadsService {
     for (const k of PublicLeadsService.TRACKING_KEYS) {
       if (body?.[k] !== undefined && body[k] !== null && String(body[k]).trim() !== '') {
         // normaliza referer→referrer
-        const key = k === 'referer' ? 'referrer' : k === 'ip_address' ? 'ip' : k;
+        const key =
+          k === 'referer'
+            ? 'referrer'
+            : k === 'ip_address'
+              ? 'ip'
+              : k === '_fbp'
+                ? 'fbp'
+                : k === '_fbc'
+                  ? 'fbc'
+                  : k;
         if (t[key] === undefined) t[key] = body[k];
       }
     }

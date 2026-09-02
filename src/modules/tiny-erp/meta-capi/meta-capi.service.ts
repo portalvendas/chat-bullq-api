@@ -342,9 +342,12 @@ export class MetaCapiService {
       .filter((c) => c.id != null);
 
     const custom_data: Record<string, any> = { currency };
+    // value alimenta o ROAS (Purchase) e o valor do AddToCart. Enviado nos DOIS
+    // eventos sempre que houver um número válido (>= 0), com 2 casas decimais.
     const value = this.num(doc.valor);
-    if (eventName === 'Purchase' && value != null) custom_data.value = value;
-    if (eventName === 'AddToCart' && value != null) custom_data.value = value;
+    if (value != null && Number.isFinite(value) && value >= 0) {
+      custom_data.value = Math.round(value * 100) / 100;
+    }
     if (contents.length) {
       custom_data.contents = contents;
       custom_data.content_type = 'product';

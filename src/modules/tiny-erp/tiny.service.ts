@@ -399,7 +399,7 @@ export class TinyService {
         tinyContatoId: contatoId,
         contactId: match?.contactId ?? null,
         matchedBy: match?.matchedBy ?? null,
-        raw: o,
+        raw: { ...o, cliente: cli },
       },
       update: {
         numero: o?.numeroProposta != null ? String(o.numeroProposta) : null,
@@ -413,7 +413,7 @@ export class TinyService {
         tinyContatoId: contatoId,
         contactId: match?.contactId ?? null,
         matchedBy: match?.matchedBy ?? null,
-        raw: o,
+        raw: { ...o, cliente: cli },
       },
     });
   }

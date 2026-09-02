@@ -16,6 +16,11 @@ function clean(v?: string | null): string {
   return (v ?? '').trim().toLowerCase();
 }
 
+/** Remove acentos/diacríticos (ã→a, é→e, ç→c) preservando a letra base. */
+function deburr(v: string): string {
+  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 /** E-mail: trim + lowercase. */
 export function hashEmail(email?: string | null): string | undefined {
   const e = clean(email);
@@ -50,13 +55,13 @@ export function hashPhone(phone?: string | null): string | undefined {
 
 /** Nome/sobrenome/cidade: lowercase, sem espaços nas pontas. */
 export function hashName(v?: string | null): string | undefined {
-  const s = clean(v);
+  const s = deburr(clean(v));
   return s ? sha256(s) : undefined;
 }
 
 /** Cidade: lowercase, sem espaços/pontuação. */
 export function hashCity(v?: string | null): string | undefined {
-  const s = clean(v).replace(/[^a-z0-9]/g, '');
+  const s = deburr(clean(v)).replace(/[^a-z0-9]/g, '');
   return s ? sha256(s) : undefined;
 }
 

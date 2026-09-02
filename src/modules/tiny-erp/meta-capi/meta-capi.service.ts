@@ -295,7 +295,9 @@ export class MetaCapiService {
   ): Promise<CapiEvent> {
     // Endereço do cliente (do detalhe do pedido, quando presente no raw).
     const cli = (doc.raw?.cliente ?? {}) as Record<string, any>;
-    const end = (cli.endereco ?? {}) as Record<string, any>;
+    const end = (cli.endereco ??
+      (Array.isArray(cli.enderecos) ? cli.enderecos[0] : undefined) ??
+      {}) as Record<string, any>;
     const { first, last } = splitName(doc.clienteNome);
 
     // Tracking do lead (fbclid/fbp/fbc/ip/ua) capturado na LP, quando existir.
@@ -315,8 +317,8 @@ export class MetaCapiService {
       ph: arr(hashPhone(doc.clienteTelefone)),
       fn: arr(hashName(first)),
       ln: arr(hashName(last)),
-      ct: arr(hashCity(end.municipio)),
-      st: arr(hashState(end.uf)),
+      ct: arr(hashCity(end.municipio ?? end.cidade)),
+      st: arr(hashState(end.uf ?? end.estado)),
       zp: arr(hashZip(end.cep)),
       country: arr(hashCountry(end.pais)),
       external_id: arr(hashExternalId(doc.clienteCpfCnpj)),

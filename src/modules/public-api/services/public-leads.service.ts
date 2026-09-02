@@ -40,6 +40,7 @@ export class PublicLeadsService {
     'page_url',
     'ip',
     'ip_address',
+    'client_ip',
     'user_agent',
     'fbp',
     'fbc',
@@ -84,6 +85,10 @@ export class PublicLeadsService {
                   : k;
         if (t[key] === undefined) t[key] = body[k];
       }
+    }
+    // Normaliza o IP: o n8n envia como `client_ip`; a Meta/CAPI espera `ip`.
+    if ((t.ip == null || String(t.ip).trim() === '') && t.client_ip != null) {
+      t.ip = t.client_ip;
     }
     return t;
   }

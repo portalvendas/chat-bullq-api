@@ -335,7 +335,7 @@ export class MetaCapiService {
       external_id: arr(hashExternalId(doc.clienteCpfCnpj)),
       fbc: fbc || undefined,
       fbp: tr.fbp || undefined,
-      client_ip_address: tr.client_ip_address || tr.ip || undefined,
+      client_ip_address: tr.client_ip_address || tr.client_ip || tr.ip || undefined,
       client_user_agent: tr.client_user_agent || tr.user_agent || undefined,
     };
     // Remove chaves vazias.

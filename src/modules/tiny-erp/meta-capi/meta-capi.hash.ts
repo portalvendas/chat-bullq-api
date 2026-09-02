@@ -23,13 +23,28 @@ export function hashEmail(email?: string | null): string | undefined {
 }
 
 /**
- * Telefone: só dígitos, COM código do país (Brasil = 55). Remove +, espaços,
- * parênteses, traços. Se não vier com DDI, prefixa 55.
+ * Telefone → E.164 (Brasil) antes do SHA-256: `55` + DDD + número, só dígitos.
+ * A Meta exige o formato internacional; sem isso o match quality despenca.
+ * Regras:
+ *   - só dígitos (remove ( ) - espaço + e zeros de tronco à esquerda);
+ *   - já com DDI 55 e 12–13 dígitos (fixo/celular) → mantém;
+ *   - 10 ou 11 dígitos (DDD + número, sem DDI) → prefixa 55;
+ *   - resultado fora de 12–13 dígitos é inválido → undefined (não envia `ph`).
+ * O strip de zero à esquerda vem ANTES das checagens, o que também resolve o
+ * "0" de operadora e o prefixo internacional "00". Ex.: (45) 99999-9999 →
+ * 5545999999999; 045 3333-4444 → 554533334444.
  */
 export function hashPhone(phone?: string | null): string | undefined {
-  let d = (phone ?? '').replace(/\D/g, '');
+  let d = (phone ?? '').replace(/\D/g, '').replace(/^0+/, '');
   if (!d) return undefined;
-  if (!d.startsWith('55')) d = '55' + d;
+  const hasDdi55 = d.startsWith('55') && (d.length === 12 || d.length === 13);
+  if (!hasDdi55 && (d.length === 10 || d.length === 11)) {
+    // DDD + número (fixo 10 / celular 11) sem DDI. Cobre também o DDD 55
+    // (Santa Maria/RS): aqui o `55` inicial é DDD, então prefixamos o DDI.
+    d = '55' + d;
+  }
+  // E.164 BR válido tem 12 (fixo) ou 13 (celular) dígitos com o DDI.
+  if (d.length < 12 || d.length > 13) return undefined;
   return sha256(d);
 }
 

@@ -144,6 +144,17 @@ export class MetaCapiService {
     const when = doc.data ? doc.data.getTime() : Date.now();
     if (Date.now() - when > EVENT_WINDOW_MS) return;
 
+    // Conversão sem valor válido (> 0) NÃO é enviada: a Meta trata value/currency
+    // ausente ou zerado como "moeda de baixa qualidade". Sai sem registrar, pra
+    // retentar numa próxima rodada quando o valor estiver disponível — nunca 0.
+    const valGuard = this.num(doc.valor);
+    if (!(typeof valGuard === 'number' && Number.isFinite(valGuard) && valGuard > 0)) {
+      this.logger.warn(
+        `CAPI ${eventName} pulado sem valor válido doc=${doc.numero ?? doc.id}`,
+      );
+      return;
+    }
+
     // Idempotência: se já foi enviado com sucesso, não repete.
     const existing = await this.prisma.metaCapiEvent.findUnique({
       where: { uq_capi_doc_event: { tinyDocumentId: doc.id, eventName } },
@@ -341,7 +352,9 @@ export class MetaCapiService {
       }))
       .filter((c) => c.id != null);
 
-    const custom_data: Record<string, any> = { currency };
+    // currency SEMPRE presente e válido (evita "moeda de baixa qualidade").
+    const cur = (currency || 'BRL').toString().trim().toUpperCase() || 'BRL';
+    const custom_data: Record<string, any> = { currency: cur };
     // value alimenta o ROAS (Purchase) e o valor do AddToCart. Enviado nos DOIS
     // eventos sempre que houver um número válido (>= 0), com 2 casas decimais.
     const value = this.num(doc.valor);

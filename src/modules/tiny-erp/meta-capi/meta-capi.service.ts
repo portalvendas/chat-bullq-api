@@ -13,6 +13,7 @@ import {
   splitName,
   fbcFromFbclid,
 } from './meta-capi.hash';
+import { phoneVariants } from '../../../common/phone.util';
 
 export interface MetaCapiConfigInput {
   enabled?: boolean;
@@ -309,23 +310,30 @@ export class MetaCapiService {
     const end = (cli.endereco ??
       (Array.isArray(cli.enderecos) ? cli.enderecos[0] : undefined) ??
       {}) as Record<string, any>;
-    const { first, last } = splitName(doc.clienteNome);
-
-    // Tracking do lead (fbclid/fbp/fbc/ip/ua) capturado na LP, quando existir.
-    let tr: Record<string, any> = {};
-    if (doc.contactId) {
-      const contact = await this.prisma.contact.findUnique({
-        where: { id: doc.contactId },
-        select: { metadata: true },
-      });
-      tr = ((contact?.metadata as any)?.tracking ?? {}) as Record<string, any>;
-    }
     const tsMs = doc.data ? doc.data.getTime() : Date.now();
-    const fbc = tr.fbc || fbcFromFbclid(tr.fbclid, tsMs);
+
+    // Enriquecimento com o lead do CRM. O Purchase/AddToCart nasce do Tiny
+    // (CPF/nome/endereco fortes, porem telefone/e-mail esparsos e SEM fbclid).
+    // O contato do CRM tem o telefone bom (E.164), e-mail e o tracking da LP
+    // (fbp/fbc/fbclid). Casamos a venda ao contato (contact_id do sync; senao
+    // CPF->telefone->e-mail->nome ao vivo) e PREFERIMOS os dados do CRM sobre os
+    // do Tiny — e isso que sobe o match quality do telefone e destrava o fbc.
+    const crm = await this.resolveContactForDoc(organizationId, doc);
+    const tr = (crm?.tracking ?? {}) as Record<string, any>;
+
+    const phone = crm?.phone || doc.clienteTelefone;
+    const email = crm?.email || doc.clienteEmail;
+    const { first, last } = splitName(crm?.name || doc.clienteNome);
+
+    // fbc: usa o cookie real (_fbc) quando existir; senao reconstroi
+    // fb.1.<ts>.<fbclid> com o instante do LEAD (createdAt do contato ~ clique),
+    // nao a data da venda — timestamp errado degrada o casamento na Meta.
+    const leadTs = crm?.createdAt ? crm.createdAt.getTime() : tsMs;
+    const fbc = tr.fbc || fbcFromFbclid(tr.fbclid, leadTs);
 
     const user_data: Record<string, any> = {
-      em: arr(hashEmail(doc.clienteEmail)),
-      ph: arr(hashPhone(doc.clienteTelefone)),
+      em: arr(hashEmail(email)),
+      ph: arr(hashPhone(phone)),
       fn: arr(hashName(first)),
       ln: arr(hashName(last)),
       ct: arr(hashCity(end.municipio ?? end.cidade)),
@@ -378,6 +386,135 @@ export class MetaCapiService {
       user_data,
       custom_data,
     };
+  }
+
+  /**
+   * Casa a venda (TinyDocument) ao contato do CRM e devolve os campos usados no
+   * user_data. Usa o contact_id gravado no sync; se ausente, tenta um match ao
+   * vivo (CPF -> telefone -> e-mail -> nome) e persiste o vinculo de volta
+   * (best-effort) para as proximas rodadas e para o CRM. Somente leitura no
+   * caminho principal; a persistencia e guardada e nao derruba o envio.
+   */
+  private async resolveContactForDoc(
+    organizationId: string,
+    doc: DocForCapi,
+  ): Promise<{
+    id: string;
+    name: string | null;
+    phone: string | null;
+    email: string | null;
+    createdAt: Date | null;
+    tracking: Record<string, any>;
+  } | null> {
+    const load = async (id: string) => {
+      const c = await this.prisma.contact.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+      if (!c) return null;
+      return {
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        createdAt: c.createdAt,
+        tracking: ((c.metadata as any)?.tracking ?? {}) as Record<string, any>,
+      };
+    };
+
+    if (doc.contactId) return load(doc.contactId);
+
+    const matched = await this.matchContactId(organizationId, doc);
+    if (!matched) return null;
+
+    // Persiste o vinculo encontrado (so quando ainda estiver nulo) — melhora a
+    // cobertura futura e reflete o contato no CRM. Best-effort.
+    try {
+      await this.prisma.tinyDocument.updateMany({
+        where: { id: doc.id, contactId: null },
+        data: { contactId: matched.id, matchedBy: matched.by },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `CAPI persist match falhou doc=${doc.id}: ${err?.message ?? err}`,
+      );
+    }
+    return load(matched.id);
+  }
+
+  /**
+   * Match ao vivo venda->contato, na MESMA ordem/forca do sync do Tiny
+   * (CPF -> telefone -> e-mail -> nome). Duplicado aqui de proposito para nao
+   * criar dependencia circular com o TinyService (que ja depende deste). Apenas
+   * leitura. Retorna o id do contato e a estrategia que casou.
+   */
+  private async matchContactId(
+    organizationId: string,
+    doc: DocForCapi,
+  ): Promise<{ id: string; by: string } | null> {
+    // 1) CPF/CNPJ (metadata: cpfCnpj/cpf/cnpj/documento).
+    const cpf = (doc.clienteCpfCnpj ?? '').replace(/\D/g, '');
+    if (cpf.length >= 11) {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM contacts
+        WHERE organization_id = ${organizationId}
+          AND deleted_at IS NULL
+          AND regexp_replace(
+                COALESCE(metadata->>'cpfCnpj', metadata->>'cpf', metadata->>'cnpj', metadata->>'documento', ''),
+                '\\D', '', 'g'
+              ) = ${cpf}
+        LIMIT 1`;
+      if (rows[0]) return { id: rows[0].id, by: 'cpf_cnpj' };
+    }
+
+    // 2) Telefone — variacoes com/sem 9o digito, com/sem DDI.
+    const variants = phoneVariants(doc.clienteTelefone);
+    if (variants.length) {
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM contacts
+        WHERE organization_id = ${organizationId}
+          AND deleted_at IS NULL
+          AND phone IS NOT NULL
+          AND regexp_replace(phone, '\\D', '', 'g') = ANY(${variants})
+        LIMIT 1`;
+      if (rows[0]) return { id: rows[0].id, by: 'phone' };
+    }
+
+    // 3) E-mail (case-insensitive).
+    const email = (doc.clienteEmail || '').trim().toLowerCase();
+    if (email.includes('@')) {
+      const c = await this.prisma.contact.findFirst({
+        where: {
+          organizationId,
+          deletedAt: null,
+          email: { equals: email, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (c) return { id: c.id, by: 'email' };
+    }
+
+    // 4) Nome exato (case-insensitive) — fallback fraco, ultimo recurso.
+    const nome = (doc.clienteNome || '').trim();
+    if (nome.length >= 4) {
+      const c = await this.prisma.contact.findFirst({
+        where: {
+          organizationId,
+          deletedAt: null,
+          name: { equals: nome, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (c) return { id: c.id, by: 'name' };
+    }
+    return null;
   }
 
   private num(v: any): number | null {

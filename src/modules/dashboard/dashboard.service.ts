@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { MetaAdsService } from './meta-ads.service';
+import { buildXlsx, H, S, N } from './xlsx-lite.util';
+import type { Cell } from './xlsx-lite.util';
 
 export interface DateRange {
   from: Date;
@@ -816,6 +818,149 @@ export class DashboardService {
       })),
       spendByCampaign,
     };
+  }
+
+  /**
+   * Export comercial em .xlsx para o gestor de trafego cruzar CAMPANHA (e
+   * conjunto/criativo) com VENDAS e ORCAMENTOS. Escopo: documentos (pedido/
+   * orcamento) do Tiny com DATA no periodo, atribuidos ao lead pelo tracking
+   * (UTMs) capturado na entrada; gasto por campanha vem do Meta Ads. SEM PII
+   * (so o nome do cliente — telefone/CPF nao entram).
+   *
+   * Mapeamento UTM -> midia paga:
+   *   utm_source=origem, utm_campaign=campanha, utm_medium=conjunto,
+   *   utm_content=criativo, utm_term=posicionamento.
+   */
+  async buildCommercialXlsx(organizationId: string, range: DateRange): Promise<Buffer> {
+    const SEM = '(sem atribuicao)';
+    const g = (v: any) => (v != null && String(v).trim() ? String(v).trim() : '');
+    const attr = (m: any) => {
+      const t = (m?.tracking ?? {}) as any;
+      return {
+        origem: g(t.utm_source) || g(m?.source),
+        campanha: g(t.utm_campaign) || g(m?.campaignName) || SEM,
+        conjunto: g(t.utm_medium),
+        criativo: g(t.utm_content),
+        posicionamento: g(t.utm_term),
+      };
+    };
+    const num = (v: any) => (v == null ? 0 : Number(v) || 0);
+    const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : '');
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    // 1) Documentos (pedido/orcamento) com data no periodo.
+    const docs = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        kind: { in: ['PEDIDO', 'ORCAMENTO'] },
+        data: { gte: range.from, lte: range.to },
+      },
+      select: {
+        kind: true, numero: true, data: true, valor: true, situacao: true,
+        clienteNome: true, contactId: true, matchedBy: true,
+      },
+      orderBy: { data: 'asc' },
+    });
+
+    // 2) Atribuicao via contato vinculado (tracking na entrada).
+    const cids = [...new Set(docs.map((d) => d.contactId).filter(Boolean))] as string[];
+    const contacts = cids.length
+      ? await this.prisma.contact.findMany({
+          where: { id: { in: cids } },
+          select: { id: true, createdAt: true, metadata: true },
+        })
+      : [];
+    const cById = new Map(contacts.map((c) => [c.id, c] as const));
+
+    // 3) Leads do periodo (contatos que entraram) por atribuicao.
+    const leadContacts = await this.prisma.contact.findMany({
+      where: { organizationId, deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+      select: { metadata: true },
+    });
+
+    // 4) Gasto por campanha (Meta) — best-effort.
+    const spend = await this.metaAds.getSpend(organizationId, range).catch(() => null);
+    const gastoByCamp = (c: string) => (spend ? spend.byCampaign[c] ?? 0 : 0);
+
+    // ── Agregacoes ──
+    type Agg = { leads: number; orcQ: number; orcV: number; pedQ: number; pedV: number };
+    const mk = (): Agg => ({ leads: 0, orcQ: 0, orcV: 0, pedQ: 0, pedV: 0 });
+    const byCamp = new Map<string, Agg>();
+    const byCC = new Map<string, { campanha: string; conjunto: string; criativo: string; a: Agg }>();
+    const getCamp = (k: string) => { let a = byCamp.get(k); if (!a) { a = mk(); byCamp.set(k, a); } return a; };
+    const getCC = (ca: string, co: string, cr: string) => {
+      const k = ca + '||' + co + '||' + cr;
+      let x = byCC.get(k);
+      if (!x) { x = { campanha: ca, conjunto: co, criativo: cr, a: mk() }; byCC.set(k, x); }
+      return x;
+    };
+
+    for (const lc of leadContacts) {
+      const at = attr(lc.metadata);
+      getCamp(at.campanha).leads += 1;
+      getCC(at.campanha, at.conjunto || '(sem conjunto)', at.criativo || '(sem criativo)').a.leads += 1;
+    }
+
+    const detalheRows: Cell[][] = [
+      ['Tipo', 'Numero', 'Data do documento', 'Valor (R$)', 'Situacao', 'Cliente',
+       'Data entrada do lead', 'Origem', 'Campanha', 'Conjunto', 'Criativo',
+       'Posicionamento', 'Casou por'].map(H),
+    ];
+    for (const d of docs) {
+      const c = d.contactId ? cById.get(d.contactId) : undefined;
+      const at = attr(c?.metadata);
+      const tipo = d.kind === 'PEDIDO' ? 'Pedido' : 'Orcamento';
+      const valor = num(d.valor);
+      detalheRows.push([
+        S(tipo), S(d.numero ?? ''), S(ymd(d.data)), N(valor), S(d.situacao ?? ''),
+        S(d.clienteNome ?? ''), S(ymd(c?.createdAt)),
+        S(at.origem), S(at.campanha), S(at.conjunto), S(at.criativo), S(at.posicionamento),
+        S(d.matchedBy ?? ''),
+      ]);
+      const camp = getCamp(at.campanha);
+      const cc = getCC(at.campanha, at.conjunto || '(sem conjunto)', at.criativo || '(sem criativo)').a;
+      if (d.kind === 'ORCAMENTO') { camp.orcQ += 1; camp.orcV += valor; cc.orcQ += 1; cc.orcV += valor; }
+      else { camp.pedQ += 1; camp.pedV += valor; cc.pedQ += 1; cc.pedV += valor; }
+    }
+
+    // Campanhas que gastaram mas sem lead/doc no CRM: ainda mostrar o gasto.
+    if (spend) for (const camp of Object.keys(spend.byCampaign)) getCamp(camp);
+
+    const campRows: Cell[][] = [
+      ['Campanha', 'Gasto (R$)', 'Leads', 'Orcamentos (qtd)', 'Orcamentos (R$)',
+       'Pedidos (qtd)', 'Receita pedidos (R$)', 'Close (%)', 'CAC (R$)', 'ROAS'].map(H),
+    ];
+    const campSorted = [...byCamp.entries()].sort(
+      (a, b) => gastoByCamp(b[0]) - gastoByCamp(a[0]) || b[1].pedV - a[1].pedV,
+    );
+    for (const [camp, a] of campSorted) {
+      const gasto = gastoByCamp(camp);
+      campRows.push([
+        S(camp), gasto ? N(round2(gasto)) : S(''), N(a.leads),
+        N(a.orcQ), N(round2(a.orcV)), N(a.pedQ), N(round2(a.pedV)),
+        a.leads > 0 ? N(Math.round((a.pedQ / a.leads) * 1000) / 10) : S(''),
+        gasto > 0 && a.pedQ > 0 ? N(round2(gasto / a.pedQ)) : S(''),
+        gasto > 0 ? N(round2(a.pedV / gasto)) : S(''),
+      ]);
+    }
+
+    const ccRows: Cell[][] = [
+      ['Campanha', 'Conjunto', 'Criativo', 'Leads', 'Orcamentos (qtd)',
+       'Pedidos (qtd)', 'Receita pedidos (R$)'].map(H),
+    ];
+    const ccSorted = [...byCC.values()].sort((a, b) => b.a.pedV - a.a.pedV || b.a.leads - a.a.leads);
+    for (const x of ccSorted) {
+      ccRows.push([
+        S(x.campanha), S(x.conjunto), S(x.criativo), N(x.a.leads),
+        N(x.a.orcQ), N(x.a.pedQ), N(round2(x.a.pedV)),
+      ]);
+    }
+
+    return buildXlsx([
+      { name: 'Detalhe', rows: detalheRows },
+      { name: 'Resumo por campanha', rows: campRows },
+      { name: 'Conjunto e criativo', rows: ccRows },
+    ]);
   }
 
   /**

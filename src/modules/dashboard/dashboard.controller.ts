@@ -1,4 +1,5 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
@@ -29,6 +30,32 @@ export class DashboardController {
     @Query('origem') origem?: string,
   ) {
     return this.service.getCommercial(orgId, this.parseRange(from, to), { origem });
+  }
+
+  @Get('commercial/export')
+  @ApiOperation({
+    summary:
+      'Exporta o comercial (campanha x conjunto x criativo x vendas/orcamentos) em .xlsx',
+  })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  async exportCommercial(
+    @CurrentOrg('id') orgId: string,
+    @Res() res: Response,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const range = this.parseRange(from, to);
+    const buf = await this.service.buildCommercialXlsx(orgId, range);
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const filename = `comercial_${ymd(range.from)}_a_${ymd(range.to)}.xlsx`;
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(buf.length),
+    });
+    res.end(buf);
   }
 
   @Get('lead-intake-health')

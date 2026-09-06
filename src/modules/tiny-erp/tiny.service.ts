@@ -237,6 +237,9 @@ export class TinyService {
     const limit = 100;
     let total = Infinity;
     let count = 0;
+    // Cache de contatos do Tiny na rodada: evita rechamar getContato pro mesmo
+    // cliente e respeita o rate limit de 120/min.
+    const contatoCache = new Map<string, any>();
     while (offset < total) {
       const page = await this.http.listarPedidos(organizationId, {
         offset,
@@ -246,7 +249,7 @@ export class TinyService {
       const itens = page.itens ?? [];
       total = page.paginacao?.total ?? itens.length;
       for (const p of itens) {
-        await this.upsertPedido(organizationId, p);
+        await this.upsertPedido(organizationId, p, contatoCache);
         count++;
       }
       if (itens.length < limit) break;
@@ -255,14 +258,48 @@ export class TinyService {
     return count;
   }
 
-  private async upsertPedido(organizationId: string, p: any): Promise<void> {
+  private async upsertPedido(
+    organizationId: string,
+    p: any,
+    contatoCache?: Map<string, any>,
+  ): Promise<void> {
     const cli = p?.cliente ?? {};
-    const phone = cli.celular || cli.telefone || null;
+    const contatoId = cli.id != null ? String(cli.id) : null;
+    let phone = cli.celular || cli.telefone || cli.fone || null;
+    let cpf = cli.cpfCnpj || null;
+    let email = cli.email || null;
+    let nome = cli.nome || null;
+    // O cliente embutido no pedido costuma vir SEM telefone (sobretudo em
+    // marketplace). Quando falta telefone e temos o id do contato, resolvemos o
+    // contato mestre do Tiny (mesma fonte que o orcamento usa, com cache) para
+    // completar telefone/CPF/e-mail. Isso melhora o casamento com o lead do CRM
+    // e o `ph` de fallback do CAPI. Fetch so no buraco -> respeita o rate limit.
+    if (!phone && contatoId) {
+      try {
+        let full: any;
+        if (contatoCache?.has(contatoId)) {
+          full = contatoCache.get(contatoId);
+        } else {
+          full = (await this.http.getContato(organizationId, contatoId)) ?? {};
+          contatoCache?.set(contatoId, full);
+        }
+        if (full && typeof full === 'object') {
+          phone = full.celular || full.telefone || full.fone || phone;
+          cpf = cpf || full.cpfCnpj || null;
+          email = email || full.email || null;
+          nome = nome || full.nome || null;
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `getContato do pedido falhou id=${contatoId}: ${err?.message ?? err}`,
+        );
+      }
+    }
     const match = await this.matchContact(organizationId, {
-      cpfCnpj: cli.cpfCnpj,
+      cpfCnpj: cpf,
       phone,
-      email: cli.email,
-      nome: cli.nome,
+      email,
+      nome,
     });
     const situacao = PEDIDO_SITUACOES[String(p?.situacao)] ?? String(p?.situacao ?? '');
     const isMkt = this.isMarketplace(p?.ecommerce);
@@ -272,11 +309,11 @@ export class TinyService {
       situacao,
       data: this.parseDate(p?.dataCriacao),
       valor: this.parseDecimal(p?.valor),
-      clienteNome: cli.nome ?? null,
-      clienteCpfCnpj: this.digits(cli.cpfCnpj) || null,
+      clienteNome: nome ?? null,
+      clienteCpfCnpj: this.digits(cpf) || null,
       clienteTelefone: phone,
-      clienteEmail: cli.email ?? null,
-      tinyContatoId: cli.id != null ? String(cli.id) : null,
+      clienteEmail: email ?? null,
+      tinyContatoId: contatoId,
       isMarketplace: isMkt,
       contactId: match?.contactId ?? null,
       matchedBy: match?.matchedBy ?? null,

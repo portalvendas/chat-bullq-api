@@ -16,6 +16,7 @@ import { WhatsAppOfficialHttpClient } from '../adapters/whatsapp-official/whatsa
 import { InstagramHttpClient } from '../adapters/instagram/instagram.http-client';
 import { ZApiHttpClient } from '../adapters/z-api/zapi.http-client';
 import { MercadoLivreHttpClient } from '../adapters/mercado-livre/mercadolivre.http-client';
+import { BaileysSessionManager } from '../adapters/baileys/baileys-session.manager';
 import { ChannelSyncOrchestrator } from '../sync/channel-sync.orchestrator';
 import {
   ChannelAccessService,
@@ -34,6 +35,7 @@ export class ChannelsService {
     private readonly instagramHttpClient: InstagramHttpClient,
     private readonly zapiHttpClient: ZApiHttpClient,
     private readonly mlHttpClient: MercadoLivreHttpClient,
+    private readonly baileysManager: BaileysSessionManager,
     private readonly syncOrchestrator: ChannelSyncOrchestrator,
     private readonly prisma: PrismaService,
     private readonly channelAccess: ChannelAccessService,
@@ -352,6 +354,16 @@ export class ChannelsService {
           qrcode: qrcode ?? null,
         };
       }
+      case ChannelType.WHATSAPP_BAILEYS: {
+        // WhatsApp NATIVO: o QR é gerado pelo próprio backend (motor Baileys),
+        // sem provedor externo. `ensure` sobe o socket e devolve o QR (data-URI)
+        // até o status virar `connected`. O front faz polling igual ao Z-API.
+        const { connected, status, qrcode } = await this.baileysManager.ensure(
+          channel.id,
+          organizationId,
+        );
+        return { supported: true, connected, status, qrcode };
+      }
       default:
         return {
           supported: false,
@@ -429,6 +441,14 @@ export class ChannelsService {
             status: 'connected',
             data: { sellerId: me?.id, nickname: me?.nickname },
           };
+        }
+
+        case ChannelType.WHATSAPP_BAILEYS: {
+          const { connected, status } = await this.baileysManager.ensure(
+            channel.id,
+            organizationId,
+          );
+          return { success: connected, status, data: { connected } };
         }
 
         default:

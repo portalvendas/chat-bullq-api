@@ -25,6 +25,9 @@ import { MercadoLivreInboundAdapter } from './adapters/mercado-livre/mercadolivr
 import { MercadoLivreOutboundAdapter } from './adapters/mercado-livre/mercadolivre.outbound-adapter';
 import { ShopeeInboundAdapter } from './adapters/shopee/shopee.inbound-adapter';
 import { ShopeeOutboundAdapter } from './adapters/shopee/shopee.outbound-adapter';
+import { BaileysModule } from './adapters/baileys/baileys.module';
+import { BaileysInboundAdapter } from './adapters/baileys/baileys.inbound-adapter';
+import { BaileysOutboundAdapter } from './adapters/baileys/baileys.outbound-adapter';
 import { ChannelSyncOrchestrator } from './sync/channel-sync.orchestrator';
 import { ChannelSyncProcessor } from './sync/channel-sync.processor';
 import { CHANNEL_SYNC_QUEUE } from './sync/channel-sync.constants';
@@ -50,6 +53,7 @@ import { WebhookThrottleGuard } from './webhook-throttle.guard';
     ZApiModule,
     MercadoLivreModule,
     ShopeeModule,
+    BaileysModule,
     forwardRef(() => MessagingModule),
   ],
   controllers: [WebhookGatewayController, ChannelsController],
@@ -88,6 +92,8 @@ export class ChannelHubModule implements OnModuleInit {
     private readonly mlOutbound: MercadoLivreOutboundAdapter,
     private readonly shopeeInbound: ShopeeInboundAdapter,
     private readonly shopeeOutbound: ShopeeOutboundAdapter,
+    private readonly baileysInbound: BaileysInboundAdapter,
+    private readonly baileysOutbound: BaileysOutboundAdapter,
   ) {}
 
   onModuleInit() {
@@ -97,6 +103,7 @@ export class ChannelHubModule implements OnModuleInit {
     this.registry.register(this.zapiInbound, this.zapiOutbound);
     this.registry.register(this.mlInbound, this.mlOutbound);
     this.registry.register(this.shopeeInbound, this.shopeeOutbound);
+    this.registry.register(this.baileysInbound, this.baileysOutbound);
     this.registry.registerHistorySync(this.zappfySync);
     this.registry.registerHistorySync(this.instagramSync);
   }

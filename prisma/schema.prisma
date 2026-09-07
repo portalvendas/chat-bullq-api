@@ -25,6 +25,7 @@ enum ChannelType {
   WHATSAPP_OFFICIAL
   WHATSAPP_ZAPPFY
   WHATSAPP_ZAPI
+  WHATSAPP_BAILEYS
   INSTAGRAM
   MERCADO_LIVRE
   SHOPEE
@@ -425,6 +426,24 @@ model Channel {
 
   @@index([organizationId, type], name: "idx_channel_org_type")
   @@map("channels")
+}
+
+/// Sessão do WhatsApp NATIVO (Baileys) por canal. Guarda o auth-state
+/// multi-device (creds + signal keys) serializado via BufferJSON, pra
+/// rehidratar o socket sem novo scan de QR. 1 número por canal.
+///
+/// ⚠️ O runtime do Baileys é stateful/single-instance (ver BaileysSessionManager).
+model WhatsappBaileysSession {
+  id        String   @id @default(cuid())
+  channelId String   @unique @map("channel_id")
+  creds     Json?
+  keys      Json?
+  status    String?
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("whatsapp_baileys_sessions")
 }
 
 model ChannelAgent {

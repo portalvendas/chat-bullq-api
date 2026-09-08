@@ -152,10 +152,10 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
    * Envia texto. Lança se a sessão não estiver conectada (o caller traduz pra
    * erro apropriado / retry da fila outbound).
    */
-  async sendText(
+  async sendContent(
     channelId: string,
     toJidOrNumber: string,
-    text: string,
+    content: any,
   ): Promise<{ id: string }> {
     const s = this.sessions.get(channelId);
     if (!s || s.status !== 'connected' || !s.sock) {
@@ -164,8 +164,17 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
     const jid = toJidOrNumber.includes('@')
       ? toJidOrNumber
       : this.mapper.numberToJid(toJidOrNumber);
-    const sent = await s.sock.sendMessage(jid, { text });
+    const sent = await s.sock.sendMessage(jid, content);
     return { id: sent?.key?.id || '' };
+  }
+
+  /** Atalho pra texto (mantido por compatibilidade). */
+  async sendText(
+    channelId: string,
+    toJidOrNumber: string,
+    text: string,
+  ): Promise<{ id: string }> {
+    return this.sendContent(channelId, toJidOrNumber, { text });
   }
 
   // --------------------------------------------------------------------------

@@ -40,18 +40,50 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
     contactExternalId: string,
     message: NormalizedOutboundMessage,
   ): Promise<SendResult> {
-    if (message.type !== MessageContentType.TEXT) {
-      // MVP: só texto. Mídia é TODO (sock.sendMessage com image/document).
-      throw new Error(
-        `Baileys MVP só envia texto (recebido ${message.type})`,
-      );
-    }
-    const text = message.content?.text ?? '';
-    if (!text) throw new Error('Mensagem de texto vazia');
-
     const target = this.resolveSendTarget(contactExternalId);
-    const res = await this.manager.sendText(channel.id, target, text);
+    const content = this.buildContent(message);
+    const res = await this.manager.sendContent(channel.id, target, content);
     return { externalId: res.id, providerResponse: res };
+  }
+
+  /**
+   * Monta o payload do `sock.sendMessage` do Baileys a partir da mensagem
+   * normalizada. Mídia vai por URL (`{ url }`): o Baileys baixa a `mediaUrl`
+   * (mesma URL pública que os outros provedores consomem) e faz o upload
+   * cifrado pro WhatsApp. `caption` cai no texto do nó quando não há legenda.
+   */
+  private buildContent(message: NormalizedOutboundMessage): any {
+    const c = (message.content ?? {}) as any;
+    const caption: string | undefined = c.caption ?? c.text ?? undefined;
+    switch (message.type) {
+      case MessageContentType.TEXT: {
+        const text = c.text ?? '';
+        if (!text) throw new Error('Mensagem de texto vazia');
+        return { text };
+      }
+      case MessageContentType.IMAGE:
+        if (!c.mediaUrl) throw new Error('IMAGE sem mediaUrl');
+        return { image: { url: c.mediaUrl }, caption, mimetype: c.mimeType || undefined };
+      case MessageContentType.VIDEO:
+        if (!c.mediaUrl) throw new Error('VIDEO sem mediaUrl');
+        return { video: { url: c.mediaUrl }, caption, mimetype: c.mimeType || undefined };
+      case MessageContentType.AUDIO:
+        if (!c.mediaUrl) throw new Error('AUDIO sem mediaUrl');
+        return { audio: { url: c.mediaUrl }, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
+      case MessageContentType.DOCUMENT:
+        if (!c.mediaUrl) throw new Error('DOCUMENT sem mediaUrl');
+        return {
+          document: { url: c.mediaUrl },
+          fileName: c.fileName || 'arquivo',
+          mimetype: c.mimeType || 'application/octet-stream',
+          caption,
+        };
+      case MessageContentType.STICKER:
+        if (!c.mediaUrl) throw new Error('STICKER sem mediaUrl');
+        return { sticker: { url: c.mediaUrl } };
+      default:
+        throw new Error(`Baileys: tipo ${message.type} não suportado no envio`);
+    }
   }
 
   async sendTypingIndicator(): Promise<void> {

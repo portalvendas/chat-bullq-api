@@ -57,15 +57,26 @@ export class BaileysMessageMapper {
     if (!text) return null; // MVP: só texto
 
     const isEcho = key.fromMe === true;
-    const number = this.jidToNumber(remoteJid);
+    // Baileys v7 usa LID (@lid) pra esconder o número: o `remoteJid` pode ser um
+    // LID e o telefone real vem em `remoteJidAlt`. Respondemos SEMPRE ao
+    // `remoteJid` original (a sessão que o socket já tem chaves) e só gravamos
+    // `contactPhone` quando conseguimos um JID de telefone de verdade — nunca
+    // fabricamos um telefone a partir dos dígitos do LID.
+    const altJid: string = key.remoteJidAlt || '';
+    const phoneJid = remoteJid.endsWith('@s.whatsapp.net')
+      ? remoteJid
+      : altJid.endsWith('@s.whatsapp.net')
+        ? altJid
+        : '';
+    const phoneDigits = phoneJid ? this.jidToNumber(phoneJid) : '';
     const tsRaw = waMsg.messageTimestamp;
     const tsMs = tsRaw ? Number(tsRaw) * 1000 : Date.now();
 
     const result: NormalizedInboundMessage = {
       externalMessageId: key.id || '',
-      externalContactId: `${number}@s.whatsapp.net`,
+      externalContactId: remoteJid,
       contactName: isEcho ? undefined : waMsg.pushName || undefined,
-      contactPhone: number || undefined,
+      contactPhone: phoneDigits || undefined,
       channelType: ChannelType.WHATSAPP_BAILEYS,
       timestamp: new Date(tsMs),
       type: MessageContentType.TEXT,

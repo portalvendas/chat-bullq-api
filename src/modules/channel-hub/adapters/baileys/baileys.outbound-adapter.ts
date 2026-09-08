@@ -23,24 +23,16 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
   ) {}
 
   /**
-   * Contato é chaveado pelo JID; o envio precisa do número real. Resolve pelo
-   * contato e cai no próprio externalId como último recurso (idêntico ao Z-API).
+   * O contato é chaveado pelo JID COMPLETO do WhatsApp — telefone
+   * (`<num>@s.whatsapp.net`) OU LID (`<id>@lid`). Respondemos ao JID EXATO da
+   * conversa: é a sessão que o Baileys já tem chaves, então entrega de fato.
+   * (No LID, reconstruir um `@s.whatsapp.net` a partir dos dígitos gera um
+   * número inexistente — a msg fica com 1 tique e nunca chega.) Só
+   * reconstruímos quando, por algum motivo, vier apenas o número solto.
    */
-  private async resolveSendPhone(
-    channelId: string,
-    externalId: string,
-  ): Promise<string> {
-    try {
-      const cc = await this.prisma.contactChannel.findUnique({
-        where: { uq_contact_channel_external: { channelId, externalId } },
-        include: { contact: { select: { phone: true } } },
-      });
-      const phone = cc?.contact?.phone?.replace(/\D/g, '');
-      if (phone) return phone;
-    } catch (err: any) {
-      this.logger.warn(`resolveSendPhone falhou (${externalId}): ${err?.message}`);
-    }
-    return externalId.replace(/\D/g, '');
+  private resolveSendTarget(externalId: string): string {
+    if (externalId.includes('@')) return externalId;
+    return this.mapper.numberToJid(externalId);
   }
 
   async sendMessage(
@@ -57,8 +49,8 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
     const text = message.content?.text ?? '';
     if (!text) throw new Error('Mensagem de texto vazia');
 
-    const sendPhone = await this.resolveSendPhone(channel.id, contactExternalId);
-    const res = await this.manager.sendText(channel.id, sendPhone, text);
+    const target = this.resolveSendTarget(contactExternalId);
+    const res = await this.manager.sendText(channel.id, target, text);
     return { externalId: res.id, providerResponse: res };
   }
 

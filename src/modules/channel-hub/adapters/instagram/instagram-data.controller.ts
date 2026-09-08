@@ -102,7 +102,8 @@ export class InstagramDataController {
   @ApiOperation({ summary: 'Callback de desautorização do Instagram' })
   async deauthorize(
     @Body('signed_request') signed: string,
-  ): Promise<{ ok: boolean }> {
+    @Res() res: Response,
+  ): Promise<void> {
     const data = this.parseSignedRequest(signed);
     if (data?.user_id) {
       const n = await this.clearChannelsForIgUser(String(data.user_id));
@@ -112,7 +113,8 @@ export class InstagramDataController {
     } else {
       this.logger.warn('Deauthorize sem user_id válido');
     }
-    return { ok: true };
+    // Resposta CRUA (sem o wrapper { data, meta } do interceptor global) e 200.
+    res.status(200).json({ ok: true });
   }
 
   @Post('data-deletion')
@@ -120,7 +122,8 @@ export class InstagramDataController {
   @ApiOperation({ summary: 'Solicitação de exclusão de dados do Instagram' })
   async dataDeletion(
     @Body('signed_request') signed: string,
-  ): Promise<{ url: string; confirmation_code: string }> {
+    @Res() res: Response,
+  ): Promise<void> {
     const data = this.parseSignedRequest(signed);
     const code = crypto.randomBytes(8).toString('hex');
     if (data?.user_id) {
@@ -132,10 +135,12 @@ export class InstagramDataController {
       this.logger.warn(`Data deletion sem user_id válido code=${code}`);
     }
     const appUrl = (this.config.get<string>('APP_URL') || '').replace(/\/$/, '');
-    return {
+    // A Meta exige o JSON CRU com { url, confirmation_code } no topo — por isso
+    // respondemos via @Res, sem o wrapper { data, meta } do interceptor global.
+    res.status(200).json({
       url: `${appUrl}/api/v1/integrations/instagram/data-deletion/status?code=${code}`,
       confirmation_code: code,
-    };
+    });
   }
 
   @Get('data-deletion/status')

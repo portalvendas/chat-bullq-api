@@ -8,6 +8,7 @@ import { InstagramSyncAdapter } from './instagram.sync-adapter';
 import { InstagramContactEnricherService } from './instagram-contact-enricher.service';
 import { InstagramOAuthService } from './instagram.oauth.service';
 import { InstagramOAuthController } from './instagram-oauth.controller';
+import { InstagramDataController } from './instagram-data.controller';
 import {
   InstagramMaintenanceProcessor,
   INSTAGRAM_MAINTENANCE_QUEUE,
@@ -15,7 +16,7 @@ import {
 
 @Module({
   imports: [BullModule.registerQueue({ name: INSTAGRAM_MAINTENANCE_QUEUE })],
-  controllers: [InstagramOAuthController],
+  controllers: [InstagramOAuthController, InstagramDataController],
   providers: [
     InstagramInboundAdapter,
     InstagramOutboundAdapter,

@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { MessagingModule } from '../../../messaging/messaging.module';
 import { BaileysAuthStateService } from './baileys-auth-state.service';
 import { BaileysMessageMapper } from './baileys.message-mapper';
 import { BaileysSessionManager } from './baileys-session.manager';
@@ -14,7 +15,10 @@ import { BaileysOutboundAdapter } from './baileys.outbound-adapter';
  * processo único (worker). Ver doc de deploy.
  */
 @Module({
-  imports: [BullModule.registerQueue({ name: 'inbound-messages' })],
+  imports: [
+    BullModule.registerQueue({ name: 'inbound-messages' }),
+    forwardRef(() => MessagingModule),
+  ],
   providers: [
     BaileysAuthStateService,
     BaileysMessageMapper,

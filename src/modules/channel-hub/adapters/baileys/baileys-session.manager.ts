@@ -24,12 +24,14 @@ import { Queue } from 'bullmq';
 import { ChannelType } from '@prisma/client';
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../../../../database/prisma.service';
 import { BaileysAuthStateService } from './baileys-auth-state.service';
 import { BaileysMessageMapper } from './baileys.message-mapper';
+import { UploadsService } from '../../../messaging/messages/uploads.service';
 
 type ConnStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -69,6 +71,7 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly authState: BaileysAuthStateService,
     private readonly mapper: BaileysMessageMapper,
+    private readonly uploads: UploadsService,
     @InjectQueue('inbound-messages') private readonly inboundQueue: Queue,
   ) {}
 
@@ -312,6 +315,14 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const message = this.mapper.normalizeInbound(waMsg);
     if (!message) return;
+
+    // Mídia recebida (cliente -> Kortia): o WhatsApp entrega cifrado pelo
+    // socket, então baixamos os bytes e re-hospedamos no storage, preenchendo
+    // content.mediaUrl (mesmo formato durável dos outros canais).
+    if (this.mapper.isMedia(message.type) && !message.content.mediaUrl) {
+      await this.downloadAndAttachMedia(channelId, waMsg, message);
+    }
+
     // Ecos (mensagens enviadas pelo próprio número, ex.: pelo celular) entram
     // no mesmo fluxo dos webhooks — o pipeline decide o que fazer com isEcho.
     await this.inboundQueue.add(
@@ -324,6 +335,39 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
         removeOnFail: false,
       },
     );
+  }
+
+  private async downloadAndAttachMedia(
+    channelId: string,
+    waMsg: any,
+    message: { content: any; externalMessageId: string },
+  ): Promise<void> {
+    const s = this.sessions.get(channelId);
+    try {
+      const buffer = (await downloadMediaMessage(
+        waMsg,
+        'buffer',
+        {},
+        {
+          logger: silentLogger(),
+          reuploadRequest: s?.sock?.updateMediaMessage,
+        } as any,
+      )) as Buffer;
+      const saved = await this.uploads.saveInboundMedia({
+        buffer,
+        mimeType: message.content?.mimeType || 'application/octet-stream',
+        channelId,
+        originalFilename: message.content?.fileName || null,
+      });
+      message.content.mediaUrl = saved.url;
+      message.content.mimeType = saved.mimeType;
+      message.content.fileSize = saved.size;
+    } catch (e: any) {
+      // Não bloqueia: sem mediaUrl a msg ainda entra (o inbox mostra o tipo).
+      this.logger.error(
+        `download mídia canal=${channelId} msg=${message.externalMessageId}: ${e?.message ?? e}`,
+      );
+    }
   }
 
   private async persistStatus(

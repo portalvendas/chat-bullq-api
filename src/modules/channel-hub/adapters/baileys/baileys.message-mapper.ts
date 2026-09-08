@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ChannelType } from '@prisma/client';
 import {
   NormalizedInboundMessage,
+  NormalizedMessageContent,
   MessageContentType,
 } from '../../ports/types';
 
@@ -54,7 +55,8 @@ export class BaileysMessageMapper {
     }
 
     const text = this.extractText(message);
-    if (!text) return null; // MVP: só texto
+    const media = text ? null : this.extractMedia(message);
+    if (!text && !media) return null; // aceita texto OU mídia
 
     const isEcho = key.fromMe === true;
     // Baileys v7 usa LID (@lid) pra esconder o número: o `remoteJid` pode ser um
@@ -79,8 +81,8 @@ export class BaileysMessageMapper {
       contactPhone: phoneDigits || undefined,
       channelType: ChannelType.WHATSAPP_BAILEYS,
       timestamp: new Date(tsMs),
-      type: MessageContentType.TEXT,
-      content: { text },
+      type: media ? media.type : MessageContentType.TEXT,
+      content: media ? media.content : { text },
       isForwarded:
         !!message?.extendedTextMessage?.contextInfo?.isForwarded ||
         !!message?.extendedTextMessage?.contextInfo?.forwardingScore,
@@ -112,5 +114,76 @@ export class BaileysMessageMapper {
       message?.viewOnceMessageV2?.message;
     if (inner) return this.extractText(inner);
     return '';
+  }
+
+  /**
+   * Extrai metadados de mídia (imagem/vídeo/áudio/documento/sticker). NÃO baixa
+   * os bytes — o download+upload é feito no manager, que tem o socket. Aqui só
+   * devolvemos type + content (caption/mimeType/fileName); o `mediaUrl` é
+   * preenchido depois.
+   */
+  extractMedia(
+    message: any,
+  ): { type: MessageContentType; content: NormalizedMessageContent } | null {
+    const inner =
+      message?.ephemeralMessage?.message ||
+      message?.viewOnceMessage?.message ||
+      message?.viewOnceMessageV2?.message;
+    if (inner) return this.extractMedia(inner);
+
+    const img = message?.imageMessage;
+    if (img)
+      return {
+        type: MessageContentType.IMAGE,
+        content: {
+          caption: img.caption || undefined,
+          mimeType: img.mimetype || undefined,
+        },
+      };
+    const vid = message?.videoMessage;
+    if (vid)
+      return {
+        type: MessageContentType.VIDEO,
+        content: {
+          caption: vid.caption || undefined,
+          mimeType: vid.mimetype || undefined,
+        },
+      };
+    const aud = message?.audioMessage;
+    if (aud)
+      return {
+        type: MessageContentType.AUDIO,
+        content: { mimeType: aud.mimetype || undefined },
+      };
+    const doc =
+      message?.documentMessage ||
+      message?.documentWithCaptionMessage?.message?.documentMessage;
+    if (doc)
+      return {
+        type: MessageContentType.DOCUMENT,
+        content: {
+          fileName: doc.fileName || undefined,
+          caption: doc.caption || undefined,
+          mimeType: doc.mimetype || undefined,
+        },
+      };
+    const stk = message?.stickerMessage;
+    if (stk)
+      return {
+        type: MessageContentType.STICKER,
+        content: { mimeType: stk.mimetype || 'image/webp' },
+      };
+    return null;
+  }
+
+  /** True para tipos que carregam mídia (precisam baixar bytes no manager). */
+  isMedia(type: MessageContentType): boolean {
+    return (
+      type === MessageContentType.IMAGE ||
+      type === MessageContentType.VIDEO ||
+      type === MessageContentType.AUDIO ||
+      type === MessageContentType.DOCUMENT ||
+      type === MessageContentType.STICKER
+    );
   }
 }

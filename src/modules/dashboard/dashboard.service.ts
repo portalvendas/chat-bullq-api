@@ -644,6 +644,11 @@ export class DashboardService {
             (s, r) => s + (r.contactId ? pedByContact.get(r.contactId)?.val ?? 0 : 0),
             0,
           ),
+          // ORCADO = soma do valor dos ORCAMENTOS atribuidos aos leads da origem.
+          valorOrcado: rs.reduce(
+            (s, r) => s + (r.contactId ? orcByContact.get(r.contactId)?.val ?? 0 : 0),
+            0,
+          ),
         }))
         .sort((a, b) => b.leads - a.leads)
         .slice(0, 30);
@@ -806,6 +811,7 @@ export class DashboardService {
         ganhos: r.ganhos,
         orcamentos: r.orcamentos,
         pedidos: r.pedidos,
+        valorOrcado: r.valorOrcado,
         valorGanho: r.valorGanho,
         conversaoPct: pct(r.pedidos, r.leads),
       })),

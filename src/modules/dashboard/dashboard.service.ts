@@ -964,6 +964,123 @@ export class DashboardService {
   }
 
   /**
+   * Export focado em GOOGLE: leads com gclid (chave de casamento p/ conversao
+   * offline no Google Ads) e seus orcamentos/pedidos do Tiny. Escopo:
+   * documentos (pedido/orcamento) com DATA no periodo, cujo LEAD tem gclid.
+   * Duas abas: "Por lead" (1 linha por lead, ultimo orcamento + ultimo pedido)
+   * e "Documentos" (1 linha por documento — granular, pronto p/ importar).
+   */
+  async buildGoogleLeadsXlsx(organizationId: string, range: DateRange): Promise<Buffer> {
+    const num = (v: any) => (v == null ? 0 : Number(v) || 0);
+    const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : '');
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const gclidOf = (m: any) => String(m?.tracking?.gclid ?? '').trim();
+    const isGoogle = (m: any) => {
+      if (gclidOf(m)) return true;
+      const hay = `${String(m?.source ?? '')} ${String(m?.tracking?.utm_source ?? '')}`.toLowerCase();
+      return /google|adwords/.test(hay);
+    };
+
+    // 1) Documentos (pedido/orcamento) com data no periodo, ja com contato.
+    const docs = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        kind: { in: ['PEDIDO', 'ORCAMENTO'] },
+        data: { gte: range.from, lte: range.to },
+        contactId: { not: null },
+      },
+      select: {
+        kind: true, numero: true, data: true, valor: true, situacao: true,
+        clienteNome: true, clienteCpfCnpj: true, clienteTelefone: true,
+        contactId: true, matchedBy: true,
+      },
+      orderBy: { data: 'asc' },
+    });
+
+    // 2) Contatos vinculados (tracking com gclid + telefone + data de entrada).
+    const cids = [...new Set(docs.map((d) => d.contactId).filter(Boolean))] as string[];
+    const contacts = cids.length
+      ? await this.prisma.contact.findMany({
+          where: { id: { in: cids } },
+          select: { id: true, name: true, phone: true, createdAt: true, metadata: true },
+        })
+      : [];
+    const cById = new Map(contacts.map((c) => [c.id, c] as const));
+
+    type LeadAgg = {
+      gclid: string; leadDate: Date | null; cliente: string;
+      telefone: string; cpf: string;
+      orcQ: number; orc?: { numero: string; valor: number; data: Date | null };
+      pedQ: number; ped?: { numero: string; valor: number; situacao: string; data: Date | null };
+    };
+    const byLead = new Map<string, LeadAgg>();
+
+    const docRows: Cell[][] = [
+      ['gclid', 'Data do lead', 'Tipo', 'Numero', 'Data documento', 'Valor (R$)',
+       'Situacao', 'Cliente', 'Telefone', 'CPF/CNPJ', 'Casou por'].map(H),
+    ];
+
+    const later = (a: Date | null | undefined, b: Date | null | undefined) =>
+      (a ? a.getTime() : 0) >= (b ? b.getTime() : 0);
+
+    for (const d of docs) {
+      const c = d.contactId ? cById.get(d.contactId) : undefined;
+      const m = c?.metadata as any;
+      if (!c || !isGoogle(m)) continue;
+      const gclid = gclidOf(m);
+      if (!gclid) continue; // gclid e a chave obrigatoria
+
+      const telefone = String(c.phone ?? d.clienteTelefone ?? '').trim();
+      const cpf = String(d.clienteCpfCnpj ?? '').trim();
+      const cliente = String(c.name ?? d.clienteNome ?? '').trim();
+      const valor = num(d.valor);
+
+      docRows.push([
+        S(gclid), S(ymd(c.createdAt)), S(d.kind === 'PEDIDO' ? 'Pedido' : 'Orcamento'),
+        S(d.numero ?? ''), S(ymd(d.data)), N(round2(valor)), S(d.situacao ?? ''),
+        S(cliente), S(telefone), S(cpf), S(d.matchedBy ?? ''),
+      ]);
+
+      let L = byLead.get(d.contactId as string);
+      if (!L) {
+        L = { gclid, leadDate: c.createdAt ?? null, cliente, telefone, cpf, orcQ: 0, pedQ: 0 };
+        byLead.set(d.contactId as string, L);
+      }
+      if (d.kind === 'ORCAMENTO') {
+        L.orcQ += 1;
+        if (!L.orc || later(d.data, L.orc.data)) L.orc = { numero: String(d.numero ?? ''), valor, data: d.data ?? null };
+      } else {
+        L.pedQ += 1;
+        if (!L.ped || later(d.data, L.ped.data)) L.ped = { numero: String(d.numero ?? ''), valor, situacao: String(d.situacao ?? ''), data: d.data ?? null };
+      }
+    }
+
+    const leadRows: Cell[][] = [
+      ['gclid', 'Data do lead', 'Cliente', 'Telefone', 'CPF/CNPJ',
+       'Qtd orcamentos', 'Orcamento (nº)', 'Orcamento valor (R$)', 'Orcamento data',
+       'Qtd pedidos', 'Pedido (nº)', 'Pedido valor (R$)', 'Pedido situacao', 'Pedido data'].map(H),
+    ];
+    const leads = [...byLead.values()].sort(
+      (a, b) => (b.leadDate ? b.leadDate.getTime() : 0) - (a.leadDate ? a.leadDate.getTime() : 0),
+    );
+    for (const L of leads) {
+      leadRows.push([
+        S(L.gclid), S(ymd(L.leadDate)), S(L.cliente), S(L.telefone), S(L.cpf),
+        N(L.orcQ),
+        S(L.orc?.numero ?? ''), L.orc ? N(round2(L.orc.valor)) : S(''), S(ymd(L.orc?.data)),
+        N(L.pedQ),
+        S(L.ped?.numero ?? ''), L.ped ? N(round2(L.ped.valor)) : S(''),
+        S(L.ped?.situacao ?? ''), S(ymd(L.ped?.data)),
+      ]);
+    }
+
+    return buildXlsx([
+      { name: 'Por lead', rows: leadRows },
+      { name: 'Documentos', rows: docRows },
+    ]);
+  }
+
+  /**
    * DIAGNÓSTICO DE CAPTAÇÃO (n8n -> /public/leads -> CRM). Confere, nos leads
    * dos últimos 30 dias, se estão chegando com telefone (fusão com WhatsApp) e
    * com utm_source/utm_campaign (origem). Só leitura; telefone mascarado.

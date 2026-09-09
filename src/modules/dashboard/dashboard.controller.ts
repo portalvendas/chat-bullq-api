@@ -58,6 +58,31 @@ export class DashboardController {
     res.end(buf);
   }
 
+  @Get('google-leads/export')
+  @ApiOperation({
+    summary: 'Exporta leads com gclid (Google) + orcamentos/pedidos em .xlsx',
+  })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  async exportGoogleLeads(
+    @CurrentOrg('id') orgId: string,
+    @Res() res: Response,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const range = this.parseRange(from, to);
+    const buf = await this.service.buildGoogleLeadsXlsx(orgId, range);
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    const filename = `google_leads_${ymd(range.from)}_a_${ymd(range.to)}.xlsx`;
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(buf.length),
+    });
+    res.end(buf);
+  }
+
   @Get('lead-intake-health')
   @ApiOperation({ summary: 'Diagnóstico de captação: % de leads com telefone/utm_source/utm_campaign' })
   getIntakeHealth(@CurrentOrg('id') orgId: string) {

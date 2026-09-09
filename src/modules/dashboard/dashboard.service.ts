@@ -442,7 +442,16 @@ export class DashboardService {
     opts?: { origem?: string },
   ) {
     const { from, to } = range;
-    const origemFilter = opts?.origem && opts.origem !== 'all' ? opts.origem : null;
+    // Multi-origem: aceita 'all', uma origem, ou lista separada por virgula.
+    const origemFilter =
+      opts?.origem && opts.origem !== 'all'
+        ? new Set(
+            opts.origem
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean),
+          )
+        : null;
 
     // Etapa de entrada por funil (menor order) — p/ "avançou no funil".
     const entryRows = await this.prisma.pipelineStage.groupBy({
@@ -530,7 +539,7 @@ export class DashboardService {
     const origins = [...new Set(allRows.map((r) => r.origem))].sort();
 
     const filtered = origemFilter
-      ? allRows.filter((r) => r.origem === origemFilter)
+      ? allRows.filter((r) => origemFilter.has(r.origem))
       : allRows;
 
     // FUSÃO DE LEAD: um mesmo contato pode ter o card do WhatsApp (porta de
@@ -630,9 +639,11 @@ export class DashboardService {
           ganhos: rs.filter((r) => r.status === 'WON').length,
           orcamentos: rs.filter((r) => hasOrc(r.contactId)).length,
           pedidos: rs.filter((r) => hasPed(r.contactId)).length,
-          valorGanho: rs
-            .filter((r) => r.status === 'WON')
-            .reduce((s, r) => s + r.value, 0),
+          // GANHO = soma do valor dos PEDIDOS atribuidos aos leads da origem.
+          valorGanho: rs.reduce(
+            (s, r) => s + (r.contactId ? pedByContact.get(r.contactId)?.val ?? 0 : 0),
+            0,
+          ),
         }))
         .sort((a, b) => b.leads - a.leads)
         .slice(0, 30);

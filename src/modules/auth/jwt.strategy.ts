@@ -20,6 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: {
     sub: string;
     email: string;
+    iat?: number;
     imp?: { by: string; org: string };
   }) {
     const user = await this.prisma.user.findUnique({
@@ -27,6 +28,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!user || !user.isActive) {
+      throw new UnauthorizedException();
+    }
+
+    // Encerra sessões emitidas antes da última troca de senha (5s de folga
+    // para não invalidar o token recém-emitido no login pós-reset).
+    if (
+      user.passwordChangedAt &&
+      payload.iat &&
+      payload.iat * 1000 + 5000 < user.passwordChangedAt.getTime()
+    ) {
       throw new UnauthorizedException();
     }
 

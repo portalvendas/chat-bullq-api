@@ -118,6 +118,62 @@ export class MailService {
     return this.send({ to: input.to, subject, html, text });
   }
 
+  /** Link de redefinição de senha. O token cru só existe aqui e no e-mail. */
+  async sendPasswordReset(input: {
+    to: string;
+    token: string;
+    minutes: number;
+  }): Promise<boolean> {
+    const link = `${this.webAppUrl}/reset-password?token=${encodeURIComponent(input.token)}`;
+    const subject = 'Redefinição de senha — Kortia CRM';
+    const html = this.baseLayout(
+      'Redefinir sua senha',
+      `
+      <p style="margin:0 0 16px">Recebemos um pedido para redefinir a senha da
+        sua conta no Kortia CRM.</p>
+      <p style="margin:0 0 24px;color:#52525b">Clique no botão abaixo para criar
+        uma nova senha. O link expira em ${input.minutes} minutos e só pode ser
+        usado uma vez.</p>
+      <a href="${link}" style="display:inline-block;background:#4f46e5;color:#fff;
+        text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">
+        Criar nova senha
+      </a>
+      <p style="margin:24px 0 0;color:#a1a1aa;font-size:12px;word-break:break-all">
+        Ou copie e cole este link no navegador:<br>${link}</p>
+      <p style="margin:16px 0 0;color:#a1a1aa;font-size:12px">Se você não pediu
+        isso, ignore este e-mail — sua senha continua a mesma.</p>
+      `,
+    );
+    const text =
+      `Redefinição de senha do Kortia CRM.
+` +
+      `Acesse: ${link}
+O link expira em ${input.minutes} minutos e é de uso único.
+` +
+      `Se você não pediu, ignore este e-mail.`;
+    return this.send({ to: input.to, subject, html, text });
+  }
+
+  /** Confirmação após a senha ser trocada (aviso de segurança). */
+  async sendPasswordChanged(input: { to: string }): Promise<boolean> {
+    const subject = 'Sua senha foi alterada — Kortia CRM';
+    const html = this.baseLayout(
+      'Senha alterada',
+      `
+      <p style="margin:0 0 16px">A senha da sua conta no Kortia CRM acabou de ser
+        alterada e todas as sessões abertas foram encerradas.</p>
+      <p style="margin:0 0 8px;color:#52525b">Se foi você, não precisa fazer nada.</p>
+      <p style="margin:0;color:#b91c1c">Se você <strong>não</strong> reconhece
+        esta alteração, entre em contato com o administrador imediatamente.</p>
+      `,
+    );
+    const text =
+      `A senha da sua conta no Kortia CRM foi alterada e as sessões foram encerradas.
+` +
+      `Se não foi você, contate o administrador imediatamente.`;
+    return this.send({ to: input.to, subject, html, text });
+  }
+
   private baseLayout(title: string, body: string): string {
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1"></head>

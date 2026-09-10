@@ -10,12 +10,22 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import type { SignOptions } from 'jsonwebtoken';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { isPlatformAdmin } from '../../common/guards';
+import { MailService } from '../mail/mail.service';
 
 const BCRYPT_ROUNDS = 12;
+/** Validade do token de redefinição de senha (minutos). */
+const RESET_TOKEN_TTL_MIN = 60;
+/** Máx. de solicitações de reset por usuário dentro da janela de validade. */
+const RESET_MAX_ACTIVE = 3;
+/** Throttle em memória por IP p/ solicitação de reset (best-effort). */
+const RESET_IP_WINDOW_MS = 15 * 60 * 1000;
+const RESET_IP_MAX = 5;
+const resetIpHits = new Map<string, number[]>();
 
 @Injectable()
 export class AuthService {
@@ -25,6 +35,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -306,7 +317,7 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     try {
-      const payload = this.jwt.verify<{ sub: string }>(refreshToken, {
+      const payload = this.jwt.verify<{ sub: string; iat?: number }>(refreshToken, {
         secret: this.config.get<string>('JWT_REFRESH_SECRET'),
       });
 
@@ -318,10 +329,138 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
+      // Sessão invalidada por troca de senha: refresh tokens antigos morrem.
+      if (this.tokenIssuedBeforePasswordChange(payload.iat, user.passwordChangedAt)) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       return this.generateTokens(user.id, user.email);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  // ── Recuperação de senha ────────────────────────────────────────────
+
+  /**
+   * Solicita a redefinição de senha. Resposta SEMPRE genérica (não revela se o
+   * e-mail existe — anti-enumeração). Gera um token de uso único, guarda só o
+   * hash, e envia o link por e-mail. Invalida tokens anteriores do usuário.
+   */
+  async requestPasswordReset(email: string, ip?: string | null): Promise<{ ok: true }> {
+    const generic = { ok: true as const };
+    const target = (email || '').trim();
+    if (!target) return generic;
+
+    if (ip && this.tooManyResetRequests(ip)) {
+      this.logger.warn(`Reset de senha throttled por IP ${ip}`);
+      return generic;
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email: target } });
+    if (!user || !user.isActive || user.deletedAt) return generic;
+
+    // Limite de solicitações por usuário na janela de validade (anti-flood).
+    const since = new Date(Date.now() - RESET_TOKEN_TTL_MIN * 60 * 1000);
+    const recent = await this.prisma.passwordResetToken.count({
+      where: { userId: user.id, createdAt: { gte: since } },
+    });
+    if (recent >= RESET_MAX_ACTIVE) {
+      this.logger.warn(`Reset de senha: limite de solicitações p/ user ${user.id}`);
+      return generic;
+    }
+
+    // Só o token mais novo vale: invalida os pendentes anteriores.
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000);
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: this.hashToken(rawToken),
+        expiresAt,
+        requestedIp: ip ?? null,
+      },
+    });
+
+    await this.mail.sendPasswordReset({
+      to: user.email,
+      token: rawToken,
+      minutes: RESET_TOKEN_TTL_MIN,
+    });
+    this.logger.log(`Reset de senha solicitado p/ ${user.email}`);
+    return generic;
+  }
+
+  /** Diz ao front se o token do link ainda é válido (form vs. "link expirado"). */
+  async validateResetToken(rawToken: string): Promise<{ valid: boolean }> {
+    const rec = await this.findValidResetToken(rawToken);
+    return { valid: !!rec };
+  }
+
+  /**
+   * Redefine a senha a partir do token do e-mail. Uso único: marca o token e
+   * todos os pendentes como usados, atualiza a senha e carimba passwordChangedAt
+   * (encerra todas as sessões). Envia confirmação por e-mail.
+   */
+  async resetPassword(rawToken: string, newPassword: string): Promise<{ ok: true }> {
+    const rec = await this.findValidResetToken(rawToken);
+    if (!rec) {
+      throw new BadRequestException('Token inválido ou expirado. Solicite um novo link.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: rec.userId },
+        data: { password: hashedPassword, passwordChangedAt: now, isActive: true },
+      }),
+      this.prisma.passwordResetToken.updateMany({
+        where: { userId: rec.userId, usedAt: null },
+        data: { usedAt: now },
+      }),
+    ]);
+
+    const user = await this.prisma.user.findUnique({ where: { id: rec.userId } });
+    if (user) await this.mail.sendPasswordChanged({ to: user.email });
+    this.logger.log(`Senha redefinida p/ user ${rec.userId}`);
+    return { ok: true };
+  }
+
+  private hashToken(raw: string): string {
+    return crypto.createHash('sha256').update(raw).digest('hex');
+  }
+
+  private async findValidResetToken(rawToken: string) {
+    const raw = (rawToken || '').trim();
+    if (raw.length < 10) return null;
+    const rec = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: this.hashToken(raw) },
+    });
+    if (!rec || rec.usedAt || rec.expiresAt < new Date()) return null;
+    return rec;
+  }
+
+  private tooManyResetRequests(ip: string): boolean {
+    const now = Date.now();
+    const arr = (resetIpHits.get(ip) ?? []).filter((t) => now - t < RESET_IP_WINDOW_MS);
+    arr.push(now);
+    resetIpHits.set(ip, arr);
+    return arr.length > RESET_IP_MAX;
+  }
+
+  /** True quando o JWT foi emitido ANTES da última troca de senha (5s de folga). */
+  private tokenIssuedBeforePasswordChange(
+    iat: number | undefined,
+    changedAt: Date | null,
+  ): boolean {
+    if (!changedAt || !iat) return false;
+    return iat * 1000 + 5000 < changedAt.getTime();
   }
 
   async getMe(userId: string) {

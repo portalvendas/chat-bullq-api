@@ -114,6 +114,9 @@ model User {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
+  /// Momento da última troca de senha. JWTs emitidos antes disso são
+  /// invalidados (força re-login em todos os dispositivos após um reset).
+  passwordChangedAt DateTime? @map("password_changed_at")
 
   /// Papel de PLATAFORMA (acima das orgs). NULL = usuário comum.
   /// SUPER_ADMIN = console de super-admin (gestão de todas as empresas).
@@ -132,8 +135,27 @@ model User {
   assignedCards         Card[]             @relation("CardAssignee")
   routineDailyChecks    RoutineDailyCheck[]
   platformAuditLogs     PlatformAuditLog[]
+  passwordResets        PasswordResetToken[]
 
   @@map("users")
+}
+
+/// Token de recuperação de senha. Guardamos SÓ o hash (SHA-256) do token — o
+/// valor cru só existe no link enviado por e-mail. Uso único (usedAt) e
+/// expiração curta (expiresAt).
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  requestedIp String?   @map("requested_ip")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "idx_password_reset_user")
+  @@map("password_reset_tokens")
 }
 
 model Organization {

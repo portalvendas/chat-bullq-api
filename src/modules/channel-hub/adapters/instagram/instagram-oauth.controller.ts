@@ -59,8 +59,13 @@ export class InstagramOAuthController {
     @Query('error') error: string,
     @Res() res: Response,
   ): Promise<void> {
-    const webUrl = (this.config.get<string>('CORS_ORIGIN') || '')
-      .split(',')[0]
+    // Redireciona pro app web. Prioriza WEB_APP_URL (domínio novo); cai pro
+    // primeiro CORS_ORIGIN só como fallback (evita voltar pro domínio antigo).
+    const webUrl = (
+      this.config.get<string>('WEB_APP_URL') ||
+      (this.config.get<string>('CORS_ORIGIN') || '').split(',')[0] ||
+      ''
+    )
       .trim()
       .replace(/\/$/, '');
     const done = (q: string) => res.redirect(`${webUrl}/settings/channels?${q}`);

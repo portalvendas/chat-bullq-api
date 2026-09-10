@@ -91,6 +91,9 @@ export class InstagramOAuthService {
       );
       // pode vir { access_token, user_id } ou { data: [ {...} ] }
       const d = Array.isArray(res.data?.data) ? res.data.data[0] : res.data;
+      this.logger.log(
+        `exchangeCode ok: user_id=${d?.user_id} token=${this.preview(d?.access_token)}`,
+      );
       return { access_token: d.access_token, user_id: String(d.user_id) };
     } catch (err: any) {
       throw this.logAndRethrow('exchangeCode', err);
@@ -101,24 +104,56 @@ export class InstagramOAuthService {
   async exchangeForLongLived(
     shortToken: string,
   ): Promise<{ access_token: string; expires_in: number }> {
+    const url = `${InstagramOAuthService.GRAPH_URL}/access_token`;
+    const params = {
+      grant_type: 'ig_exchange_token',
+      client_secret: this.appSecret(),
+      access_token: shortToken,
+    };
+    this.logger.log(
+      `exchangeForLongLived → GET ${url} (token=${this.preview(shortToken)}, secret=${this.preview(this.appSecret())})`,
+    );
     try {
-      const res = await axios.get(
-        `${InstagramOAuthService.GRAPH_URL}/access_token`,
-        {
-          params: {
-            grant_type: 'ig_exchange_token',
-            client_secret: this.appSecret(),
-            access_token: shortToken,
-          },
-          timeout: 15000,
-        },
-      );
+      const res = await axios.get(url, {
+        params,
+        headers: { accept: 'application/json' },
+        timeout: 15000,
+      });
       return {
         access_token: res.data.access_token,
         expires_in:
           Number(res.data.expires_in) || InstagramOAuthService.DEFAULT_TTL_S,
       };
     } catch (err: any) {
+      const code = err?.response?.data?.error?.code;
+      // Alguns setups da Meta respondem code 100 ("method type: get") ao GET
+      // deste endpoint. Fallback determinístico: repete como POST form-encoded.
+      if (code === 100) {
+        this.logger.warn(
+          'exchangeForLongLived: GET devolveu code 100 — tentando POST form-encoded',
+        );
+        try {
+          const body = new URLSearchParams(
+            params as Record<string, string>,
+          ).toString();
+          const res2 = await axios.post(url, body, {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              accept: 'application/json',
+            },
+            timeout: 15000,
+          });
+          this.logger.log('exchangeForLongLived: POST fallback funcionou');
+          return {
+            access_token: res2.data.access_token,
+            expires_in:
+              Number(res2.data.expires_in) ||
+              InstagramOAuthService.DEFAULT_TTL_S,
+          };
+        } catch (err2: any) {
+          throw this.logAndRethrow('exchangeForLongLived(POST)', err2);
+        }
+      }
       throw this.logAndRethrow('exchangeForLongLived', err);
     }
   }
@@ -230,10 +265,23 @@ export class InstagramOAuthService {
   }
 
   private logAndRethrow(op: string, err: any): Error {
+    const status = err?.response?.status;
+    const cfg = err?.config ?? {};
+    const method =
+      typeof cfg.method === 'string' ? cfg.method.toUpperCase() : '?';
     const detail = err?.response?.data
       ? JSON.stringify(err.response.data)
       : err?.message;
-    this.logger.error(`Instagram OAuth ${op} falhou: ${detail}`);
+    this.logger.error(
+      `Instagram OAuth ${op} falhou [${method} ${cfg.url ?? '?'} status=${status ?? '?'}]: ${detail}`,
+    );
     return err instanceof Error ? err : new Error(String(err));
+  }
+
+  /** Prévia redigida de um segredo/token p/ log (nunca expõe o valor inteiro). */
+  private preview(s?: string): string {
+    if (!s) return '<vazio>';
+    if (s.length <= 8) return `len=${s.length}`;
+    return `${s.slice(0, 4)}…${s.slice(-4)} len=${s.length}`;
   }
 }

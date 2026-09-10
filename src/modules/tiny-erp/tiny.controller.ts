@@ -95,6 +95,15 @@ export class TinyController {
     return this.service.backfillVendedoresOrcamento(orgId);
   }
 
+  @Post('enrich-contacts')
+  @ApiOperation({
+    summary:
+      'Enriquece os leads vinculados com e-mail/CPF/endereço dos orçamentos/pedidos (não sobrescreve). Idempotente.',
+  })
+  enrichContacts(@CurrentOrg('id') orgId: string) {
+    return this.service.enrichLinkedContacts(orgId, { limit: 5000 });
+  }
+
   @Post('reconcile-deleted')
   @ApiOperation({
     summary:

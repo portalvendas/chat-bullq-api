@@ -48,7 +48,7 @@ interface MatchInput {
 }
 interface MatchResult {
   contactId: string;
-  matchedBy: 'cpf_cnpj' | 'phone' | 'email' | 'name';
+  matchedBy: 'cpf_cnpj' | 'phone' | 'email' | 'name' | 'name_partial';
 }
 
 @Injectable()
@@ -178,6 +178,17 @@ export class TinyService {
         await this.enrichDetails(organizationId, 40);
       } catch (err: any) {
         this.logger.warn(`enrichDetails falhou (best-effort): ${err?.message ?? err}`);
+      }
+      // Enriquece os leads vinculados com e-mail/CPF/endereço dos documentos.
+      try {
+        const en = await this.enrichLinkedContacts(organizationId, { limit: 500 });
+        if (en.enriched > 0) {
+          this.logger.log(
+            `enrichLinkedContacts: ${en.enriched}/${en.scanned} leads enriquecidos`,
+          );
+        }
+      } catch (err: any) {
+        this.logger.warn(`enrichLinkedContacts falhou (best-effort): ${err?.message ?? err}`);
       }
       // Reconciliação de exclusões (throttle 6h) — SÓ no sync em background
       // (cron). Fora do caminho manual pra não somar ao timeout da request.
@@ -539,7 +550,165 @@ export class TinyService {
       if (c) return { contactId: c.id, matchedBy: 'name' };
     }
 
+    // 5) Nome PARCIAL (similaridade) — último recurso, só quando não casou por
+    //    CPF/telefone/e-mail/nome exato. Compara sem acento/caixa exigindo o
+    //    MESMO primeiro nome E o MESMO sobrenome, e só aceita se houver UM
+    //    único candidato (evita vincular no lead errado). Ex.: "Maria Silva"
+    //    casa com "Maria Aparecida Silva".
+    const tokens = this.normNameTokens(nome);
+    if (tokens.length >= 2) {
+      const first = tokens[0];
+      const last = tokens[tokens.length - 1];
+      if (first.length >= 2 && last.length >= 2 && first !== last) {
+        const ACCENTS = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
+        const PLAIN = 'aaaaaeeeeiiiiooooouuuucn';
+        const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM contacts
+          WHERE organization_id = ${organizationId}
+            AND deleted_at IS NULL
+            AND name IS NOT NULL
+            AND translate(lower(name), ${ACCENTS}, ${PLAIN}) LIKE ${first + ' %'}
+            AND translate(lower(name), ${ACCENTS}, ${PLAIN}) LIKE ${'% ' + last}
+          LIMIT 2`;
+        if (rows.length === 1) {
+          return { contactId: rows[0].id, matchedBy: 'name_partial' };
+        }
+      }
+    }
+
     return null;
+  }
+
+  /** Normaliza um nome em tokens sem acento/caixa (p/ similaridade parcial). */
+  private normNameTokens(nome?: string | null): string[] {
+    return String(nome ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length >= 2);
+  }
+
+  // ── Enriquecimento do lead a partir dos documentos (Tiny) ────────────
+
+  /**
+   * Preenche campos VAZIOS do lead (Contact) com os dados do cliente que vieram
+   * nos orçamentos/pedidos vinculados: e-mail, telefone, CPF/CNPJ e endereço.
+   * NUNCA sobrescreve o que já existe no lead. Idempotente.
+   * @param opts.contactId enriquece só esse contato; senão varre um lote.
+   */
+  async enrichLinkedContacts(
+    organizationId: string,
+    opts?: { contactId?: string; limit?: number },
+  ): Promise<{ scanned: number; enriched: number }> {
+    const docs = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        contactId: opts?.contactId ? opts.contactId : { not: null },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: opts?.contactId ? undefined : opts?.limit ?? 500,
+      select: {
+        contactId: true,
+        clienteEmail: true,
+        clienteCpfCnpj: true,
+        clienteTelefone: true,
+        raw: true,
+      },
+    });
+
+    // Agrupa por contato — o 1º (mais recente) fornece cada campo faltante.
+    type Src = { email?: string; cpf?: string; phone?: string; endereco?: { obj: Record<string, string>; texto: string } };
+    const byContact = new Map<string, Src>();
+    for (const d of docs) {
+      if (!d.contactId) continue;
+      const cur = byContact.get(d.contactId) ?? {};
+      if (!cur.email && d.clienteEmail) cur.email = d.clienteEmail.trim();
+      if (!cur.cpf && d.clienteCpfCnpj) cur.cpf = d.clienteCpfCnpj.trim();
+      if (!cur.phone && d.clienteTelefone) cur.phone = d.clienteTelefone.trim();
+      if (!cur.endereco) {
+        const e = this.extractEndereco(d.raw);
+        if (e) cur.endereco = e;
+      }
+      byContact.set(d.contactId, cur);
+    }
+    const ids = [...byContact.keys()];
+    if (ids.length === 0) return { scanned: 0, enriched: 0 };
+
+    const contacts = await this.prisma.contact.findMany({
+      where: { id: { in: ids }, organizationId, deletedAt: null },
+      select: { id: true, email: true, phone: true, metadata: true },
+    });
+
+    let enriched = 0;
+    for (const c of contacts) {
+      const src = byContact.get(c.id);
+      if (!src) continue;
+      const md = ((c.metadata ?? {}) as Record<string, any>) || {};
+      const newMd = { ...md };
+      const data: Record<string, any> = {};
+      let mdChanged = false;
+
+      if (!c.email && src.email && src.email.includes('@')) data.email = src.email;
+      if (!c.phone && src.phone) data.phone = src.phone;
+
+      const hasDocMd = md.cpfCnpj || md.cpf || md.cnpj || md.documento;
+      if (!hasDocMd && src.cpf) {
+        newMd.cpfCnpj = src.cpf;
+        mdChanged = true;
+      }
+      if (!md.endereco && !md.enderecoTexto && src.endereco) {
+        newMd.endereco = src.endereco.obj;
+        newMd.enderecoTexto = src.endereco.texto;
+        mdChanged = true;
+      }
+      if (mdChanged) data.metadata = newMd;
+
+      if (Object.keys(data).length > 0) {
+        await this.prisma.contact.update({ where: { id: c.id }, data });
+        enriched++;
+      }
+    }
+    return { scanned: contacts.length, enriched };
+  }
+
+  /** Extrai um endereço (objeto + texto) do payload cru do Tiny, se houver. */
+  private extractEndereco(
+    raw: any,
+  ): { obj: Record<string, string>; texto: string } | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const cli = raw.cliente ?? {};
+    const cands = [
+      cli.endereco,
+      raw.endereco,
+      cli.enderecoEntrega,
+      raw.enderecoEntrega,
+      cli.enderecoCobranca,
+    ];
+    let e: any = null;
+    for (const c of cands) {
+      if (c && typeof c === 'object') {
+        e = c;
+        break;
+      }
+    }
+    if (!e) return null;
+    const g = (v: any) => String(v ?? '').trim();
+    const logradouro = g(e.endereco || e.logradouro || e.rua);
+    const numero = g(e.numero);
+    const complemento = g(e.complemento);
+    const bairro = g(e.bairro);
+    const municipio = g(e.municipio || e.cidade);
+    const uf = g(e.uf || e.estado);
+    const cep = g(e.cep);
+    if (!logradouro && !municipio && !cep) return null;
+    const obj = { logradouro, numero, complemento, bairro, municipio, uf, cep };
+    const linha1 = [logradouro, numero].filter(Boolean).join(', ');
+    const cidadeUf = [municipio, uf].filter(Boolean).join('/');
+    const linha2 = [bairro, cidadeUf].filter(Boolean).join(' - ');
+    const texto = [linha1, linha2, cep].filter(Boolean).join(' · ');
+    return { obj, texto };
   }
 
   /**
@@ -816,6 +985,12 @@ export class TinyService {
         : { contactId: null, matchedBy: null, matchManual: false },
     });
     if (res.count === 0) throw new NotFoundException('Documento não encontrado');
+    // Enriquece o lead recém-vinculado com os dados do documento (best-effort).
+    if (contactId) {
+      await this.enrichLinkedContacts(organizationId, { contactId }).catch(
+        () => undefined,
+      );
+    }
     return { ok: true, lead };
   }
 

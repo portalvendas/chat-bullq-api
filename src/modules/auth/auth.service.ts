@@ -28,19 +28,21 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+
+    // Convite: o fluxo TOLERA e-mail já existente (ex.: usuário que sobrou de
+    // uma empresa excluída). Reaproveita/atualiza o acesso em vez de barrar com
+    // "Email already registered".
+    if (dto.inviteToken) {
+      return this.registerWithInvite(dto, hashedPassword);
+    }
+
+    // Cadastro aberto (sem convite): e-mail precisa ser inédito.
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-
     if (existing) {
       throw new ConflictException('Email already registered');
-    }
-
-    const hashedPassword = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-
-    // Check if registering via invitation
-    if (dto.inviteToken) {
-      return this.registerWithInvite(dto, hashedPassword);
     }
 
     // Cadastro aberto (self-service) pode ser desligado por env: com
@@ -139,7 +141,7 @@ export class AuthService {
     if (!invitation) {
       throw new BadRequestException('Invalid invitation token');
     }
-    if (invitation.status !== 'PENDING') {
+    if (invitation.status !== 'PENDING' && invitation.status !== 'ACCEPTED') {
       throw new BadRequestException(`Invitation has already been ${invitation.status.toLowerCase()}`);
     }
     if (invitation.expiresAt < new Date()) {
@@ -150,44 +152,76 @@ export class AuthService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          name: dto.name,
-          email: dto.email,
-          password: hashedPassword,
+      // Reaproveita o usuário quando o e-mail já existe (ex.: sobra de uma
+      // empresa excluída). Como o convite é um segredo entregue pelo admin ao
+      // próprio convidado, definir a senha aqui é seguro (equivale a um reset
+      // via link) e reativa a conta se estava inativa/removida.
+      const existing = await tx.user.findUnique({ where: { email: dto.email } });
+      const user = existing
+        ? await tx.user.update({
+            where: { id: existing.id },
+            data: {
+              name: dto.name || existing.name,
+              password: hashedPassword,
+              isActive: true,
+              deletedAt: null,
+            },
+          })
+        : await tx.user.create({
+            data: {
+              name: dto.name,
+              email: dto.email,
+              password: hashedPassword,
+            },
+          });
+
+      // Vincula à empresa do convite (idempotente: não duplica se já for membro).
+      let membership = await tx.userOrganization.findUnique({
+        where: {
+          userId_organizationId: {
+            userId: user.id,
+            organizationId: invitation.organizationId,
+          },
         },
       });
-
-      // Add user to the invited organization
-      const membership = await tx.userOrganization.create({
-        data: {
-          userId: user.id,
-          organizationId: invitation.organizationId,
-          role: invitation.role,
-        },
-      });
-
-      // Add to default department
-      const defaultDept = await tx.department.findFirst({
-        where: { organizationId: invitation.organizationId, isDefault: true },
-      });
-
-      if (defaultDept) {
-        await tx.departmentAgent.create({
+      if (!membership) {
+        membership = await tx.userOrganization.create({
           data: {
-            departmentId: defaultDept.id,
-            userOrganizationId: membership.id,
+            userId: user.id,
+            organizationId: invitation.organizationId,
+            role: invitation.role,
           },
         });
       }
 
-      // Mark invitation as accepted
+      // Garante o vínculo ao departamento padrão (idempotente).
+      const defaultDept = await tx.department.findFirst({
+        where: { organizationId: invitation.organizationId, isDefault: true },
+      });
+      if (defaultDept) {
+        const existingAgent = await tx.departmentAgent.findFirst({
+          where: {
+            departmentId: defaultDept.id,
+            userOrganizationId: membership.id,
+          },
+        });
+        if (!existingAgent) {
+          await tx.departmentAgent.create({
+            data: {
+              departmentId: defaultDept.id,
+              userOrganizationId: membership.id,
+            },
+          });
+        }
+      }
+
+      // Marca o convite como aceito.
       await tx.invitation.update({
         where: { id: invitation.id },
         data: { status: 'ACCEPTED', acceptedAt: new Date() },
       });
 
-      // Also accept any other pending invitations for this email
+      // Expira outros convites pendentes para o mesmo e-mail.
       await tx.invitation.updateMany({
         where: {
           email: dto.email,

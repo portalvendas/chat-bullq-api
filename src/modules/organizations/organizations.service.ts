@@ -118,23 +118,30 @@ export class OrganizationsService {
     const invitation = await this.repository.createInvitation(orgId, dto.email, dto.role, inviterId);
     this.logger.log(`Invitation sent to ${dto.email} for org ${orgId} by ${inviterId}`);
 
-    // If user already exists, auto-accept: add them to org immediately
+    // Usuário já existe (ex.: sobra de uma empresa excluída e recriada): já
+    // vincula à empresa, MAS mantém o convite PENDENTE e envia o e-mail. Antes
+    // marcávamos como ACEITO sem mandar link — a pessoa ficava membro sem senha
+    // conhecida e sem como entrar. Agora ela sempre recebe um link pra definir
+    // a senha e acessar (o registro por convite reaproveita a conta existente).
     if (existingUser) {
       await this.repository.addMember(orgId, existingUser.id, dto.role);
-      await this.repository.acceptInvitation(invitation.id);
-      this.logger.log(`User ${dto.email} auto-added to org ${orgId} (already registered)`);
-      return { ...invitation, status: 'ACCEPTED' as const, autoAccepted: true };
+      this.logger.log(`User ${dto.email} vinculado à org ${orgId} (já existia) — convite pendente enviado`);
     }
 
-    // Usuário novo: dispara o convite por e-mail (best-effort, não bloqueia).
-    await this.mail.sendInvitation({
-      to: dto.email,
-      orgName: invitation.organization.name,
-      token: invitation.token,
-      role: dto.role,
-    });
+    // Dispara o convite por e-mail (novo ou existente). Best-effort: uma falha
+    // de e-mail não deve derrubar a criação do convite/vínculo.
+    try {
+      await this.mail.sendInvitation({
+        to: dto.email,
+        orgName: invitation.organization.name,
+        token: invitation.token,
+        role: dto.role,
+      });
+    } catch (err) {
+      this.logger.warn(`Falha ao enviar e-mail de convite para ${dto.email}: ${(err as Error)?.message}`);
+    }
 
-    return { ...invitation, autoAccepted: false };
+    return { ...invitation, autoAccepted: false, memberAdded: !!existingUser };
   }
 
   async validateInvitation(token: string) {

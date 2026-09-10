@@ -899,7 +899,13 @@ export class TinyService {
     const pw = this.pedidoWhere(organizationId, range, vendedor);
     const ow = this.orcamentoWhere(organizationId, range, vendedor);
 
-    const [pedidos, orcamentos, vendPed, vendOrc] = await Promise.all([
+    // Leads (cards do CRM) do período — NÃO filtra por vendedor (lead não tem
+    // vendedor no CRM); serve de base pras taxas de conversão do funil.
+    const leadWhere = {
+      organizationId,
+      ...(range ? { createdAt: range } : {}),
+    };
+    const [pedidos, orcamentos, vendPed, vendOrc, leadsCount] = await Promise.all([
       this.prisma.tinyDocument.aggregate({
         where: pw,
         _count: { _all: true },
@@ -922,6 +928,7 @@ export class TinyService {
         _count: { _all: true },
         _sum: { valor: true },
       }),
+      this.prisma.card.count({ where: leadWhere }),
     ]);
 
     // Une pedidos e propostas por nome de vendedor.
@@ -949,6 +956,7 @@ export class TinyService {
     return {
       pedidos: { count: pedidos._count._all, total: Number(pedidos._sum.valor ?? 0) },
       orcamentos: { count: orcamentos._count._all, total: Number(orcamentos._sum.valor ?? 0) },
+      leads: { count: leadsCount },
       porVendedor,
     };
   }

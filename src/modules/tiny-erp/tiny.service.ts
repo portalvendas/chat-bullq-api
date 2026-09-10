@@ -304,6 +304,12 @@ export class TinyService {
     const situacao = PEDIDO_SITUACOES[String(p?.situacao)] ?? String(p?.situacao ?? '');
     const isMkt = this.isMarketplace(p?.ecommerce);
     const vendedor = p?.vendedor?.nome ?? null;
+    // Match do lead fica fora de `common`: no update ele é aplicado à parte,
+    // pra respeitar o vínculo feito manualmente na tela (matchManual).
+    const matchFields = {
+      contactId: match?.contactId ?? null,
+      matchedBy: match?.matchedBy ?? null,
+    };
     const common = {
       numero: p?.numeroPedido != null ? String(p.numeroPedido) : null,
       situacao,
@@ -315,8 +321,6 @@ export class TinyService {
       clienteEmail: email ?? null,
       tinyContatoId: contatoId,
       isMarketplace: isMkt,
-      contactId: match?.contactId ?? null,
-      matchedBy: match?.matchedBy ?? null,
       raw: p,
     };
     await this.prisma.tinyDocument.upsert({
@@ -330,8 +334,13 @@ export class TinyService {
       // vendedor só é semeado na criação; no update é tratado à parte pra
       // respeitar edição manual (vendedorManual). natureza NÃO é sobrescrita
       // aqui (vem do enriquecimento).
-      create: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), vendedor, ...common },
+      create: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), vendedor, ...common, ...matchFields },
       update: common,
+    });
+    // Match automático só é (re)aplicado quando o vínculo NÃO foi feito à mão.
+    await this.prisma.tinyDocument.updateMany({
+      where: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), matchManual: false },
+      data: matchFields,
     });
     // Atualiza o vendedor a partir do Tiny apenas quando veio um valor E o
     // registro NÃO foi editado manualmente na tela. Se o Tiny mandou vazio,
@@ -413,6 +422,11 @@ export class TinyService {
       email: cli.email,
       nome: cli.nome,
     });
+    // Match fora do update: respeita o vínculo manual (matchManual) no re-sync.
+    const matchFields = {
+      contactId: match?.contactId ?? null,
+      matchedBy: match?.matchedBy ?? null,
+    };
     await this.prisma.tinyDocument.upsert({
       where: {
         uq_tinydoc_org_kind_tinyid: {
@@ -434,8 +448,7 @@ export class TinyService {
         clienteTelefone: phone,
         clienteEmail: cli.email ?? null,
         tinyContatoId: contatoId,
-        contactId: match?.contactId ?? null,
-        matchedBy: match?.matchedBy ?? null,
+        ...matchFields,
         raw: { ...o, cliente: cli },
       },
       update: {
@@ -448,10 +461,13 @@ export class TinyService {
         clienteTelefone: phone,
         clienteEmail: cli.email ?? null,
         tinyContatoId: contatoId,
-        contactId: match?.contactId ?? null,
-        matchedBy: match?.matchedBy ?? null,
         raw: { ...o, cliente: cli },
       },
+    });
+    // Match automático só (re)aplicado quando o vínculo NÃO foi feito à mão.
+    await this.prisma.tinyDocument.updateMany({
+      where: { organizationId, kind: 'ORCAMENTO', tinyId: String(o.id), matchManual: false },
+      data: matchFields,
     });
   }
 
@@ -767,6 +783,78 @@ export class TinyService {
     });
     if (res.count === 0) throw new NotFoundException('Documento não encontrado');
     return { ok: true, vendedor: v };
+  }
+
+  /**
+   * Vincula MANUALMENTE um lead (Contact do CRM) a um pedido/orçamento — usado
+   * quando o match automático não encontrou o cliente. `contactId` null desfaz
+   * o vínculo e devolve o documento ao match automático (o próximo sync tenta
+   * casar de novo). Enquanto houver vínculo manual, o sync NÃO o sobrescreve.
+   */
+  async setMatch(
+    organizationId: string,
+    docId: string,
+    contactId: string | null,
+  ): Promise<{
+    ok: true;
+    lead: { id: string; name: string | null; phone: string | null } | null;
+  }> {
+    let lead: { id: string; name: string | null; phone: string | null } | null =
+      null;
+    if (contactId) {
+      const c = await this.prisma.contact.findFirst({
+        where: { id: contactId, organizationId, deletedAt: null },
+        select: { id: true, name: true, phone: true },
+      });
+      if (!c) throw new NotFoundException('Lead não encontrado');
+      lead = c;
+    }
+    const res = await this.prisma.tinyDocument.updateMany({
+      where: { id: docId, organizationId },
+      data: contactId
+        ? { contactId, matchedBy: 'manual', matchManual: true }
+        : { contactId: null, matchedBy: null, matchManual: false },
+    });
+    if (res.count === 0) throw new NotFoundException('Documento não encontrado');
+    return { ok: true, lead };
+  }
+
+  /**
+   * Busca leads (Contacts do CRM) pra o seletor de vínculo manual. Casa por
+   * nome/e-mail (texto) e, quando o termo tem dígitos, por telefone e CPF/CNPJ.
+   * @example searchLeads(org, "maria") -> { items: [{ id, name, phone, email }] }
+   */
+  async searchLeads(
+    organizationId: string,
+    q: string,
+    limit = 10,
+  ): Promise<{
+    items: Array<{ id: string; name: string | null; phone: string | null; email: string | null }>;
+  }> {
+    const term = (q ?? '').trim();
+    if (term.length < 2) return { items: [] };
+    const like = `%${term}%`;
+    const digits = term.replace(/\D/g, '');
+    const dp = digits.length >= 4 ? `%${digits}%` : null;
+    const lim = Math.min(Math.max(limit, 1), 25);
+    const items = await this.prisma.$queryRaw<
+      Array<{ id: string; name: string | null; phone: string | null; email: string | null }>
+    >`
+      SELECT id, name, phone, email
+      FROM contacts
+      WHERE organization_id = ${organizationId}
+        AND deleted_at IS NULL
+        AND (
+          name ILIKE ${like}
+          OR email ILIKE ${like}
+          OR (${dp}::text IS NOT NULL AND regexp_replace(COALESCE(phone, ''), '\D', '', 'g') LIKE ${dp})
+          OR (${dp}::text IS NOT NULL AND regexp_replace(
+                COALESCE(metadata->>'cpfCnpj', metadata->>'cpf', metadata->>'cnpj', metadata->>'documento', ''),
+                '\D', '', 'g') LIKE ${dp})
+        )
+      ORDER BY name ASC NULLS LAST
+      LIMIT ${lim}`;
+    return { items };
   }
 
   /**

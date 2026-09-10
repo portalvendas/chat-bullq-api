@@ -2066,6 +2066,8 @@ model TinyDocument {
   contactId      String?   @map("contact_id")
   /// Como casou: cpf_cnpj | phone | email | name | null.
   matchedBy      String?   @map("matched_by")
+  /// Vínculo de lead definido manualmente na tela — o sync NÃO sobrescreve.
+  matchManual    Boolean   @default(false) @map("match_manual")
   /// Payload cru do Tiny (auditoria / campos extras).
   raw            Json?
   createdAt      DateTime  @default(now()) @map("created_at")

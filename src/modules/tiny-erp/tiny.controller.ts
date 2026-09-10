@@ -163,6 +163,29 @@ export class TinyController {
     return this.service.setVendedor(orgId, id, dto?.vendedor ?? null);
   }
 
+  @Get('lead-search')
+  @ApiOperation({ summary: 'Busca leads do CRM (nome/telefone/CPF/e-mail) p/ vínculo manual' })
+  leadSearch(
+    @CurrentOrg('id') orgId: string,
+    @Query('q') q = '',
+    @Query('limit') limit = '10',
+  ) {
+    return this.service.searchLeads(orgId, q, Number(limit) || 10);
+  }
+
+  @Patch('documents/:id/lead')
+  @ApiOperation({
+    summary:
+      'Vincula (ou desvincula, com contactId null) manualmente o lead do pedido/orçamento — o sync do Tiny não sobrescreve.',
+  })
+  setLead(
+    @CurrentOrg('id') orgId: string,
+    @Param('id') id: string,
+    @Body() dto: { contactId?: string | null },
+  ) {
+    return this.service.setMatch(orgId, id, dto?.contactId ?? null);
+  }
+
   @Get('documents/:id/items')
   @ApiOperation({ summary: 'Itens de um pedido/orçamento (sob demanda)' })
   items(@CurrentOrg('id') orgId: string, @Param('id') id: string) {

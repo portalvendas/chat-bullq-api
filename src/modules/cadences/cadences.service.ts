@@ -793,6 +793,52 @@ export class CadencesService implements OnModuleInit {
    * texto livre. Se estiver fora da janela e não houver template aprovado,
    * envia o texto assim mesmo (o WhatsApp pode bloquear) e loga o aviso.
    */
+  /** Primeiro nome, com inicial maiúscula. "" quando vazio. */
+  private firstName(full?: string | null): string {
+    const n = String(full ?? '').trim();
+    if (!n) return '';
+    const first = n.split(/\s+/)[0];
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  }
+
+  /**
+   * Substitui variáveis no texto do salesbot (texto livre / legenda):
+   *   {{vendedor}} | {{atendente}} | {{vendedora}} | {{consultor(a)}}
+   *       → primeiro nome do vendedor ATRIBUÍDO à conversa
+   *   {{cliente}} | {{contato}} | {{nome}} | {{lead}}
+   *       → primeiro nome do contato
+   * Placeholders numéricos ({{1}}, {{2}}…) de template aprovado NÃO são tocados.
+   */
+  private renderVars(
+    text: string,
+    conversation: {
+      assignedTo?: { name: string | null } | null;
+      contact?: { name: string | null } | null;
+    },
+  ): string {
+    if (!text || !text.includes('{{')) return text;
+    const vendedor = this.firstName(conversation.assignedTo?.name);
+    const cliente = this.firstName(conversation.contact?.name);
+    const map: Record<string, string> = {
+      vendedor,
+      vendedora: vendedor,
+      atendente: vendedor,
+      consultor: vendedor,
+      consultora: vendedor,
+      cliente,
+      contato: cliente,
+      nome: cliente,
+      lead: cliente,
+    };
+    return text
+      .replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (m, key) => {
+        const k = String(key).toLowerCase();
+        return k in map ? map[k] : m;
+      })
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   private async sendMessage(
     conversationId: string,
     organizationId: string,
@@ -802,13 +848,21 @@ export class CadencesService implements OnModuleInit {
   ): Promise<'sent' | 'blocked' | 'skipped'> {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, organizationId },
-      include: { channel: true, contact: { include: { channels: true } } },
+      include: {
+        channel: true,
+        contact: { include: { channels: true } },
+        assignedTo: { select: { name: true } },
+      },
     });
     if (!conversation) return 'skipped';
     const cc = conversation.contact.channels.find(
       (x) => x.channelId === conversation.channelId,
     );
     if (!cc) return 'skipped';
+
+    // Interpola variáveis no texto livre / legenda: {{vendedor}} = primeiro
+    // nome do vendedor atribuído; {{cliente}} = primeiro nome do contato.
+    text = this.renderVars(text, conversation);
 
     const isWhatsAppOfficial = conversation.channel?.type === 'WHATSAPP_OFFICIAL';
     let windowOpen = true;

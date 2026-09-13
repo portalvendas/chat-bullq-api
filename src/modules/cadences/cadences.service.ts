@@ -383,6 +383,15 @@ export class CadencesService implements OnModuleInit {
     });
     if (existing) return { started: false, reason: 'already_running' };
 
+    // Guard-rail de configuração: se o nó inicial não tem aresta 'out', o motor
+    // percorre o grafo e encerra sem enviar nada — de forma SILENCIOSA. Avisa
+    // alto (com nome do bot e conv) para o problema não passar batido no log.
+    if (!edgeTarget(graph, entry.id, 'out')) {
+      this.logger.warn(
+        `Salesbot "${cadence.name}": nó inicial "${entry.id}" sem conexão de saída ('out') — nenhuma mensagem será enviada (conv ${conversationId}). Reconecte o "Iniciar robô" ao primeiro passo no editor e salve.`,
+      );
+    }
+
     const run = await this.prisma.cadenceRun.create({
       data: {
         cadenceId: id,
@@ -629,7 +638,13 @@ export class CadencesService implements OnModuleInit {
       }
 
       // start / message / action → segue pela saída "out"
-      nodeId = edgeTarget(graph, node.id, 'out');
+      const nextOut = edgeTarget(graph, node.id, 'out');
+      if (!nextOut) {
+        this.logger.warn(
+          `Salesbot "${cadence.name}": nó "${node.id}" (${node.type}) sem aresta 'out' na conv ${run.conversationId} — o robô encerra AQUI sem seguir para o próximo passo. Verifique a conexão no editor.`,
+        );
+      }
+      nodeId = nextOut;
     }
 
     // sem próximo nó → encerra

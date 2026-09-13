@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { MetaAdsService } from './meta-ads.service';
 import { buildXlsx, H, S, N } from './xlsx-lite.util';
 import type { Cell } from './xlsx-lite.util';
+import * as crypto from 'crypto';
 
 export interface DateRange {
   from: Date;
@@ -989,16 +990,46 @@ export class DashboardService {
    */
   async buildGoogleLeadsXlsx(organizationId: string, range: DateRange): Promise<Buffer> {
     const num = (v: any) => (v == null ? 0 : Number(v) || 0);
-    const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : '');
     const round2 = (n: number) => Math.round(n * 100) / 100;
+    const ymd = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : '');
     const gclidOf = (m: any) => String(m?.tracking?.gclid ?? '').trim();
-    const isGoogle = (m: any) => {
-      if (gclidOf(m)) return true;
-      const hay = `${String(m?.source ?? '')} ${String(m?.tracking?.utm_source ?? '')}`.toLowerCase();
-      return /google|adwords/.test(hay);
-    };
 
-    // 1) Documentos (pedido/orcamento) com data no periodo, ja com contato.
+    // Conversion Time no formato do Google Ads: "YYYY-MM-DD HH:mm:ss-03:00"
+    // (America/Sao_Paulo, sem horário de verão desde 2019). A data do Tiny quase
+    // sempre vem sem hora -> usa 12:00:00 pra nunca cruzar a virada do dia.
+    const convTime = (d?: Date | null): string => {
+      if (!d) return '';
+      const local = new Date(d.getTime() - 3 * 3600 * 1000); // desloca p/ -03:00
+      const p = (n: number) => String(n).padStart(2, '0');
+      let hh = local.getUTCHours();
+      let mm = local.getUTCMinutes();
+      let ss = local.getUTCSeconds();
+      if (hh === 0 && mm === 0 && ss === 0) {
+        hh = 12;
+        mm = 0;
+        ss = 0;
+      }
+      return `${local.getUTCFullYear()}-${p(local.getUTCMonth() + 1)}-${p(local.getUTCDate())} ${p(hh)}:${p(mm)}:${p(ss)}-03:00`;
+    };
+    const sha256 = (v: string) => crypto.createHash('sha256').update(v, 'utf8').digest('hex');
+    const normEmail = (e?: string | null) => {
+      const v = String(e ?? '').trim().toLowerCase();
+      return v.includes('@') ? v : '';
+    };
+    // Telefone em E.164 BR (+55DDDNUMERO) antes do hash — padrão do Google p/ ECL.
+    const normPhoneE164 = (ph?: string | null) => {
+      let d = String(ph ?? '').replace(/\D/g, '');
+      if (d.length < 10) return '';
+      if (!d.startsWith('55')) d = '55' + d;
+      return '+' + d;
+    };
+    const convName = (kind: string) => (kind === 'PEDIDO' ? 'Pedido Pago' : 'Orçamento');
+    const orderId = (kind: string, numero?: string | null, fallback?: string) =>
+      `${kind === 'PEDIDO' ? 'PED' : 'ORC'}-${String(numero || fallback || '').trim()}`;
+    // Situações que NÃO são venda efetiva — não viram "Pedido Pago".
+    const NAO_VENDA = new Set(['cancelada', 'dados incompletos', 'removido']);
+
+    // Documentos do período com contato (lead) vinculado.
     const docs = await this.prisma.tinyDocument.findMany({
       where: {
         organizationId,
@@ -1007,93 +1038,95 @@ export class DashboardService {
         contactId: { not: null },
       },
       select: {
-        kind: true, numero: true, data: true, valor: true, situacao: true,
-        clienteNome: true, clienteCpfCnpj: true, clienteTelefone: true,
+        kind: true, tinyId: true, numero: true, data: true, valor: true, situacao: true,
+        clienteNome: true, clienteEmail: true, clienteTelefone: true,
         contactId: true, matchedBy: true,
       },
       orderBy: { data: 'asc' },
     });
 
-    // 2) Contatos vinculados (tracking com gclid + telefone + data de entrada).
     const cids = [...new Set(docs.map((d) => d.contactId).filter(Boolean))] as string[];
     const contacts = cids.length
       ? await this.prisma.contact.findMany({
           where: { id: { in: cids } },
-          select: { id: true, name: true, phone: true, createdAt: true, metadata: true },
+          select: { id: true, name: true, phone: true, email: true, metadata: true },
         })
       : [];
     const cById = new Map(contacts.map((c) => [c.id, c] as const));
 
-    type LeadAgg = {
-      gclid: string; leadDate: Date | null; cliente: string;
-      telefone: string; cpf: string;
-      orcQ: number; orc?: { numero: string; valor: number; data: Date | null };
-      pedQ: number; ped?: { numero: string; valor: number; situacao: string; data: Date | null };
-    };
-    const byLead = new Map<string, LeadAgg>();
-
-    const docRows: Cell[][] = [
-      ['gclid', 'Data do lead', 'Tipo', 'Numero', 'Data documento', 'Valor (R$)',
-       'Situacao', 'Cliente', 'Telefone', 'CPF/CNPJ', 'Casou por'].map(H),
+    // Aba 1: import por GCLID (Google Click Conversions) — pronto p/ importar.
+    const gclidRows: Cell[][] = [
+      ['Google Click ID', 'Conversion Name', 'Conversion Time', 'Conversion Value', 'Conversion Currency', 'Order ID'].map(H),
+    ];
+    // Aba 2: fallback ECL (Enhanced Conversions for Leads) — e-mail/telefone em
+    // SHA-256 (normalizados). Só para docs cujo lead NÃO tem gclid.
+    const eclRows: Cell[][] = [
+      ['Email', 'Phone Number', 'Conversion Name', 'Conversion Time', 'Conversion Value', 'Conversion Currency', 'Order ID'].map(H),
+    ];
+    // Aba 3: auditoria legível (conferência).
+    const auditRows: Cell[][] = [
+      ['Tipo', 'Conversion Name', 'Numero', 'Order ID', 'Conversion Time', 'Valor (R$)',
+       'Situacao', 'Via', 'gclid', 'E-mail', 'Telefone', 'Cliente', 'Casou por'].map(H),
     ];
 
-    const later = (a: Date | null | undefined, b: Date | null | undefined) =>
-      (a ? a.getTime() : 0) >= (b ? b.getTime() : 0);
-
+    let nGclid = 0;
+    let nEcl = 0;
+    let nSemChave = 0;
     for (const d of docs) {
+      const situ = String(d.situacao ?? '').toLowerCase();
+      if (d.kind === 'PEDIDO' && NAO_VENDA.has(situ)) continue; // não é venda paga
+
       const c = d.contactId ? cById.get(d.contactId) : undefined;
       const m = c?.metadata as any;
-      if (!c || !isGoogle(m)) continue;
       const gclid = gclidOf(m);
-      if (!gclid) continue; // gclid e a chave obrigatoria
+      const value = round2(num(d.valor));
+      const name = convName(d.kind);
+      const time = convTime(d.data);
+      const oid = orderId(d.kind, d.numero, d.tinyId);
+      const email = normEmail(c?.email ?? d.clienteEmail);
+      const phone = normPhoneE164(c?.phone ?? d.clienteTelefone);
+      const cliente = String(c?.name ?? d.clienteNome ?? '').trim();
 
-      const telefone = String(c.phone ?? d.clienteTelefone ?? '').trim();
-      const cpf = String(d.clienteCpfCnpj ?? '').trim();
-      const cliente = String(c.name ?? d.clienteNome ?? '').trim();
-      const valor = num(d.valor);
-
-      docRows.push([
-        S(gclid), S(ymd(c.createdAt)), S(d.kind === 'PEDIDO' ? 'Pedido' : 'Orcamento'),
-        S(d.numero ?? ''), S(ymd(d.data)), N(round2(valor)), S(d.situacao ?? ''),
-        S(cliente), S(telefone), S(cpf), S(d.matchedBy ?? ''),
-      ]);
-
-      let L = byLead.get(d.contactId as string);
-      if (!L) {
-        L = { gclid, leadDate: c.createdAt ?? null, cliente, telefone, cpf, orcQ: 0, pedQ: 0 };
-        byLead.set(d.contactId as string, L);
-      }
-      if (d.kind === 'ORCAMENTO') {
-        L.orcQ += 1;
-        if (!L.orc || later(d.data, L.orc.data)) L.orc = { numero: String(d.numero ?? ''), valor, data: d.data ?? null };
+      let via: string;
+      if (gclid) {
+        gclidRows.push([S(gclid), S(name), S(time), N(value), S('BRL'), S(oid)]);
+        via = 'GCLID';
+        nGclid++;
+      } else if (email || phone) {
+        eclRows.push([
+          S(email ? sha256(email) : ''),
+          S(phone ? sha256(phone) : ''),
+          S(name), S(time), N(value), S('BRL'), S(oid),
+        ]);
+        via = 'ECL';
+        nEcl++;
       } else {
-        L.pedQ += 1;
-        if (!L.ped || later(d.data, L.ped.data)) L.ped = { numero: String(d.numero ?? ''), valor, situacao: String(d.situacao ?? ''), data: d.data ?? null };
+        via = 'SEM CHAVE';
+        nSemChave++;
       }
-    }
 
-    const leadRows: Cell[][] = [
-      ['gclid', 'Data do lead', 'Cliente', 'Telefone', 'CPF/CNPJ',
-       'Qtd orcamentos', 'Orcamento (nº)', 'Orcamento valor (R$)', 'Orcamento data',
-       'Qtd pedidos', 'Pedido (nº)', 'Pedido valor (R$)', 'Pedido situacao', 'Pedido data'].map(H),
-    ];
-    const leads = [...byLead.values()].sort(
-      (a, b) => (b.leadDate ? b.leadDate.getTime() : 0) - (a.leadDate ? a.leadDate.getTime() : 0),
-    );
-    for (const L of leads) {
-      leadRows.push([
-        S(L.gclid), S(ymd(L.leadDate)), S(L.cliente), S(L.telefone), S(L.cpf),
-        N(L.orcQ),
-        S(L.orc?.numero ?? ''), L.orc ? N(round2(L.orc.valor)) : S(''), S(ymd(L.orc?.data)),
-        N(L.pedQ),
-        S(L.ped?.numero ?? ''), L.ped ? N(round2(L.ped.valor)) : S(''),
-        S(L.ped?.situacao ?? ''), S(ymd(L.ped?.data)),
+      auditRows.push([
+        S(d.kind === 'PEDIDO' ? 'Pedido' : 'Orcamento'), S(name), S(d.numero ?? ''), S(oid),
+        S(time), N(value), S(d.situacao ?? ''), S(via), S(gclid),
+        S(email), S(phone), S(cliente), S(d.matchedBy ?? ''),
       ]);
     }
+
+    const resumoRows: Cell[][] = [
+      ['Metrica', 'Valor'].map(H),
+      [S('Documentos no periodo'), N(docs.length)],
+      [S('Conversoes via GCLID'), N(nGclid)],
+      [S('Conversoes via ECL (email/telefone)'), N(nEcl)],
+      [S('Sem chave (sem gclid e sem email/telefone)'), N(nSemChave)],
+      [S('Periodo de'), S(ymd(range.from))],
+      [S('Periodo ate'), S(ymd(range.to))],
+    ];
 
     return buildXlsx([
-      { name: 'Por lead', rows: leadRows },
-      { name: 'Documentos', rows: docRows },
+      { name: 'Conversoes GCLID', rows: gclidRows },
+      { name: 'Conversoes ECL', rows: eclRows },
+      { name: 'Auditoria', rows: auditRows },
+      { name: 'Resumo', rows: resumoRows },
     ]);
   }
 

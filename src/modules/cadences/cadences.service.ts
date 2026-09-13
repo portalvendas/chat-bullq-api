@@ -21,10 +21,10 @@ import {
   nodeById,
   normalizeSteps,
   resolveGraph,
-  shiftIntoBusinessHours,
   startNode,
 } from './cadences.graph';
 import { KommoModel, kommoToGraph } from './kommo-import';
+import { nextOpenFrom } from '../../common/business-hours/business-hours.util';
 
 /** Passo TIPADO do workflow (formato linear legado, ainda aceito no input). */
 export type WorkflowStep =
@@ -540,10 +540,23 @@ export class CadencesService implements OnModuleInit {
     );
   }
 
-  private async scheduleTimeout(runId: string, node: GraphNode) {
+  private async scheduleTimeout(runId: string, node: GraphNode, orgId: string) {
     const minutes = Number(node.delayMinutes) || 0;
     let fireAt = Date.now() + minutes * 60_000;
-    if (node.businessHoursOnly) fireAt = shiftIntoBusinessHours(fireAt);
+    // "Só em horário comercial": empurra o disparo pro próximo instante DENTRO
+    // do Expediente canônico da org (24/7, agenda por dia, feriados).
+    if (node.businessHoursOnly) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: {
+          businessHours247: true,
+          businessTimezone: true,
+          businessHoursSchedule: true,
+          businessHolidays: true,
+        },
+      });
+      if (org) fireAt = nextOpenFrom(org, fireAt);
+    }
     await this.queue.add(
       'cadence-timeout',
       { runId, nodeId: node.id, kind: 'timeout' },
@@ -600,7 +613,7 @@ export class CadencesService implements OnModuleInit {
           where: { id: runId },
           data: { status: 'WAITING' },
         });
-        await this.scheduleTimeout(runId, node);
+        await this.scheduleTimeout(runId, node, cadence.organizationId);
         return; // aguarda timeout OU reply
       }
 

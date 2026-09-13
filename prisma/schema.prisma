@@ -228,6 +228,26 @@ model Organization {
   /// null = usa defaults do código (15, 15, 60, 3).
   watchdogConfig        Json?   @map("watchdog_config")
 
+  // ─── Expediente (horário de funcionamento) ──────
+  // FONTE ÚNICA da verdade de horário. Rege IA (atendimento), watchdog,
+  // salesbots ("só em horário comercial") e as métricas de tempo de resposta.
+  // Substitui os antigos `aiBusinessHours`/`watchdogBusinessHours` (mantidos
+  // acima só por compat de dados; não são mais lidos pelo código).
+  /// true = aberto 24/7 (sempre "dentro do horário"). false = usa a agenda.
+  businessHours247          Boolean @default(true) @map("business_hours_24_7")
+  /// Fuso do expediente (IANA). Ex.: "America/Sao_Paulo".
+  businessTimezone          String  @default("America/Sao_Paulo") @map("business_timezone")
+  /// Agenda por dia da semana. Shape:
+  /// `{ monday: { enabled, windows: [["08:00","12:00"],["13:30","17:30"]] }, ... }`.
+  /// Múltiplas janelas/dia (ex.: fecha no almoço). null = usa template padrão.
+  businessHoursSchedule     Json?   @map("business_hours_schedule")
+  /// Feriados (dias fechados). Shape: `[{ date: "YYYY-MM-DD" | "MM-DD", label?, annual? }]`.
+  /// `annual: true` (ou date no formato "MM-DD") repete todo ano.
+  businessHolidays          Json?   @map("business_holidays")
+  /// Mensagem padrão de fora de expediente (opcional). Reutilizável pelos
+  /// salesbots/regras. NULL/vazio = sem mensagem automática.
+  businessOutOfHoursMessage String? @map("business_out_of_hours_message") @db.Text
+
   members          UserOrganization[]
   permissionGroups PermissionGroup[]
   channels      Channel[]

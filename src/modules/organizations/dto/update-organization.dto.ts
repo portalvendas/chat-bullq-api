@@ -109,6 +109,53 @@ export class UpdateOrganizationDto {
   @IsString({ each: true })
   allowedUrlDomains?: string[] | null;
 
+  // ─── Expediente (horário de funcionamento) ──────────────────────
+  // FONTE ÚNICA de horário: rege IA, watchdog, salesbots e métricas.
+
+  @ApiPropertyOptional({
+    description: 'true = aberto 24/7 (sempre dentro do horário). false = usa a agenda.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  businessHours247?: boolean;
+
+  @ApiPropertyOptional({ example: 'America/Sao_Paulo' })
+  @IsOptional()
+  @IsString()
+  businessTimezone?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Agenda por dia: { monday: { enabled, windows: [["08:00","12:00"],["13:30","17:30"]] }, ... }. Múltiplas janelas/dia (almoço).',
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  businessHoursSchedule?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Feriados (dias fechados): [{ date: "YYYY-MM-DD" | "MM-DD", label?, annual? }].',
+    nullable: true,
+    type: [Object],
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsArray()
+  businessHolidays?: unknown[] | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Mensagem padrão de fora de expediente (opcional). Vazio = sem mensagem.',
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(1000)
+  businessOutOfHoursMessage?: string | null;
+
   // ─── Watchdog settings ──────────────────────────────────────────
 
   @ApiPropertyOptional({

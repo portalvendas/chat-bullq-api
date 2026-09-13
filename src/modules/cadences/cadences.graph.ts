@@ -175,39 +175,3 @@ export function edgeTarget(
   const e = g.edges.find((x) => x.from === nodeId && (x.fromHandle ?? 'out') === handle);
   return e ? e.to : null;
 }
-
-// ─── Horário de expediente ───────────────────────────────
-// Janela padrão: Seg–Sex, 08:00–17:30 no fuso America/Sao_Paulo (UTC-3).
-// O servidor roda em UTC; aplicamos offset fixo (-3h) — suficiente para o
-// caso de uso (sem horário de verão no BR desde 2019).
-const BRT_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC-3
-const BIZ_START_MIN = 8 * 60; // 08:00
-const BIZ_END_MIN = 17 * 60 + 30; // 17:30
-
-/**
- * Retorna o timestamp (ms epoch) em que um disparo agendado para `fireAtMs`
- * deve realmente ocorrer, respeitando a janela de expediente. Se cair fora,
- * empurra para a próxima abertura (08:00 do próximo dia útil).
- */
-export function shiftIntoBusinessHours(fireAtMs: number): number {
-  // Trabalha em "horário local BRT" somando o offset e usando getUTC*.
-  let d = new Date(fireAtMs - BRT_OFFSET_MS);
-  for (let guard = 0; guard < 14; guard++) {
-    const dow = d.getUTCDay(); // 0=Dom … 6=Sáb (já em BRT)
-    const minutes = d.getUTCHours() * 60 + d.getUTCMinutes();
-    const isWeekend = dow === 0 || dow === 6;
-
-    if (!isWeekend && minutes >= BIZ_START_MIN && minutes <= BIZ_END_MIN) {
-      return d.getTime() + BRT_OFFSET_MS; // dentro da janela → mantém
-    }
-    if (!isWeekend && minutes < BIZ_START_MIN) {
-      // antes de abrir → hoje às 08:00
-      d.setUTCHours(8, 0, 0, 0);
-      return d.getTime() + BRT_OFFSET_MS;
-    }
-    // depois de fechar ou fim de semana → próximo dia às 08:00
-    d = new Date(d.getTime() + 24 * 60 * 60 * 1000);
-    d.setUTCHours(8, 0, 0, 0);
-  }
-  return fireAtMs; // fallback improvável
-}

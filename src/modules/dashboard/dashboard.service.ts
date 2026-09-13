@@ -4,6 +4,7 @@ import { MetaAdsService } from './meta-ads.service';
 import { buildXlsx, H, S, N } from './xlsx-lite.util';
 import type { Cell } from './xlsx-lite.util';
 import * as crypto from 'crypto';
+import { businessMinutesBetween as expedienteMinutes } from '../../common/business-hours/business-hours.util';
 
 export interface DateRange {
   from: Date;
@@ -1441,16 +1442,23 @@ export class DashboardService {
       }),
       this.prisma.organization.findUnique({
         where: { id: organizationId },
-        select: { aiBusinessHours: true, aiTimezone: true },
+        select: {
+          businessHours247: true,
+          businessTimezone: true,
+          businessHoursSchedule: true,
+          businessHolidays: true,
+        },
       }),
     ]);
     if (convs.length === 0) return null;
 
-    const bh = (org?.aiBusinessHours as BusinessHoursConfig | null) ?? null;
-    const tz = org?.aiTimezone || 'America/Sao_Paulo';
-
+    // Minutos de EXPEDIENTE (Expediente canônico da org: 24/7, agenda, feriados).
     const minutes = convs
-      .map((c) => this.businessMinutesBetween(c.createdAt, c.firstResponseAt!, bh, tz))
+      .map((c) =>
+        org
+          ? expedienteMinutes(org, c.createdAt, c.firstResponseAt!)
+          : (c.firstResponseAt!.getTime() - c.createdAt.getTime()) / 60000,
+      )
       .filter((m) => Number.isFinite(m))
       .sort((a, b) => a - b);
     if (minutes.length === 0) return null;

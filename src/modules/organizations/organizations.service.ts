@@ -76,10 +76,28 @@ export class OrganizationsService {
       watchdogBusinessHours,
       watchdogConfig,
       allowedUrlDomains,
+      businessHoursSchedule,
+      businessHolidays,
       ...rest
     } = dto;
     return this.repository.update(orgId, {
       ...rest,
+      ...(businessHoursSchedule !== undefined
+        ? {
+            businessHoursSchedule:
+              businessHoursSchedule === null
+                ? Prisma.JsonNull
+                : (businessHoursSchedule as Prisma.InputJsonValue),
+          }
+        : {}),
+      ...(businessHolidays !== undefined
+        ? {
+            businessHolidays:
+              businessHolidays === null
+                ? Prisma.JsonNull
+                : (businessHolidays as Prisma.InputJsonValue),
+          }
+        : {}),
       ...(aiBusinessHours !== undefined
         ? { aiBusinessHours: aiBusinessHours as object }
         : {}),

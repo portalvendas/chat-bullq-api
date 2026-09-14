@@ -55,6 +55,12 @@ export class CadencesController {
     return this.service.remove(id, orgId);
   }
 
+  @Post(':id/duplicate')
+  @ApiOperation({ summary: 'Duplicar salesbot (nasce pausado)' })
+  duplicate(@Param('id') id: string, @CurrentOrg('id') orgId: string) {
+    return this.service.duplicate(id, orgId);
+  }
+
   @Get('active/:conversationId')
   @ApiOperation({ summary: 'Salesbots ativos (rodando) numa conversa' })
   active(

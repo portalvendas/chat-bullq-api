@@ -166,6 +166,32 @@ export class CadencesService implements OnModuleInit {
   }
 
   /**
+   * Duplica um Salesbot: copia todo o fluxo (grafo/steps), gatilho, origens e
+   * opções, com nome "<nome> (cópia)". Nasce PAUSADO (active=false) pra evitar
+   * dois bots disparando no mesmo gatilho antes de a pessoa revisar.
+   */
+  async duplicate(id: string, organizationId: string) {
+    const c = await this.get(id, organizationId);
+    return this.prisma.cadence.create({
+      data: {
+        organizationId,
+        name: `${c.name} (cópia)`,
+        description: c.description ?? null,
+        active: false,
+        triggerType: c.triggerType,
+        triggerValue: c.triggerValue,
+        stopOnReply: c.stopOnReply,
+        businessHoursOnly: c.businessHoursOnly,
+        runWindow: (c as { runWindow?: string }).runWindow ?? 'ALWAYS',
+        channelFilter: c.channelFilter as any,
+        steps: c.steps as any,
+        graph: c.graph as any,
+        onEnd: c.onEnd as any,
+      },
+    });
+  }
+
+  /**
    * Importa bots exportados do Kommo. Cada arquivo vira um Salesbot com o grafo
    * convertido. Dedupe por nome: bots já existentes são pulados (reimport seguro).
    * Retorna resumo por bot (nós, avisos) pronto pro frontend renderizar.

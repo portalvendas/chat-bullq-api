@@ -1739,6 +1739,11 @@ model Cadence {
   triggerValue      String?  @map("trigger_value")
   stopOnReply       Boolean  @default(true) @map("stop_on_reply")
   businessHoursOnly Boolean  @default(false) @map("business_hours_only")
+  /// Janela de execução por horário (Expediente), avaliada no disparo:
+  ///  ALWAYS         = sempre;
+  ///  BUSINESS_HOURS = só dispara DENTRO do expediente;
+  ///  OUTSIDE_HOURS  = só dispara FORA do expediente (ex.: aviso de fora de horário).
+  runWindow         String   @default("ALWAYS") @map("run_window")
   /// Origens permitidas: lista de channelIds. Vazio = dispara para TODAS.
   channelFilter     Json     @default("[]") @map("channel_filter")
   /// [{ delayMinutes, text }] em ordem — formato LINEAR legado (mantido p/ compat)

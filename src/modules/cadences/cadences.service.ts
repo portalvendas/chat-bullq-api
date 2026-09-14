@@ -24,7 +24,7 @@ import {
   startNode,
 } from './cadences.graph';
 import { KommoModel, kommoToGraph } from './kommo-import';
-import { nextOpenFrom } from '../../common/business-hours/business-hours.util';
+import { nextOpenFrom, isOpenAt } from '../../common/business-hours/business-hours.util';
 
 /** Passo TIPADO do workflow (formato linear legado, ainda aceito no input). */
 export type WorkflowStep =
@@ -49,6 +49,8 @@ export interface CadenceInput {
   triggerValue?: string | null;
   stopOnReply?: boolean;
   businessHoursOnly?: boolean;
+  /** Janela de execução por horário: ALWAYS | BUSINESS_HOURS | OUTSIDE_HOURS. */
+  runWindow?: 'ALWAYS' | 'BUSINESS_HOURS' | 'OUTSIDE_HOURS';
   /** Origens permitidas (channelIds). Vazio/ausente = todas. */
   channelFilter?: string[];
   steps?: Array<WorkflowStep | LegacyStep>;
@@ -124,6 +126,7 @@ export class CadencesService implements OnModuleInit {
         triggerValue: dto.triggerValue ?? null,
         stopOnReply: dto.stopOnReply ?? true,
         businessHoursOnly: dto.businessHoursOnly ?? false,
+        runWindow: dto.runWindow ?? 'ALWAYS',
         channelFilter: (dto.channelFilter ?? []) as any,
         steps: (dto.steps ?? []) as any,
         graph: (dto.graph ?? {}) as any,
@@ -146,6 +149,7 @@ export class CadencesService implements OnModuleInit {
         ...(dto.businessHoursOnly !== undefined
           ? { businessHoursOnly: dto.businessHoursOnly }
           : {}),
+        ...(dto.runWindow !== undefined ? { runWindow: dto.runWindow } : {}),
         ...(dto.channelFilter !== undefined
           ? { channelFilter: dto.channelFilter as any }
           : {}),
@@ -371,6 +375,28 @@ export class CadencesService implements OnModuleInit {
       });
       if (!conv || !channelFilter.includes(conv.channelId)) {
         return { started: false, reason: 'channel_filtered' };
+      }
+    }
+
+    // Janela por HORÁRIO (Expediente da org): BUSINESS_HOURS só dispara dentro
+    // do expediente; OUTSIDE_HOURS só dispara fora (ex.: aviso de fora de hora).
+    const runWindow = (cadence as { runWindow?: string }).runWindow ?? 'ALWAYS';
+    if (runWindow === 'BUSINESS_HOURS' || runWindow === 'OUTSIDE_HOURS') {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: {
+          businessHours247: true,
+          businessTimezone: true,
+          businessHoursSchedule: true,
+          businessHolidays: true,
+        },
+      });
+      const open = org ? isOpenAt(org) : true;
+      if (runWindow === 'BUSINESS_HOURS' && !open) {
+        return { started: false, reason: 'outside_business_hours' };
+      }
+      if (runWindow === 'OUTSIDE_HOURS' && open) {
+        return { started: false, reason: 'within_business_hours' };
       }
     }
 
@@ -718,6 +744,35 @@ export class CadencesService implements OnModuleInit {
     } catch (err: any) {
       this.logger.warn(
         `onCustomerReply falhou (conv ${conversationId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Um HUMANO assumiu a conversa (atendente enviou mensagem no inbox).
+   * Interrompe os salesbots em andamento pra não competir com a pessoa nem
+   * mandar o próximo passo automático por cima do atendimento. Best-effort.
+   */
+  async stopActiveForConversation(
+    conversationId: string,
+    reason = 'humano_assumiu',
+  ): Promise<void> {
+    try {
+      const runs = await this.prisma.cadenceRun.findMany({
+        where: { conversationId, status: { in: RUNNABLE as any } },
+        select: { id: true },
+      });
+      for (const run of runs) {
+        await this.finish(run.id, 'STOPPED', reason);
+      }
+      if (runs.length > 0) {
+        this.logger.log(
+          `Salesbot(s) interrompidos na conv ${conversationId} (${runs.length}) — ${reason}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `stopActiveForConversation falhou (conv ${conversationId}): ${err?.message ?? err}`,
       );
     }
   }

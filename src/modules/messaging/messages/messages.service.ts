@@ -23,6 +23,7 @@ import {
 } from '../../iam/channel-access/channel-access.service';
 import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { ChannelAdapterRegistry } from '../../channel-hub/channel-adapter.registry';
+import { CadencesService } from '../../cadences/cadences.service';
 
 @Injectable()
 export class MessagesService {
@@ -36,6 +37,7 @@ export class MessagesService {
     private readonly watchdog: WatchdogService,
     private readonly adapterRegistry: ChannelAdapterRegistry,
     @InjectQueue('outbound-messages') private readonly outboundQueue: Queue,
+    private readonly cadences: CadencesService,
   ) {}
 
   async send(
@@ -188,6 +190,12 @@ export class MessagesService {
     // zera o contador de tentativas. Se a IA estava paralisada e quem
     // resolveu foi a pessoa, conversa não deve aparecer como "presa".
     this.watchdog.cancelCheck(conversation.id).catch(() => undefined);
+
+    // Humano assumiu: interrompe salesbots em andamento nesta conversa pra o
+    // robô não mandar o próximo passo por cima do atendimento. Best-effort.
+    this.cadences
+      .stopActiveForConversation(conversation.id)
+      .catch(() => undefined);
 
     // Replying = reading. The sender obviously saw the inbound stream
     // before typing — bump their lastReadAt so the unread badge resets

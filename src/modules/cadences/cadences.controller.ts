@@ -70,6 +70,12 @@ export class CadencesController {
     return this.service.activeForConversation(orgId, conversationId);
   }
 
+  @Post('runs/:runId/stop')
+  @ApiOperation({ summary: 'Para uma execução de salesbot (por runId)' })
+  stopRun(@Param('runId') runId: string, @CurrentOrg('id') orgId: string) {
+    return this.service.stopRun(runId, orgId);
+  }
+
   @Post(':id/start')
   @ApiOperation({ summary: 'Inicia a cadência numa conversa' })
   start(

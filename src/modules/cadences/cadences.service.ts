@@ -192,6 +192,27 @@ export class CadencesService implements OnModuleInit {
   }
 
   /**
+   * Para UMA execução de salesbot (por runId) nesta conversa. Usado pelo botão
+   * "parar" do popover. Verifica que o run pertence à org via a cadência.
+   */
+  async stopRun(runId: string, organizationId: string) {
+    const run = await this.prisma.cadenceRun.findUnique({
+      where: { id: runId },
+      include: { cadence: { select: { organizationId: true } } },
+    });
+    if (!run || run.cadence.organizationId !== organizationId) {
+      throw new NotFoundException('Execução de salesbot não encontrada');
+    }
+    if ((RUNNABLE as readonly string[]).includes(run.status)) {
+      await this.finish(runId, 'STOPPED', 'parado_manualmente');
+      this.logger.log(
+        `Salesbot parado manualmente (run ${runId}) conv ${run.conversationId}`,
+      );
+    }
+    return { stopped: true };
+  }
+
+  /**
    * Importa bots exportados do Kommo. Cada arquivo vira um Salesbot com o grafo
    * convertido. Dedupe por nome: bots já existentes são pulados (reimport seguro).
    * Retorna resumo por bot (nós, avisos) pronto pro frontend renderizar.

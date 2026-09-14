@@ -205,6 +205,8 @@ export class InboxViewsService {
       channelId?: string;
       tagIds?: string;
       assignedToId?: string;
+      assignedToIds?: string;
+      includeUnassigned?: string;
       stuck?: string;
     },
   ) {
@@ -260,6 +262,16 @@ export class InboxViewsService {
         : filters.tagIds;
 
     const finalAssignedToId = ov.assignedToId ?? assignedToId;
+    const overrideAssignedToIds = ov.assignedToIds
+      ?.split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const finalAssignedToIds =
+      overrideAssignedToIds && overrideAssignedToIds.length > 0
+        ? overrideAssignedToIds
+        : undefined;
+    const finalIncludeUnassigned =
+      ov.includeUnassigned === 'true' || ov.includeUnassigned === '1';
     const finalStuck = ov.stuck === 'true' || ov.stuck === '1';
 
     return this.conversationsService.findInbox(
@@ -271,6 +283,8 @@ export class InboxViewsService {
         kind: finalKind,
         tagIds: finalTagIds,
         assignedToId: finalAssignedToId,
+        assignedToIds: finalAssignedToIds,
+        includeUnassigned: finalIncludeUnassigned,
         search: extraSearch,
         archived: finalArchived,
         unreadOnly: finalUnread,

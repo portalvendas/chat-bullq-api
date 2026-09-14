@@ -100,6 +100,8 @@ export class InboxViewsController {
     @Query('channelId') channelId?: string,
     @Query('tagIds') tagIds?: string,
     @Query('assignedToId') assignedToId?: string,
+    @Query('assignedToIds') assignedToIds?: string,
+    @Query('includeUnassigned') includeUnassigned?: string,
     @Query('stuck') stuck?: string,
   ) {
     return this.service.findConversations(
@@ -117,6 +119,8 @@ export class InboxViewsController {
         channelId,
         tagIds,
         assignedToId,
+        assignedToIds,
+        includeUnassigned,
         stuck,
       },
     );

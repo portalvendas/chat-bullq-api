@@ -22,6 +22,9 @@ export interface InboxFilters {
   /** Filtro por MÚLTIPLOS responsáveis (ex.: filtro "Vendedores" do inbox).
    *  Quando presente e não-vazio, tem precedência sobre assignedToId. */
   assignedToIds?: string[];
+  /** "Sem vendedor": inclui conversas com assignedToId null. Combinável com
+   *  assignedToIds/assignedToId (OR — ids selecionados OU sem responsável). */
+  includeUnassigned?: boolean;
   search?: string;
   accessibleChannelIds?: string[];
   /**
@@ -128,13 +131,26 @@ export class ConversationsRepository {
         { contact: { tags: { some: { tagId: { in: filters.tagIds } } } } },
       ];
     }
+    // Responsável: ids específicos e/ou "sem vendedor" (assignedToId null).
+    // Constrói via AND+OR pra não colidir com o where.OR de tags/busca.
+    const assignConds: any[] = [];
     if (filters.assignedToIds && filters.assignedToIds.length > 0) {
-      where.assignedToId =
-        filters.assignedToIds.length === 1
-          ? filters.assignedToIds[0]
-          : { in: filters.assignedToIds };
+      assignConds.push({
+        assignedToId:
+          filters.assignedToIds.length === 1
+            ? filters.assignedToIds[0]
+            : { in: filters.assignedToIds },
+      });
     } else if (filters.assignedToId) {
-      where.assignedToId = filters.assignedToId;
+      assignConds.push({ assignedToId: filters.assignedToId });
+    }
+    if (filters.includeUnassigned) {
+      assignConds.push({ assignedToId: null });
+    }
+    if (assignConds.length === 1) {
+      Object.assign(where, assignConds[0]);
+    } else if (assignConds.length > 1) {
+      where.AND = [...((where.AND as any[]) ?? []), { OR: assignConds }];
     }
     if (filters.stuckOnly) where.isStuck = true;
     if (filters.search) {

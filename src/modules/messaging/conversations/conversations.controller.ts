@@ -67,6 +67,7 @@ export class ConversationsController {
     @Query('channelId') channelId?: string,
     @Query('assignedToId') assignedToId?: string,
     @Query('assignedToIds') assignedToIds?: string,
+    @Query('includeUnassigned') includeUnassigned?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -102,6 +103,8 @@ export class ConversationsController {
         assignedToIds: parsedAssignedToIds?.length
           ? parsedAssignedToIds
           : undefined,
+        includeUnassigned:
+          includeUnassigned === 'true' || includeUnassigned === '1',
         search,
         archived: archivedScope,
         unreadOnly: unread === 'true' || unread === '1',

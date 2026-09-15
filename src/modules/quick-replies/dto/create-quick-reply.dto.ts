@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsArray, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateQuickReplyDto {
@@ -15,6 +15,15 @@ export class CreateQuickReplyDto {
   @ApiProperty({ description: 'Conteúdo. Aceita {{cliente}} e {{vendedor}}.' })
   @IsString()
   content: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Anexos: [{ url, type: IMAGE|VIDEO|AUDIO|DOCUMENT, mimeType?, fileName?, size? }].',
+    type: [Object],
+  })
+  @IsOptional()
+  @IsArray()
+  attachments?: Record<string, unknown>[];
 
   @ApiPropertyOptional({
     description:

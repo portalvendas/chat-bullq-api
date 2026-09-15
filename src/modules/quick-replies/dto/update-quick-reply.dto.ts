@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsArray, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateQuickReplyDto {
@@ -18,6 +18,11 @@ export class UpdateQuickReplyDto {
   @IsOptional()
   @IsString()
   content?: string;
+
+  @ApiPropertyOptional({ type: [Object] })
+  @IsOptional()
+  @IsArray()
+  attachments?: Record<string, unknown>[];
 
   @ApiPropertyOptional({ enum: ['ORG', 'PERSONAL'] })
   @IsOptional()

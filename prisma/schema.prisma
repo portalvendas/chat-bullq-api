@@ -136,6 +136,7 @@ model User {
   routineDailyChecks    RoutineDailyCheck[]
   platformAuditLogs     PlatformAuditLog[]
   passwordResets        PasswordResetToken[]
+  quickReplies          QuickReply[]        @relation("UserQuickReplies")
 
   @@map("users")
 }
@@ -877,6 +878,8 @@ model ChatbotFlowChannel {
 model QuickReply {
   id             String    @id @default(cuid())
   organizationId String    @map("organization_id")
+  /// null = compartilhada (empresa, todos veem); setado = pessoal do usuário.
+  userId         String?   @map("user_id")
   shortcut       String
   title          String
   content        String
@@ -886,8 +889,9 @@ model QuickReply {
   deletedAt      DateTime? @map("deleted_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation("UserQuickReplies", fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, shortcut])
+  @@index([organizationId, userId], name: "idx_quickreply_org_user")
   @@map("quick_replies")
 }
 

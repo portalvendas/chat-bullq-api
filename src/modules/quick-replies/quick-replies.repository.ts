@@ -10,10 +10,15 @@ export class QuickRepliesRepository {
     return this.prisma.quickReply.create({ data });
   }
 
-  async findByOrg(organizationId: string) {
+  /** Compartilhadas da org (user_id null) + as pessoais DESTE usuário. */
+  async findVisible(organizationId: string, userId: string) {
     return this.prisma.quickReply.findMany({
-      where: { organizationId, deletedAt: null },
-      orderBy: { shortcut: 'asc' },
+      where: {
+        organizationId,
+        deletedAt: null,
+        OR: [{ userId: null }, { userId }],
+      },
+      orderBy: [{ userId: 'asc' }, { shortcut: 'asc' }],
     });
   }
 
@@ -23,9 +28,14 @@ export class QuickRepliesRepository {
     });
   }
 
-  async findByShortcut(organizationId: string, shortcut: string) {
+  /** Atalho já usado DENTRO do mesmo escopo (mesma org + mesmo dono). */
+  async findByShortcutScoped(
+    organizationId: string,
+    userId: string | null,
+    shortcut: string,
+  ) {
     return this.prisma.quickReply.findFirst({
-      where: { organizationId, shortcut, deletedAt: null },
+      where: { organizationId, userId, shortcut, deletedAt: null },
     });
   }
 

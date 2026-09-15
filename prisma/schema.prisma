@@ -1580,8 +1580,8 @@ model Pipeline {
   isDefault      Boolean  @default(false) @map("is_default")
   archived       Boolean  @default(false)
   order          Int      @default(0)
-  // Prazo (horas) sem interação p/ notificar cards deste funil. NULL = desligado.
-  inactivityHours Int?    @map("inactivity_hours")
+  // Prazo (MINUTOS) sem interação p/ notificar cards deste funil. NULL = desligado.
+  inactivityMinutes Int?  @map("inactivity_minutes")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -1600,8 +1600,8 @@ model PipelineStage {
   color      String?
   type       PipelineStageType @default(NORMAL)
   order      Int               @default(0)
-  // Override do prazo de inatividade p/ esta etapa. NULL = herda do funil.
-  inactivityHours Int?         @map("inactivity_hours")
+  // Override do prazo de inatividade (MINUTOS) desta etapa. NULL = herda do funil.
+  inactivityMinutes Int?       @map("inactivity_minutes")
   createdAt  DateTime          @default(now()) @map("created_at")
 
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)

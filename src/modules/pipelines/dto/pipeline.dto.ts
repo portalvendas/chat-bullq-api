@@ -35,12 +35,12 @@ export class UpsertStageDto {
   @Min(0)
   order?: number;
 
-  // Prazo de inatividade (horas) desta etapa. null = herda do funil.
+  // Prazo de inatividade (MINUTOS) desta etapa. null = herda do funil.
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
   @IsInt()
   @Min(1)
-  inactivityHours?: number | null;
+  inactivityMinutes?: number | null;
 }
 
 export class CreatePipelineDto {
@@ -102,12 +102,12 @@ export class UpdatePipelineDto {
   @Min(0)
   order?: number;
 
-  // Prazo padrão de inatividade (horas) do funil. null = desliga o alerta.
+  // Prazo padrão de inatividade (MINUTOS) do funil. null = desliga o alerta.
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
   @IsInt()
   @Min(1)
-  inactivityHours?: number | null;
+  inactivityMinutes?: number | null;
 }
 
 export class CreateCardDto {

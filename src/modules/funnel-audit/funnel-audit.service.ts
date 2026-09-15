@@ -26,7 +26,7 @@ type StageLite = {
   name: string;
   type: 'NORMAL' | 'WON' | 'LOST';
   order: number;
-  inactivityHours: number | null;
+  inactivityMinutes: number | null;
 };
 
 interface Candidate {
@@ -122,14 +122,14 @@ export class FunnelAuditService {
         },
         select: {
           id: true,
-          inactivityHours: true,
+          inactivityMinutes: true,
           stages: {
             select: {
               id: true,
               name: true,
               type: true,
               order: true,
-              inactivityHours: true,
+              inactivityMinutes: true,
             },
             orderBy: { order: 'asc' },
           },
@@ -172,8 +172,11 @@ export class FunnelAuditService {
         // Etapas fechadas (WON/LOST) não entram — já concluídas.
         if (stage.type !== 'NORMAL') continue;
 
-        const threshHours =
-          stage.inactivityHours ?? pipeline.inactivityHours ?? null;
+        // O campo agora é em MINUTOS; a auditoria raciocina em horas/dias, então
+        // converte (÷60). Ex.: 1440min -> 24h.
+        const threshMinutes =
+          stage.inactivityMinutes ?? pipeline.inactivityMinutes ?? null;
+        const threshHours = threshMinutes != null ? threshMinutes / 60 : null;
         const lastAt = card.conversation?.lastMessageAt ?? card.updatedAt;
         const idleHours =
           (Date.now() - new Date(lastAt).getTime()) / 3_600_000;

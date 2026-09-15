@@ -5,6 +5,14 @@ import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+/** Formata a ociosidade em rótulo curto: "45min", "2h", "2h30min". */
+function formatIdle(totalMinutes: number): string {
+  if (totalMinutes < 60) return `${totalMinutes}min`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m ? `${h}h${m}min` : `${h}h`;
+}
+
 export const PIPELINE_INACTIVITY_QUEUE = 'pipeline-inactivity';
 export const PIPELINE_INACTIVITY_SCAN_JOB = 'scan-inactive-cards';
 
@@ -12,8 +20,8 @@ export const PIPELINE_INACTIVITY_SCAN_JOB = 'scan-inactive-cards';
  * Varre cards ABERTOS de funis não arquivados e notifica responsável+gestores
  * quando o card fica sem interação além do prazo configurado.
  *
- * Prazo efetivo = etapa.inactivityHours ?? pipeline.inactivityHours. NULL nos
- * dois = card ignorado.
+ * Prazo efetivo = etapa.inactivityMinutes ?? pipeline.inactivityMinutes (em
+ * MINUTOS). NULL nos dois = card ignorado.
  *
  * "Última interação" = max(conversation.lastMessageAt, card.updatedAt) — mover
  * o card ou uma mensagem nova resetam o relógio. Notifica UMA vez por período
@@ -36,18 +44,18 @@ export class PipelineInactivityProcessor extends WorkerHost {
     // Funis (não arquivados) e etapas COM prazo configurado.
     const [pipes, stages] = await Promise.all([
       this.prisma.pipeline.findMany({
-        where: { archived: false, inactivityHours: { not: null } },
-        select: { id: true, inactivityHours: true },
+        where: { archived: false, inactivityMinutes: { not: null } },
+        select: { id: true, inactivityMinutes: true },
       }),
       this.prisma.pipelineStage.findMany({
-        where: { inactivityHours: { not: null } },
-        select: { id: true, inactivityHours: true, pipelineId: true },
+        where: { inactivityMinutes: { not: null } },
+        select: { id: true, inactivityMinutes: true, pipelineId: true },
       }),
     ]);
 
-    const pipeThreshold = new Map(pipes.map((p) => [p.id, p.inactivityHours!]));
+    const pipeThreshold = new Map(pipes.map((p) => [p.id, p.inactivityMinutes!]));
     const stageThreshold = new Map(
-      stages.map((s) => [s.id, s.inactivityHours!]),
+      stages.map((s) => [s.id, s.inactivityMinutes!]),
     );
     const pipeIds = [...pipeThreshold.keys()];
     const stageIds = [...stageThreshold.keys()];
@@ -83,15 +91,16 @@ export class PipelineInactivityProcessor extends WorkerHost {
     let notified = 0;
 
     for (const card of cards) {
-      const hours = stageThreshold.get(card.stageId) ?? pipeThreshold.get(card.pipelineId);
-      if (!hours || hours <= 0) continue;
+      const minutes =
+        stageThreshold.get(card.stageId) ?? pipeThreshold.get(card.pipelineId);
+      if (!minutes || minutes <= 0) continue;
 
       const lastActivity = Math.max(
         card.conversation?.lastMessageAt?.getTime() ?? 0,
         card.updatedAt.getTime(),
       );
       const idleMs = now - lastActivity;
-      if (idleMs < hours * 3_600_000) continue;
+      if (idleMs < minutes * 60_000) continue;
 
       const meta = (card.metadata as Record<string, any>) ?? {};
       const notifiedAt = meta.inactivityNotifiedAt
@@ -100,7 +109,8 @@ export class PipelineInactivityProcessor extends WorkerHost {
       // Já avisou e não houve atividade nova desde então → não repete.
       if (notifiedAt >= lastActivity) continue;
 
-      const idleHours = Math.floor(idleMs / 3_600_000);
+      const idleMinutes = Math.floor(idleMs / 60_000);
+      const idleLabel = formatIdle(idleMinutes);
       const who = card.contact?.name ? ` (${card.contact.name})` : '';
 
       try {
@@ -109,13 +119,13 @@ export class PipelineInactivityProcessor extends WorkerHost {
           responsibleUserId: card.assignedToId,
           type: 'CARD_INACTIVE' as NotificationType,
           title: 'Lead parado no funil',
-          body: `${card.title}${who} está há ${idleHours}h sem interação.`,
+          body: `${card.title}${who} está há ${idleLabel} sem interação.`,
           data: {
             kind: 'card_inactive',
             cardId: card.id,
             pipelineId: card.pipelineId,
             stageId: card.stageId,
-            idleHours,
+            idleMinutes,
           },
         });
         await this.prisma.card.update({

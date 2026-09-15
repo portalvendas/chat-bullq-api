@@ -6,13 +6,17 @@ import {
   PIPELINE_INACTIVITY_SCAN_JOB,
 } from './pipeline-inactivity.processor';
 
-const REPEAT_PATTERN = '*/15 * * * *'; // a cada 15min
+const REPEAT_PATTERN = '*/5 * * * *'; // a cada 5min (granularidade de minutos)
 const REPEAT_JOB_ID = 'pipeline-inactivity-scan-cron';
 
 /**
  * Registra um repeatable job que dispara a varredura de cards inativos a cada
- * 15min. Mesmo padrão do resto do projeto (BullMQ repeatable, não @Cron) —
+ * 5min. Mesmo padrão do resto do projeto (BullMQ repeatable, não @Cron) —
  * idempotente: múltiplas instâncias registram o mesmo jobId e o Bull mantém um.
+ *
+ * Antes de registrar, remove repeatables antigos deste mesmo job cujo pattern
+ * mudou (ex.: o schedule antigo de 15min). Sem isso o Bull manteria os dois
+ * schedules em paralelo, porque a chave do repeatable inclui o pattern.
  */
 @Injectable()
 export class PipelineInactivityCronService implements OnModuleInit {
@@ -24,6 +28,20 @@ export class PipelineInactivityCronService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     try {
+      // Limpa schedules antigos deste job com pattern diferente do atual.
+      const existing = await this.queue.getRepeatableJobs();
+      for (const r of existing) {
+        if (
+          (r.name === PIPELINE_INACTIVITY_SCAN_JOB || r.id === REPEAT_JOB_ID) &&
+          r.pattern !== REPEAT_PATTERN
+        ) {
+          await this.queue.removeRepeatableByKey(r.key);
+          this.logger.log(
+            `pipeline_inactivity_cron_stale_removed pattern=${r.pattern}`,
+          );
+        }
+      }
+
       await this.queue.add(
         PIPELINE_INACTIVITY_SCAN_JOB,
         {},

@@ -5,7 +5,10 @@ import { MessageStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { ChannelAdapterRegistry } from '../../channel-hub/channel-adapter.registry';
 import { RealtimeGateway } from '../../realtime/realtime.gateway';
-import { NormalizedOutboundMessage } from '../../channel-hub/ports/types';
+import {
+  NormalizedOutboundMessage,
+  MessageContentType,
+} from '../../channel-hub/ports/types';
 import { IdempotencyService } from './idempotency.service';
 
 interface OutboundJobData {
@@ -48,6 +51,12 @@ export class OutboundMessageProcessor extends WorkerHost {
       message,
       adapter,
     });
+
+    // Corrige o tipo de mídia a partir do arquivo real (mime/extensão) antes
+    // de enviar. Sem isso, um anexo com `type` errado (ex.: imagem gravada como
+    // DOCUMENT em cadastros antigos) sai como documento e o provedor
+    // (WhatsApp/Z-API) não entrega direito. Vale p/ todos os canais.
+    this.normalizeMediaType(message);
 
     try {
       const result = await adapter.sendMessage(
@@ -192,6 +201,51 @@ export class OutboundMessageProcessor extends WorkerHost {
    * For a 12-char "opa, beleza!" → ~1.2s. For a 100-char message → ~3.7s.
    * Caps at 6s so the customer never feels the bot froze.
    */
+  /**
+   * Reclassifica mensagens de mídia pelo tipo REAL do arquivo (mimeType e, no
+   * fallback, extensão da URL/fileName). Só mexe entre tipos de mídia
+   * (IMAGE/VIDEO/AUDIO/DOCUMENT) — texto, sticker etc. ficam intactos. Quando
+   * não dá pra determinar (ex.: pdf, docx), mantém o tipo atual.
+   *
+   * @example  { type: DOCUMENT, content: { mediaUrl: '.../x.png' } } -> IMAGE
+   */
+  private normalizeMediaType(message: NormalizedOutboundMessage): void {
+    const MEDIA: MessageContentType[] = [
+      MessageContentType.IMAGE,
+      MessageContentType.VIDEO,
+      MessageContentType.AUDIO,
+      MessageContentType.DOCUMENT,
+    ];
+    if (!MEDIA.includes(message.type)) return;
+
+    const c = message.content ?? {};
+    const mime = String(c.mimeType ?? '').toLowerCase();
+    const src = String(c.fileName || c.mediaUrl || '').toLowerCase();
+    const ext = src.split('?')[0].match(/\.([a-z0-9]+)$/)?.[1] ?? '';
+
+    const isImg =
+      mime.startsWith('image/') ||
+      ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'heif'].includes(ext);
+    const isVid =
+      mime.startsWith('video/') ||
+      ['mp4', 'mov', '3gp', 'webm', 'mkv', 'avi', 'm4v'].includes(ext);
+    const isAud =
+      mime.startsWith('audio/') ||
+      ['mp3', 'ogg', 'oga', 'm4a', 'wav', 'aac', 'amr', 'opus'].includes(ext);
+
+    let resolved: MessageContentType | null = null;
+    if (isImg) resolved = MessageContentType.IMAGE;
+    else if (isVid) resolved = MessageContentType.VIDEO;
+    else if (isAud) resolved = MessageContentType.AUDIO;
+
+    if (resolved && resolved !== message.type) {
+      this.logger.log(
+        `Tipo de mídia corrigido: ${message.type} -> ${resolved} (mime=${mime || 'n/a'} ext=${ext || 'n/a'})`,
+      );
+      message.type = resolved;
+    }
+  }
+
   private async simulateTypingIfAiMessage(args: {
     messageId: string;
     channel: { id: string; type: any };

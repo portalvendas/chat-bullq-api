@@ -40,6 +40,48 @@ export class MessagesService {
     private readonly cadences: CadencesService,
   ) {}
 
+  /**
+   * Reclassifica o tipo de mídia pelo arquivo REAL: mimeType e, no fallback,
+   * a extensão da URL/fileName. Só mexe entre tipos de mídia
+   * (IMAGE/VIDEO/AUDIO/DOCUMENT); TEXT e demais ficam intactos, e quando não
+   * dá pra determinar (pdf, docx...) mantém o tipo recebido.
+   */
+  private resolveMediaType(
+    rawType: string,
+    content: Record<string, any> | undefined,
+  ): MessageContentType {
+    const MEDIA = ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'];
+    if (!MEDIA.includes(rawType)) return rawType as MessageContentType;
+
+    const c = content ?? {};
+    const mime = String(c.mimeType ?? '').toLowerCase();
+    const src = String(c.fileName || c.mediaUrl || '').toLowerCase();
+    const ext = src.split('?')[0].match(/\.([a-z0-9]+)$/)?.[1] ?? '';
+
+    const isImg =
+      mime.startsWith('image/') ||
+      ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic', 'heif'].includes(ext);
+    const isVid =
+      mime.startsWith('video/') ||
+      ['mp4', 'mov', '3gp', 'webm', 'mkv', 'avi', 'm4v'].includes(ext);
+    const isAud =
+      mime.startsWith('audio/') ||
+      ['mp3', 'ogg', 'oga', 'm4a', 'wav', 'aac', 'amr', 'opus'].includes(ext);
+
+    let resolved: MessageContentType | null = null;
+    if (isImg) resolved = MessageContentType.IMAGE;
+    else if (isVid) resolved = MessageContentType.VIDEO;
+    else if (isAud) resolved = MessageContentType.AUDIO;
+
+    if (resolved && resolved !== rawType) {
+      this.logger.log(
+        `Tipo de mídia corrigido na criação: ${rawType} -> ${resolved} (mime=${mime || 'n/a'} ext=${ext || 'n/a'})`,
+      );
+      return resolved;
+    }
+    return rawType as MessageContentType;
+  }
+
   async send(
     dto: SendMessageDto,
     senderId: string,
@@ -124,10 +166,16 @@ export class MessagesService {
       replyTo = { externalMessageId: dto.replyTo.externalMessageId };
     }
 
+    // Normaliza o tipo de mídia pelo arquivo real (mime/extensão) já na
+    // criação — assim o registro salvo (e a bolha no CRM) fica correto e o
+    // mesmo tipo vai pro provider. Ex.: imagem cadastrada como DOCUMENT vira
+    // IMAGE e o WhatsApp/Z-API entrega como imagem.
+    const outboundType = this.resolveMediaType(dto.type, dto.content);
+
     const message = await this.repository.create({
       conversationId: conversation.id,
       direction: MessageDirection.OUTBOUND,
-      type: dto.type as MessageContentType,
+      type: outboundType,
       content: dto.content,
       status: MessageStatus.QUEUED,
       senderId,
@@ -292,7 +340,7 @@ export class MessagesService {
         channelId: conversation.channelId,
         contactExternalId: contactChannel.externalId,
         message: {
-          type: dto.type,
+          type: outboundType,
           content: outboundContent,
           // Manda só o que o provider precisa: externalMessageId é
           // obrigatório (Zappfy/Cloud API), preview+sender são pro

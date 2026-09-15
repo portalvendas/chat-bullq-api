@@ -1054,6 +1054,11 @@ export class InboundMessageProcessor extends WorkerHost {
     }
     if (dbStatus === MessageStatus.FAILED) {
       updateData.failedReason = status.errorMessage;
+      // Log explícito do motivo do provider (ex.: Meta "Media download error")
+      // — sem isso o motivo só ficava no banco (message.failedReason).
+      this.logger.warn(
+        `Message FAILED ext=${status.externalMessageId} type=${message.type} reason=${status.errorMessage ?? 'sem motivo'}`,
+      );
     }
 
     const updated = await this.prisma.message.update({

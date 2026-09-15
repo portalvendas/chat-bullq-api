@@ -30,6 +30,7 @@ export class QuickRepliesService {
       shortcut: dto.shortcut,
       title: dto.title,
       content: dto.content,
+      category: dto.category?.trim() || null,
       attachments: (dto.attachments ?? []) as any,
       organization: { connect: { id: orgId } },
       ...(ownerId ? { user: { connect: { id: ownerId } } } : {}),
@@ -90,6 +91,9 @@ export class QuickRepliesService {
       ...(dto.shortcut !== undefined && { shortcut: dto.shortcut }),
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.content !== undefined && { content: dto.content }),
+      ...(dto.category !== undefined && {
+        category: dto.category?.trim() || null,
+      }),
       ...(dto.attachments !== undefined && {
         attachments: dto.attachments as any,
       }),

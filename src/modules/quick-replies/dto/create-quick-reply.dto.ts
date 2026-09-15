@@ -17,6 +17,14 @@ export class CreateQuickReplyDto {
   content: string;
 
   @ApiPropertyOptional({
+    description: 'TIPO/categoria livre p/ agrupar respostas. Ex.: "Saudações".',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  category?: string;
+
+  @ApiPropertyOptional({
     description:
       'Anexos: [{ url, type: IMAGE|VIDEO|AUDIO|DOCUMENT, mimeType?, fileName?, size? }].',
     type: [Object],

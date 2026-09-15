@@ -883,6 +883,8 @@ model QuickReply {
   shortcut       String
   title          String
   content        String
+  /// TIPO/categoria livre p/ agrupar respostas nas telas (ex.: "Saudações").
+  category       String?   @map("category")
   attachments    Json      @default("[]")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")

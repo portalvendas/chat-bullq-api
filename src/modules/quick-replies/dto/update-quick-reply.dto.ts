@@ -19,6 +19,12 @@ export class UpdateQuickReplyDto {
   @IsString()
   content?: string;
 
+  @ApiPropertyOptional({ description: 'TIPO/categoria livre.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  category?: string;
+
   @ApiPropertyOptional({ type: [Object] })
   @IsOptional()
   @IsArray()

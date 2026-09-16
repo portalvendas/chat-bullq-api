@@ -1,5 +1,7 @@
-import { IsString, IsOptional, IsIn, IsArray, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsArray, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { QuickReplyAttachmentDto } from './quick-reply-attachment.dto';
 
 export class UpdateQuickReplyDto {
   @ApiPropertyOptional()
@@ -25,10 +27,12 @@ export class UpdateQuickReplyDto {
   @MaxLength(60)
   category?: string;
 
-  @ApiPropertyOptional({ type: [Object] })
+  @ApiPropertyOptional({ type: [QuickReplyAttachmentDto] })
   @IsOptional()
   @IsArray()
-  attachments?: Record<string, unknown>[];
+  @ValidateNested({ each: true })
+  @Type(() => QuickReplyAttachmentDto)
+  attachments?: QuickReplyAttachmentDto[];
 
   @ApiPropertyOptional({ enum: ['ORG', 'PERSONAL'] })
   @IsOptional()

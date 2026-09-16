@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   ConflictException,
   ForbiddenException,
@@ -11,13 +10,9 @@ import { UpdateQuickReplyDto } from './dto/update-quick-reply.dto';
 
 @Injectable()
 export class QuickRepliesService {
-  private readonly logger = new Logger(QuickRepliesService.name);
   constructor(private readonly repository: QuickRepliesRepository) {}
 
   async create(orgId: string, userId: string, dto: CreateQuickReplyDto) {
-    this.logger.warn(
-      `[qr-debug create] attachments=${JSON.stringify(dto.attachments ?? [])}`,
-    );
     const ownerId = dto.scope === 'PERSONAL' ? userId : null;
     const clash = await this.repository.findByShortcutScoped(
       orgId,
@@ -45,12 +40,6 @@ export class QuickRepliesService {
   /** Lista visíveis: compartilhadas da org + pessoais do usuário. */
   async findAll(orgId: string, userId: string) {
     const rows = await this.repository.findVisible(orgId, userId);
-    this.logger.warn(
-      `[qr-debug list] ` +
-        rows
-          .map((r: any) => `${r.shortcut}=${JSON.stringify(r.attachments)}`)
-          .join(' | '),
-    );
     return rows;
   }
 

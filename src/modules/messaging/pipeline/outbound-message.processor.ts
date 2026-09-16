@@ -222,11 +222,6 @@ export class OutboundMessageProcessor extends WorkerHost {
     const mime = String(c.mimeType ?? '').toLowerCase();
     const src = String(c.fileName || c.mediaUrl || '').toLowerCase();
     const ext = src.split('?')[0].match(/\.([a-z0-9]+)$/)?.[1] ?? '';
-    // Diagnóstico: sempre loga o que chegou pra cada mídia (por que classifica
-    // como X). Ajuda a entender falhas de entrega de anexo. Remover depois.
-    this.logger.warn(
-      `[media-debug] type=${message.type} mime=${mime || 'n/a'} ext=${ext || 'n/a'} fileName=${String(c.fileName ?? 'n/a')} url=${String(c.mediaUrl ?? 'n/a').slice(-80)}`,
-    );
 
     const isImg =
       mime.startsWith('image/') ||

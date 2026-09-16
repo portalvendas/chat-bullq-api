@@ -1,5 +1,7 @@
-import { IsString, IsOptional, IsIn, IsArray, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsArray, MaxLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { QuickReplyAttachmentDto } from './quick-reply-attachment.dto';
 
 export class CreateQuickReplyDto {
   @ApiProperty({ description: 'Atalho digitado após "/" (sem a barra).' })
@@ -27,11 +29,13 @@ export class CreateQuickReplyDto {
   @ApiPropertyOptional({
     description:
       'Anexos: [{ url, type: IMAGE|VIDEO|AUDIO|DOCUMENT, mimeType?, fileName?, size? }].',
-    type: [Object],
+    type: [QuickReplyAttachmentDto],
   })
   @IsOptional()
   @IsArray()
-  attachments?: Record<string, unknown>[];
+  @ValidateNested({ each: true })
+  @Type(() => QuickReplyAttachmentDto)
+  attachments?: QuickReplyAttachmentDto[];
 
   @ApiPropertyOptional({
     description:

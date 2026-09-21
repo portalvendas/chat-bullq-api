@@ -13,6 +13,10 @@ export interface AudienceFilter {
   hasOrcamento?: boolean;
   /** Exclui quem TEM pedido (recuperação de carrinho: orçou e não comprou). */
   excludePedido?: boolean;
+  /** Só quem NÃO respondeu (mensagem do cliente) há pelo menos N dias. */
+  noReplyDays?: number;
+  /** Só quem respondeu (mensagem do cliente) nos últimos N dias. */
+  repliedWithinDays?: number;
   /** Período (YYYY-MM-DD). Filtra a data do pedido/orçamento quando um dos
    *  filtros de ERP está ativo; senão, filtra a data de criação do lead. */
   from?: string;
@@ -102,6 +106,36 @@ export class BroadcastAudienceService {
     if (filter.excludePedido) {
       and.push({
         NOT: { tinyDocuments: { some: { kind: 'PEDIDO' } } },
+      });
+    }
+
+    // Tempo desde a última resposta do cliente (mensagem INBOUND). Usa as
+    // conversas do contato — "sem resposta há N dias" = nenhuma mensagem do
+    // cliente depois do corte.
+    if (filter.noReplyDays && filter.noReplyDays > 0) {
+      const cutoff = new Date(Date.now() - filter.noReplyDays * 86_400_000);
+      and.push({
+        NOT: {
+          conversations: {
+            some: {
+              messages: {
+                some: { direction: 'INBOUND', createdAt: { gte: cutoff } },
+              },
+            },
+          },
+        },
+      });
+    }
+    if (filter.repliedWithinDays && filter.repliedWithinDays > 0) {
+      const cutoff = new Date(Date.now() - filter.repliedWithinDays * 86_400_000);
+      and.push({
+        conversations: {
+          some: {
+            messages: {
+              some: { direction: 'INBOUND', createdAt: { gte: cutoff } },
+            },
+          },
+        },
       });
     }
     if (!wantsPedido && !wantsOrcamento && hasPeriod) {

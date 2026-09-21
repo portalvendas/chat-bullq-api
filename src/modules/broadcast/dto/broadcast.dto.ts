@@ -22,6 +22,8 @@ export class AudienceFilterDto {
   @IsOptional() @IsBoolean() hasPedido?: boolean;
   @IsOptional() @IsBoolean() hasOrcamento?: boolean;
   @IsOptional() @IsBoolean() excludePedido?: boolean;
+  @IsOptional() @IsInt() @Min(0) noReplyDays?: number;
+  @IsOptional() @IsInt() @Min(0) repliedWithinDays?: number;
   @IsOptional() @IsString() from?: string;
   @IsOptional() @IsString() to?: string;
   @IsOptional() @IsBoolean() excludeOptedOut?: boolean;

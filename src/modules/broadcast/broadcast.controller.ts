@@ -16,9 +16,15 @@ import { BroadcastService } from './broadcast.service';
 import { BroadcastEstimateService } from './estimate.service';
 import { BroadcastPricingService } from './pricing.service';
 import { BroadcastBudgetService } from './budget.service';
+import { BroadcastAudienceService } from './audience.service';
 import { serializeBigInt } from './money.util';
 import { DISPAROS_MODULE } from './broadcast.constants';
-import { CreateBroadcastDto, EstimateDto, SetBudgetDto } from './dto/broadcast.dto';
+import {
+  CreateBroadcastDto,
+  EstimateDto,
+  SetBudgetDto,
+  PreviewAudienceDto,
+} from './dto/broadcast.dto';
 
 /** Config/leitura de disparos (rate card, templates, teto, estimativa). */
 @ApiTags('Disparos')
@@ -31,6 +37,7 @@ export class BroadcastConfigController {
     private readonly pricing: BroadcastPricingService,
     private readonly budget: BroadcastBudgetService,
     private readonly estimateSvc: BroadcastEstimateService,
+    private readonly audience: BroadcastAudienceService,
   ) {}
 
   @Get('pricing')
@@ -80,6 +87,20 @@ export class BroadcastConfigController {
     const cap = BigInt(dto.capMicros);
     await this.budget.setCap(orgId, cap, dto.period ?? 'MONTHLY');
     return serializeBigInt(await this.budget.getUsage(orgId));
+  }
+
+  @Post('audience/preview')
+  @RequireModule(DISPAROS_MODULE, 'view')
+  @ApiOperation({ summary: 'Prévia de leads (com pedidos/orçamentos)' })
+  async preview(
+    @CurrentOrg('id') orgId: string,
+    @Body() dto: PreviewAudienceDto,
+  ) {
+    return serializeBigInt(
+      await this.audience.previewLeads(orgId, dto.audienceFilter, {
+        cursor: dto.cursor,
+      }),
+    );
   }
 
   @Post('estimate')

@@ -7,8 +7,23 @@ export interface AudienceFilter {
   stageId?: string;
   tagIds?: string[];
   tagMatch?: 'ANY' | 'ALL';
+  /** Só contatos com pedido no ERP (Tiny). */
+  hasPedido?: boolean;
+  /** Só contatos com orçamento no ERP (Tiny). */
+  hasOrcamento?: boolean;
+  /** Período (YYYY-MM-DD). Filtra a data do pedido/orçamento quando um dos
+   *  filtros de ERP está ativo; senão, filtra a data de criação do lead. */
+  from?: string;
+  to?: string;
   /** default true — nunca inclui quem deu opt-out, a menos que explicitamente false. */
   excludeOptedOut?: boolean;
+}
+
+function startOfDay(d: string): Date {
+  return new Date(`${d}T00:00:00`);
+}
+function endOfDay(d: string): Date {
+  return new Date(`${d}T23:59:59.999`);
 }
 
 export interface AudienceContact {
@@ -33,10 +48,18 @@ export class BroadcastAudienceService {
     filter: AudienceFilter,
   ): Prisma.ContactWhereInput {
     const tagIds = (filter.tagIds ?? []).filter(Boolean);
-    const hasSelector = !!(filter.pipelineId || filter.stageId || tagIds.length);
+    const wantsPedido = !!filter.hasPedido;
+    const wantsOrcamento = !!filter.hasOrcamento;
+    const hasSelector = !!(
+      filter.pipelineId ||
+      filter.stageId ||
+      tagIds.length ||
+      wantsPedido ||
+      wantsOrcamento
+    );
     if (!hasSelector) {
       throw new BadRequestException(
-        'Selecione ao menos um funil, etapa ou tag para a audiência.',
+        'Selecione ao menos um funil, etapa, tag, pedido ou orçamento.',
       );
     }
 
@@ -49,6 +72,34 @@ export class BroadcastAudienceService {
 
     if (filter.excludeOptedOut !== false) {
       and.push({ broadcastOptedOutAt: null });
+    }
+
+    // Período: aplicado à data do pedido/orçamento quando há filtro de ERP;
+    // senão, à data de criação do lead.
+    const docDate: Prisma.DateTimeNullableFilter = {};
+    if (filter.from) docDate.gte = startOfDay(filter.from);
+    if (filter.to) docDate.lte = endOfDay(filter.to);
+    const hasPeriod = !!(filter.from || filter.to);
+
+    if (wantsPedido) {
+      and.push({
+        tinyDocuments: {
+          some: { kind: 'PEDIDO', ...(hasPeriod ? { data: docDate } : {}) },
+        },
+      });
+    }
+    if (wantsOrcamento) {
+      and.push({
+        tinyDocuments: {
+          some: { kind: 'ORCAMENTO', ...(hasPeriod ? { data: docDate } : {}) },
+        },
+      });
+    }
+    if (!wantsPedido && !wantsOrcamento && hasPeriod) {
+      const created: Prisma.DateTimeFilter = {};
+      if (filter.from) created.gte = startOfDay(filter.from);
+      if (filter.to) created.lte = endOfDay(filter.to);
+      and.push({ createdAt: created });
     }
 
     // Funil/etapa via cards do contato.
@@ -106,6 +157,68 @@ export class BroadcastAudienceService {
     return {
       items,
       nextCursor: hasMore ? items[items.length - 1].id : null,
+    };
+  }
+
+  /**
+   * Prévia da audiência com contagem de pedidos/orçamentos por lead. Usado na
+   * tela pra o operador VER quem vai receber (nome, telefone, nº de pedidos e
+   * orçamentos, valor em pedidos). Paginação por cursor.
+   */
+  async previewLeads(
+    organizationId: string,
+    filter: AudienceFilter,
+    opts: { cursor?: string; limit?: number } = {},
+  ) {
+    const take = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+    const rows = await this.prisma.contact.findMany({
+      where: this.buildWhere(organizationId, filter),
+      select: { id: true, name: true, phone: true },
+      orderBy: { id: 'asc' },
+      take: take + 1,
+      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const ids = page.map((c) => c.id);
+
+    // Agrega pedidos/orçamentos (contagem + valor) dos contatos da página.
+    const agg = ids.length
+      ? await this.prisma.tinyDocument.groupBy({
+          by: ['contactId', 'kind'],
+          where: { organizationId, contactId: { in: ids } },
+          _count: { _all: true },
+          _sum: { valor: true },
+        })
+      : [];
+    const byContact = new Map<
+      string,
+      { pedidos: number; orcamentos: number; valorPedidos: number }
+    >();
+    for (const a of agg) {
+      if (!a.contactId) continue;
+      const e =
+        byContact.get(a.contactId) ??
+        { pedidos: 0, orcamentos: 0, valorPedidos: 0 };
+      if (a.kind === 'PEDIDO') {
+        e.pedidos = a._count._all;
+        e.valorPedidos = Number(a._sum.valor ?? 0);
+      } else if (a.kind === 'ORCAMENTO') {
+        e.orcamentos = a._count._all;
+      }
+      byContact.set(a.contactId, e);
+    }
+
+    return {
+      items: page.map((c) => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        pedidos: byContact.get(c.id)?.pedidos ?? 0,
+        orcamentos: byContact.get(c.id)?.orcamentos ?? 0,
+        valorPedidos: byContact.get(c.id)?.valorPedidos ?? 0,
+      })),
+      nextCursor: hasMore ? page[page.length - 1].id : null,
     };
   }
 }

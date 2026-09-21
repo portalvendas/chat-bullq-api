@@ -19,7 +19,16 @@ export class AudienceFilterDto {
   @IsOptional() @IsString() stageId?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) tagIds?: string[];
   @IsOptional() @IsEnum(['ANY', 'ALL'] as any) tagMatch?: 'ANY' | 'ALL';
+  @IsOptional() @IsBoolean() hasPedido?: boolean;
+  @IsOptional() @IsBoolean() hasOrcamento?: boolean;
+  @IsOptional() @IsString() from?: string;
+  @IsOptional() @IsString() to?: string;
   @IsOptional() @IsBoolean() excludeOptedOut?: boolean;
+}
+
+export class PreviewAudienceDto {
+  @ValidateNested() @Type(() => AudienceFilterDto) audienceFilter!: AudienceFilterDto;
+  @IsOptional() @IsString() cursor?: string;
 }
 
 export class CreateBroadcastDto {

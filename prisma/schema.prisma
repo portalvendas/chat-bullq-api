@@ -285,6 +285,10 @@ model Organization {
   platformAuditLogs      PlatformAuditLog[]
   funnelAuditRuns        FunnelAuditRun[]
   funnelAuditSuggestions FunnelAuditSuggestion[]
+  broadcasts             Broadcast[]
+  broadcastBudget        OrganizationBroadcastBudget?
+  broadcastLedger        BroadcastLedgerEntry[]
+  contactImports         ContactImport[]
 
   @@map("organizations")
 }
@@ -592,6 +596,10 @@ model Contact {
   aiMemories    AiAgentMemory[]
   cards         Card[]           @relation("CardContact")
   tinyDocuments TinyDocument[]
+  broadcastRecipients BroadcastRecipient[]
+
+  /// Supressão de disparos em massa (opt-out LGPD). null = pode receber.
+  broadcastOptedOutAt DateTime? @map("broadcast_opted_out_at")
 
   @@index([organizationId, phone], name: "idx_contact_org_phone")
   @@index([organizationId, email], name: "idx_contact_org_email")
@@ -2294,4 +2302,182 @@ model MetaAdsIntegration {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@map("meta_ads_integrations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Disparos em massa (WhatsApp Oficial)
+// ═══════════════════════════════════════════════════════════════════════
+
+enum BroadcastStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum RecipientStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+  OPTED_OUT
+}
+
+enum MessageCategory {
+  MARKETING
+  UTILITY
+  AUTHENTICATION
+  SERVICE
+}
+
+enum LedgerType {
+  RESERVE
+  CHARGE
+  RELEASE
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  TOTAL
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+/// Rate card da plataforma (repasse puro do preço Meta em BRL, sem markup).
+/// Fonte da ESTIMATIVA; custo REAL vem do pricing do webhook.
+model MessagePricing {
+  id            String          @id @default(cuid())
+  countryCode   String          @map("country_code")
+  category      MessageCategory
+  amountMicros  BigInt          @map("amount_micros")
+  currency      String          @default("BRL")
+  effectiveFrom DateTime        @map("effective_from")
+  effectiveTo   DateTime?       @map("effective_to")
+  source        String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@index([countryCode, category, effectiveFrom])
+  @@map("message_pricing")
+}
+
+/// Teto de gasto por empresa (com reserva pré-envio).
+model OrganizationBroadcastBudget {
+  id             String       @id @default(cuid())
+  organizationId String       @unique @map("organization_id")
+  capMicros      BigInt       @map("cap_micros")
+  period         BudgetPeriod @default(MONTHLY)
+  currency       String       @default("BRL")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_broadcast_budgets")
+}
+
+/// Razão de gasto: RESERVE (largada = estimativa) → CHARGE (por entrega, real)
+/// → RELEASE (sobra no fim).
+model BroadcastLedgerEntry {
+  id             String     @id @default(cuid())
+  organizationId String     @map("organization_id")
+  broadcastId    String     @map("broadcast_id")
+  type           LedgerType
+  amountMicros   BigInt     @map("amount_micros")
+  note           String?
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  broadcast      Broadcast    @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([broadcastId])
+  @@map("broadcast_ledger_entries")
+}
+
+model Broadcast {
+  id                  String          @id @default(cuid())
+  organizationId      String          @map("organization_id")
+  channelId           String          @map("channel_id")
+  name                String
+  templateName        String          @map("template_name")
+  templateLanguage    String          @map("template_language")
+  templateCategory    MessageCategory @map("template_category")
+  variablesMapping    Json?           @map("variables_mapping")
+  audienceFilter      Json            @map("audience_filter")
+  status              BroadcastStatus @default(DRAFT)
+  scheduledAt         DateTime?       @map("scheduled_at")
+  throttlePerMinute   Int             @default(600) @map("throttle_per_minute")
+  estimatedRecipients Int             @default(0)   @map("estimated_recipients")
+  estimatedCostMicros BigInt          @default(0)   @map("estimated_cost_micros")
+  actualCostMicros    BigInt          @default(0)   @map("actual_cost_micros")
+  currency            String          @default("BRL")
+  createdByUserId     String          @map("created_by_user_id")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  startedAt           DateTime?       @map("started_at")
+  completedAt         DateTime?       @map("completed_at")
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipients    BroadcastRecipient[]
+  ledgerEntries BroadcastLedgerEntry[]
+
+  @@index([organizationId, status])
+  @@map("broadcasts")
+}
+
+model BroadcastRecipient {
+  id                    String           @id @default(cuid())
+  broadcastId           String           @map("broadcast_id")
+  contactId             String           @map("contact_id")
+  phoneE164             String           @map("phone_e164")
+  status                RecipientStatus  @default(PENDING)
+  wamid                 String?          @unique
+  errorCode             String?          @map("error_code")
+  errorMessage          String?          @map("error_message")
+  estimatedAmountMicros BigInt           @default(0) @map("estimated_amount_micros")
+  billedCategory        MessageCategory? @map("billed_category")
+  billedAmountMicros    BigInt?          @map("billed_amount_micros")
+  sentAt                DateTime?        @map("sent_at")
+  deliveredAt           DateTime?        @map("delivered_at")
+  readAt                DateTime?        @map("read_at")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([broadcastId, contactId])
+  @@index([broadcastId, status])
+  @@map("broadcast_recipients")
+}
+
+model ContactImport {
+  id              String       @id @default(cuid())
+  organizationId  String       @map("organization_id")
+  fileName        String       @map("file_name")
+  storagePath     String       @map("storage_path")
+  status          ImportStatus @default(PENDING)
+  totalRows       Int          @default(0) @map("total_rows")
+  createdCount    Int          @default(0) @map("created_count")
+  updatedCount    Int          @default(0) @map("updated_count")
+  skippedCount    Int          @default(0) @map("skipped_count")
+  errorReport     Json?        @map("error_report")
+  createdByUserId String       @map("created_by_user_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  completedAt     DateTime?    @map("completed_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("contact_imports")
 }

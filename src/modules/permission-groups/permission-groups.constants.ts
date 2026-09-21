@@ -9,6 +9,7 @@ export const RBAC_MODULES = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'contacts', label: 'Contatos' },
   { key: 'templates', label: 'Modelos (WhatsApp)' },
+  { key: 'disparos', label: 'Disparos em massa' },
   { key: 'knowledge', label: 'Base de Conhecimento' },
   { key: 'settings', label: 'Configurações' },
 ] as const;

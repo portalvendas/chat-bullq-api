@@ -4,6 +4,7 @@ import { Job, Queue } from 'bullmq';
 import axios from 'axios';
 import { PrismaService } from '../../../database/prisma.service';
 import { UploadsService } from '../messages/uploads.service';
+import { BroadcastStatusService } from '../../broadcast/broadcast-status.service';
 import { IdempotencyService } from './idempotency.service';
 import { ContactResolverService } from './contact-resolver.service';
 import { ConversationResolverService } from './conversation-resolver.service';
@@ -114,6 +115,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly pipelines: PipelinesService,
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
+    private readonly broadcastStatus: BroadcastStatusService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -360,6 +362,13 @@ export class InboundMessageProcessor extends WorkerHost {
             where: { conversationId, tag: { name: '+24h' } },
           })
           .catch(() => undefined);
+        // Opt-out de disparos (LGPD): "sair/parar/stop…" → suprime o contato.
+        if (contactId) {
+          void this.maybeBroadcastOptOut(
+            contactId,
+            (message.content as any)?.text,
+          ).catch(() => undefined);
+        }
       }
 
       if (
@@ -1017,9 +1026,56 @@ export class InboundMessageProcessor extends WorkerHost {
     }
   }
 
+  /**
+   * Se o cliente responder uma palavra de saída ("sair", "parar", "stop"…),
+   * marca opt-out de disparos no contato (best-effort, idempotente).
+   */
+  private async maybeBroadcastOptOut(
+    contactId: string,
+    text?: string | null,
+  ): Promise<void> {
+    if (!text) return;
+    const norm = text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
+      .trim()
+      .replace(/[.!]+$/, '');
+    const OPT_OUT = new Set([
+      'sair',
+      'parar',
+      'pare',
+      'stop',
+      'cancelar',
+      'descadastrar',
+      'remover',
+      'nao quero receber',
+      'nao quero mais receber',
+      'me remova',
+      'descadastre',
+    ]);
+    if (!OPT_OUT.has(norm)) return;
+    await this.prisma.contact.updateMany({
+      where: { id: contactId, broadcastOptedOutAt: null },
+      data: { broadcastOptedOutAt: new Date() },
+    });
+    this.logger.log(`broadcast_opt_out contact=${contactId} termo="${norm}"`);
+  }
+
   private async processStatus(data: StatusJobData): Promise<any> {
     const { status, channelId, webhookEventId } = data;
     if (!status?.externalMessageId) return;
+
+    // Disparos em massa: mensagens de broadcast não vivem na tabela `messages`,
+    // são reconciliadas por `wamid` em broadcast_recipients. No-op se não for.
+    void this.broadcastStatus
+      .handleStatus({
+        wamid: status.externalMessageId,
+        status: status.status,
+        timestamp: status.timestamp,
+        errorMessage: status.errorMessage,
+      })
+      .catch(() => undefined);
 
     const statusMap: Record<string, MessageStatus> = {
       sent: MessageStatus.SENT,

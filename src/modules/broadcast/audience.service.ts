@@ -11,6 +11,8 @@ export interface AudienceFilter {
   hasPedido?: boolean;
   /** Só contatos com orçamento no ERP (Tiny). */
   hasOrcamento?: boolean;
+  /** Exclui quem TEM pedido (recuperação de carrinho: orçou e não comprou). */
+  excludePedido?: boolean;
   /** Período (YYYY-MM-DD). Filtra a data do pedido/orçamento quando um dos
    *  filtros de ERP está ativo; senão, filtra a data de criação do lead. */
   from?: string;
@@ -93,6 +95,13 @@ export class BroadcastAudienceService {
         tinyDocuments: {
           some: { kind: 'ORCAMENTO', ...(hasPeriod ? { data: docDate } : {}) },
         },
+      });
+    }
+    // Recuperação de carrinho: exclui quem já tem QUALQUER pedido (sem período —
+    // quem comprou uma vez não deve receber a recuperação).
+    if (filter.excludePedido) {
+      and.push({
+        NOT: { tinyDocuments: { some: { kind: 'PEDIDO' } } },
       });
     }
     if (!wantsPedido && !wantsOrcamento && hasPeriod) {

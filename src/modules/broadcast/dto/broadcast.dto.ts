@@ -21,6 +21,7 @@ export class AudienceFilterDto {
   @IsOptional() @IsEnum(['ANY', 'ALL'] as any) tagMatch?: 'ANY' | 'ALL';
   @IsOptional() @IsBoolean() hasPedido?: boolean;
   @IsOptional() @IsBoolean() hasOrcamento?: boolean;
+  @IsOptional() @IsBoolean() excludePedido?: boolean;
   @IsOptional() @IsString() from?: string;
   @IsOptional() @IsString() to?: string;
   @IsOptional() @IsBoolean() excludeOptedOut?: boolean;

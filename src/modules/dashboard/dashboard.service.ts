@@ -572,35 +572,134 @@ export class DashboardService {
     }
     const rows = [...byContactRep.values(), ...noContactRows];
 
-    // Orçamentos/Pedidos (Tiny) dos contatos desses leads.
-    const contactIds = [...new Set(rows.map((r) => r.contactId).filter(Boolean))] as string[];
-    const tinyDocs = contactIds.length
-      ? await this.prisma.tinyDocument.findMany({
-          where: {
-            organizationId,
-            contactId: { in: contactIds },
-            kind: { in: ['ORCAMENTO', 'PEDIDO'] },
-          },
-          select: { contactId: true, kind: true, valor: true },
-        })
-      : [];
-    const orcByContact = new Map<string, { count: number; val: number }>();
-    const pedByContact = new Map<string, { count: number; val: number }>();
-    for (const d of tinyDocs) {
-      if (!d.contactId) continue;
-      const map = d.kind === 'ORCAMENTO' ? orcByContact : pedByContact;
-      const cur = map.get(d.contactId) ?? { count: 0, val: 0 };
-      cur.count += 1;
-      cur.val += d.valor ? Number(d.valor) : 0;
-      map.set(d.contactId, cur);
+    // ── Documentos (Tiny) — MESMA base do "Pedidos & Propostas" ─────────────
+    // Fonte da verdade dos TOTAIS: documentos por DATA no período, com o mesmo
+    // filtro de venda efetiva do TinyService (para os números BATEREM com a tela
+    // de Pedidos & Propostas). Origem/campanha e "safra" do lead são derivadas
+    // por documento, via o contato vinculado.
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const valOf = (v: unknown) => (v ? Number(v) : 0);
+    const PEDIDO_EXCLUIDOS = new Set(['Cancelada', 'Dados Incompletos', 'Removido']);
+    const docsRaw = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        kind: { in: ['ORCAMENTO', 'PEDIDO'] },
+        data: { gte: from, lte: to },
+      },
+      select: {
+        contactId: true,
+        kind: true,
+        valor: true,
+        data: true,
+        situacao: true,
+        isMarketplace: true,
+        natureza: true,
+      },
+    });
+    // Pedido "venda efetiva" (idêntico a TinyService.pedidoWhere): exclui
+    // cancelado/dados incompletos/removido, exclui marketplace e exige natureza
+    // "venda". Orçamento entra inteiro (idêntico a orcamentoWhere).
+    const isVendaEfetiva = (d: {
+      situacao: string | null;
+      isMarketplace: boolean | null;
+      natureza: string | null;
+    }) =>
+      !PEDIDO_EXCLUIDOS.has(String(d.situacao ?? '')) &&
+      d.isMarketplace !== true &&
+      /venda/i.test(String(d.natureza ?? ''));
+    const docs = docsRaw.filter((d) =>
+      d.kind === 'PEDIDO' ? isVendaEfetiva(d) : true,
+    );
+
+    // Origem/campanha do lead por contato: 1º pelos cards do período (mesma
+    // origem dos chips); contatos fora do período usam o metadata do contato.
+    // "Orgânico / Direto" perde para uma origem identificada.
+    const attrByContact = new Map<string, { origem: string; campanha: string }>();
+    for (const c of cards) {
+      if (!c.contactId) continue;
+      const m = (c.metadata ?? {}) as any;
+      const origem = normOrigem(m, c.conversation?.channel?.type);
+      const cur = attrByContact.get(c.contactId);
+      if (!cur || (cur.origem === ORGANICO && origem !== ORGANICO)) {
+        attrByContact.set(c.contactId, { origem, campanha: campOf(m) });
+      }
     }
-    const hasOrc = (cid: string | null) => !!(cid && orcByContact.has(cid));
-    const hasPed = (cid: string | null) => !!(cid && pedByContact.has(cid));
+    const docContactIds = [
+      ...new Set(docs.map((d) => d.contactId).filter(Boolean)),
+    ] as string[];
+    const unknownContacts = docContactIds.filter((id) => !attrByContact.has(id));
+    if (unknownContacts.length) {
+      const extra = await this.prisma.contact.findMany({
+        where: { id: { in: unknownContacts } },
+        select: { id: true, metadata: true },
+      });
+      for (const c of extra) {
+        const m = (c.metadata ?? {}) as any;
+        attrByContact.set(c.id, { origem: normOrigem(m, null), campanha: campOf(m) });
+      }
+    }
+    const NAO_ATRIB = 'Não atribuído';
+    const origemOfDoc = (cid: string | null): string =>
+      (cid ? attrByContact.get(cid)?.origem : null) || NAO_ATRIB;
+    const campanhaOfDoc = (cid: string | null): string =>
+      (cid ? attrByContact.get(cid)?.campanha : null) || '(sem campanha)';
+
+    // Safra do lead: contato com card no período = "mês"; com card só antes =
+    // "anterior"; sem card nenhum = "sem vínculo".
+    const periodContactSet = new Set(
+      cards.map((c) => c.contactId).filter(Boolean) as string[],
+    );
+    const everLeadSet = new Set<string>(periodContactSet);
+    const outsideDocContacts = docContactIds.filter((id) => !periodContactSet.has(id));
+    if (outsideDocContacts.length) {
+      const everCards = await this.prisma.card.groupBy({
+        by: ['contactId'],
+        where: { organizationId, contactId: { in: outsideDocContacts } },
+      });
+      for (const r of everCards) if (r.contactId) everLeadSet.add(r.contactId);
+    }
+    type Cohort = 'mes' | 'anterior' | 'sem';
+    const cohortOf = (cid: string | null): Cohort =>
+      !cid
+        ? 'sem'
+        : periodContactSet.has(cid)
+          ? 'mes'
+          : everLeadSet.has(cid)
+            ? 'anterior'
+            : 'sem';
+
+    // Filtro de origem também recai sobre os documentos (slice por canal).
+    const docsF = origemFilter
+      ? docs.filter((d) => origemFilter.has(origemOfDoc(d.contactId)))
+      : docs;
+
+    const orcDocs = docsF.filter((d) => d.kind === 'ORCAMENTO');
+    const pedDocs = docsF.filter((d) => d.kind === 'PEDIDO');
+    const orcamentos = orcDocs.length;
+    const orcamentosValor = orcDocs.reduce((s, d) => s + valOf(d.valor), 0);
+    const pedidos = pedDocs.length;
+    const pedidosValor = pedDocs.reduce((s, d) => s + valOf(d.valor), 0);
+
+    // KPI de safra: fechamentos (pedidos) do período por safra do lead.
+    const cohortAgg = {
+      mes: { count: 0, valor: 0 },
+      anterior: { count: 0, valor: 0 },
+      sem: { count: 0, valor: 0 },
+    };
+    for (const d of pedDocs) {
+      const b = cohortAgg[cohortOf(d.contactId)];
+      b.count += 1;
+      b.valor += valOf(d.valor);
+    }
+
+    // Marcação por contato (p/ qualidade dos LEADS do período).
+    const orcContactSet = new Set(orcDocs.map((d) => d.contactId).filter(Boolean) as string[]);
+    const pedContactSet = new Set(pedDocs.map((d) => d.contactId).filter(Boolean) as string[]);
+    const hasOrc = (cid: string | null) => !!(cid && orcContactSet.has(cid));
+    const hasPed = (cid: string | null) => !!(cid && pedContactSet.has(cid));
 
     const pct = (num: number, den: number) =>
       den > 0 ? Math.round((num / den) * 1000) / 10 : 0;
-    const sumMap = (m: Map<string, { count: number; val: number }>, k: 'count' | 'val') =>
-      [...m.values()].reduce((s, x) => s + x[k], 0);
 
     const leads = rows.length;
     const avancaram = rows.filter((r) => r.avancou).length;
@@ -615,48 +714,83 @@ export class DashboardService {
         hasOrc(r.contactId) ||
         hasPed(r.contactId),
     ).length;
-    const orcamentos = sumMap(orcByContact, 'count');
-    const orcamentosValor = sumMap(orcByContact, 'val');
-    const pedidos = sumMap(pedByContact, 'count');
-    const pedidosValor = sumMap(pedByContact, 'val');
-    const valorGanho = rows
-      .filter((r) => r.status === 'WON')
-      .reduce((s, r) => s + r.value, 0);
+    // "Valor ganho" no comercial = receita dos PEDIDOS do período.
+    const valorGanho = pedidosValor;
 
     const quentes = rows.filter((r) => r.ls != null && r.ls >= 70).length;
     const mornos = rows.filter((r) => r.ls != null && r.ls >= 40 && r.ls < 70).length;
     const frios = rows.filter((r) => r.ls != null && r.ls < 40).length;
     const semScore = rows.filter((r) => r.ls == null).length;
 
-    const groupBy = (key: 'origem' | 'campanha') => {
-      const g = new Map<string, Row[]>();
-      for (const r of rows) {
-        const k = r[key];
-        (g.get(k) ?? g.set(k, []).get(k)!).push(r);
+    // ── Agregação por ORIGEM/CAMPANHA ────────────────────────────────────────
+    // Leads: dos cards do período (safra). Orçamentos/Pedidos/valores: dos
+    // DOCUMENTOS por data, atribuídos por contato → mesmos totais do topo.
+    const leadsByOrigem = new Map<string, number>();
+    const ganhosByOrigem = new Map<string, number>();
+    const leadsByCampanha = new Map<string, number>();
+    const ganhosByCampanha = new Map<string, number>();
+    for (const r of rows) {
+      leadsByOrigem.set(r.origem, (leadsByOrigem.get(r.origem) ?? 0) + 1);
+      leadsByCampanha.set(r.campanha, (leadsByCampanha.get(r.campanha) ?? 0) + 1);
+      if (r.status === 'WON') {
+        ganhosByOrigem.set(r.origem, (ganhosByOrigem.get(r.origem) ?? 0) + 1);
+        ganhosByCampanha.set(r.campanha, (ganhosByCampanha.get(r.campanha) ?? 0) + 1);
       }
-      return [...g.entries()]
-        .map(([name, rs]) => ({
-          name,
-          leads: rs.length,
-          ganhos: rs.filter((r) => r.status === 'WON').length,
-          orcamentos: rs.filter((r) => hasOrc(r.contactId)).length,
-          pedidos: rs.filter((r) => hasPed(r.contactId)).length,
-          // GANHO = soma do valor dos PEDIDOS atribuidos aos leads da origem.
-          valorGanho: rs.reduce(
-            (s, r) => s + (r.contactId ? pedByContact.get(r.contactId)?.val ?? 0 : 0),
-            0,
-          ),
-          // ORCADO = soma do valor dos ORCAMENTOS atribuidos aos leads da origem.
-          valorOrcado: rs.reduce(
-            (s, r) => s + (r.contactId ? orcByContact.get(r.contactId)?.val ?? 0 : 0),
-            0,
-          ),
-        }))
-        .sort((a, b) => b.leads - a.leads)
-        .slice(0, 30);
+    }
+    type DocAgg = { orc: number; orcV: number; ped: number; pedV: number };
+    const mkAgg = (): DocAgg => ({ orc: 0, orcV: 0, ped: 0, pedV: 0 });
+    const docsByOrigem = new Map<string, DocAgg>();
+    const docsByCampanha = new Map<string, DocAgg>();
+    const bumpAgg = (map: Map<string, DocAgg>, key: string, d: (typeof docsF)[number]) => {
+      const a = map.get(key) ?? mkAgg();
+      if (d.kind === 'ORCAMENTO') {
+        a.orc += 1;
+        a.orcV += valOf(d.valor);
+      } else {
+        a.ped += 1;
+        a.pedV += valOf(d.valor);
+      }
+      map.set(key, a);
     };
+    for (const d of docsF) {
+      bumpAgg(docsByOrigem, origemOfDoc(d.contactId), d);
+      bumpAgg(docsByCampanha, campanhaOfDoc(d.contactId), d);
+    }
+    const buildGroups = (
+      leadMap: Map<string, number>,
+      ganhoMap: Map<string, number>,
+      docMap: Map<string, DocAgg>,
+    ) =>
+      [...new Set([...leadMap.keys(), ...docMap.keys()])]
+        .map((name) => {
+          const a = docMap.get(name) ?? mkAgg();
+          const lds = leadMap.get(name) ?? 0;
+          return {
+            name,
+            leads: lds,
+            ganhos: ganhoMap.get(name) ?? 0,
+            orcamentos: a.orc,
+            pedidos: a.ped,
+            valorOrcado: a.orcV,
+            valorGanho: a.pedV,
+            conversaoPct: pct(a.ped, lds),
+          };
+        })
+        .sort((x, y) => y.leads - x.leads || y.pedidos - x.pedidos)
+        .slice(0, 30);
+    const originGroups = buildGroups(leadsByOrigem, ganhosByOrigem, docsByOrigem);
+    const campaignGroups = buildGroups(leadsByCampanha, ganhosByCampanha, docsByCampanha);
+
+    // Chips de origem: origens dos leads + "Não atribuído" quando há documentos
+    // sem lead vinculado.
+    const originsChips = [...origins];
+    if (docsByOrigem.has(NAO_ATRIB) && !originsChips.includes(NAO_ATRIB)) {
+      originsChips.push(NAO_ATRIB);
+    }
 
     // ── Série temporal (evolução) por origem ──────────────────────
+    // Leads bucketados pela data do card; orçamentos/pedidos pela data do
+    // documento (mesma base dos totais).
     const spanDays = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000));
     const weekly = spanDays > 45;
     const bucketKey = (d: Date): string => {
@@ -674,8 +808,6 @@ export class DashboardService {
         bucketList.push(new Date(t).toISOString().slice(0, 10));
       }
     }
-    const leadsByOrigem = new Map<string, number>();
-    for (const r of rows) leadsByOrigem.set(r.origem, (leadsByOrigem.get(r.origem) ?? 0) + 1);
     const topOrigins = [...leadsByOrigem.entries()]
       .sort((a2, b2) => b2[1] - a2[1])
       .slice(0, 6)
@@ -683,37 +815,50 @@ export class DashboardService {
     const topSet = new Set(topOrigins);
     const labelFor = (o: string) => (topSet.has(o) ? o : 'Outros');
     const seriesOrigins = [...topOrigins];
-    if (rows.some((r) => !topSet.has(r.origem))) seriesOrigins.push('Outros');
+    if (
+      rows.some((r) => !topSet.has(r.origem)) ||
+      docsF.some((d) => !topSet.has(origemOfDoc(d.contactId)))
+    ) {
+      seriesOrigins.push('Outros');
+    }
 
-    const acc = new Map<string, Map<string, { leads: number; orc: number; ped: number }>>();
-    for (const bk of bucketList) acc.set(bk, new Map());
+    const accLeads = new Map<string, Map<string, number>>();
+    const accDocs = new Map<string, Map<string, { orc: number; ped: number }>>();
+    for (const bk of bucketList) {
+      accLeads.set(bk, new Map());
+      accDocs.set(bk, new Map());
+    }
     for (const r of rows) {
       const bk = bucketKey(r.createdAt);
-      let m = acc.get(bk);
-      if (!m) {
-        m = new Map();
-        acc.set(bk, m);
-      }
+      const m = accLeads.get(bk) ?? accLeads.set(bk, new Map()).get(bk)!;
       const lab = labelFor(r.origem);
-      const cur = m.get(lab) ?? { leads: 0, orc: 0, ped: 0 };
-      cur.leads += 1;
-      if (hasOrc(r.contactId)) cur.orc += 1;
-      if (hasPed(r.contactId)) cur.ped += 1;
+      m.set(lab, (m.get(lab) ?? 0) + 1);
+    }
+    for (const d of docsF) {
+      if (!d.data) continue;
+      const bk = bucketKey(d.data);
+      const m = accDocs.get(bk) ?? accDocs.set(bk, new Map()).get(bk)!;
+      const lab = labelFor(origemOfDoc(d.contactId));
+      const cur = m.get(lab) ?? { orc: 0, ped: 0 };
+      if (d.kind === 'ORCAMENTO') cur.orc += 1;
+      else cur.ped += 1;
       m.set(lab, cur);
     }
     const conversionSeries = bucketList.map((bk) => {
       const point: Record<string, number | string | null> = { date: bk };
-      const m = acc.get(bk);
+      const ml = accLeads.get(bk);
+      const md = accDocs.get(bk);
       for (const o of seriesOrigins) {
-        const v = m?.get(o);
-        point[o] = v && v.leads > 0 ? Math.round((v.ped / v.leads) * 1000) / 10 : null;
+        const lds = ml?.get(o) ?? 0;
+        const ped = md?.get(o)?.ped ?? 0;
+        point[o] = lds > 0 ? Math.round((ped / lds) * 1000) / 10 : null;
       }
       return point;
     });
     const orcamentosSeries = bucketList.map((bk) => {
       const point: Record<string, number | string> = { date: bk };
-      const m = acc.get(bk);
-      for (const o of seriesOrigins) point[o] = m?.get(o)?.orc ?? 0;
+      const md = accDocs.get(bk);
+      for (const o of seriesOrigins) point[o] = md?.get(o)?.orc ?? 0;
       return point;
     });
 
@@ -737,7 +882,6 @@ export class DashboardService {
     // utm_campaign — assim o gasto vem linkado por campanha de forma confiável.
     // Onde o nome da campanha do Meta casa com o de um lead, enriquecemos com
     // leads/pedidos/CAC/ROAS; senão, mostra só o gasto (métricas de lead zeradas).
-    const campaignGroups = groupBy('campanha');
     const campaignLeads = new Map(
       campaignGroups.map((r) => [r.name, r] as [string, typeof r]),
     );
@@ -767,7 +911,7 @@ export class DashboardService {
       : [];
 
     return {
-      origins,
+      origins: originsChips,
       appliedOrigem: origemFilter,
       series: {
         origins: seriesOrigins,
@@ -790,6 +934,16 @@ export class DashboardService {
         gasto: metaGasto,
         cac,
         roas,
+        // Safra do lead: fechamentos (pedidos) do período por quando o lead
+        // entrou — no próprio mês vs períodos anteriores vs sem lead vinculado.
+        cohort: {
+          mes: { count: cohortAgg.mes.count, valor: round2(cohortAgg.mes.valor) },
+          anterior: {
+            count: cohortAgg.anterior.count,
+            valor: round2(cohortAgg.anterior.valor),
+          },
+          semVinculo: { count: cohortAgg.sem.count, valor: round2(cohortAgg.sem.valor) },
+        },
       },
       funnel: {
         leads,
@@ -807,7 +961,7 @@ export class DashboardService {
         perdidos,
         temperatura: { quente: quentes, morno: mornos, frio: frios, semScore },
       },
-      byOrigin: groupBy('origem').map((r) => ({
+      byOrigin: originGroups.map((r) => ({
         origem: r.name,
         leads: r.leads,
         ganhos: r.ganhos,

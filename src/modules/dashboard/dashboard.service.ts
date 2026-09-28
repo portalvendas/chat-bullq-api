@@ -466,20 +466,72 @@ export class DashboardService {
     );
 
     // Cards (leads) do período + canal da conversa (p/ derivar a origem).
-    const cards = await this.prisma.card.findMany({
-      where: { organizationId, createdAt: { gte: from, lte: to } },
-      select: {
-        id: true,
-        createdAt: true,
-        contactId: true,
-        status: true,
-        value: true,
-        metadata: true,
-        stage: { select: { order: true, pipelineId: true } },
-        conversation: { select: { channel: { select: { type: true } } } },
-      },
-      take: 8000,
-    });
+    // MEMÓRIA: em vez de trazer o JSON `metadata` inteiro de até milhares de
+    // cards (blobs grandes), extraímos NO BANCO só os campos escalares que a
+    // lógica usa (origem/campanha/leadScore). Reconstruímos um `metadata`
+    // enxuto pra manter normOrigem/campOf/leadScore/avancou inalterados.
+    type RawCard = {
+      contactId: string | null;
+      createdAt: Date;
+      status: string;
+      value: unknown;
+      pipelineId: string;
+      stageOrder: number;
+      channelType: string | null;
+      mSource: string | null;
+      mUtmSource: string | null;
+      mUtmCampaign: string | null;
+      mGclid: string | null;
+      mFbclid: string | null;
+      mCampaignName: string | null;
+      mLeadScore: string | null;
+    };
+    const rawCards = await this.prisma.$queryRaw<RawCard[]>`
+      SELECT
+        c.contact_id                            AS "contactId",
+        c.created_at                            AS "createdAt",
+        c.status                                AS status,
+        c.value                                 AS value,
+        c.pipeline_id                           AS "pipelineId",
+        s."order"                               AS "stageOrder",
+        ch.type                                 AS "channelType",
+        c.metadata->>'source'                   AS "mSource",
+        c.metadata->'tracking'->>'utm_source'   AS "mUtmSource",
+        c.metadata->'tracking'->>'utm_campaign' AS "mUtmCampaign",
+        c.metadata->'tracking'->>'gclid'        AS "mGclid",
+        c.metadata->'tracking'->>'fbclid'       AS "mFbclid",
+        c.metadata->>'campaignName'             AS "mCampaignName",
+        c.metadata->>'leadScore'                AS "mLeadScore"
+      FROM cards c
+      JOIN pipeline_stages s ON s.id = c.stage_id
+      LEFT JOIN conversations conv ON conv.id = c.conversation_id
+      LEFT JOIN channels ch ON ch.id = conv.channel_id
+      WHERE c.organization_id = ${organizationId}
+        AND c.created_at >= ${from}
+        AND c.created_at <= ${to}
+      LIMIT 20000
+    `;
+    const cards = rawCards.map((r) => ({
+      createdAt: r.createdAt,
+      contactId: r.contactId,
+      status: r.status,
+      value: r.value,
+      metadata: {
+        source: r.mSource ?? undefined,
+        campaignName: r.mCampaignName ?? undefined,
+        leadScore: r.mLeadScore ?? undefined,
+        tracking: {
+          utm_source: r.mUtmSource ?? undefined,
+          utm_campaign: r.mUtmCampaign ?? undefined,
+          gclid: r.mGclid ?? undefined,
+          fbclid: r.mFbclid ?? undefined,
+        },
+      } as Record<string, unknown>,
+      stage: { order: r.stageOrder, pipelineId: r.pipelineId },
+      conversation: r.channelType
+        ? { channel: { type: r.channelType } }
+        : null,
+    }));
 
     // Normaliza a ORIGEM: utm_source > source > tipo do canal.
     const normOrigem = (m: any, channelType?: string | null): string => {

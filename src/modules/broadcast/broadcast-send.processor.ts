@@ -21,7 +21,9 @@ interface SendJobData {
  * transitório (throw → backoff).
  */
 @Processor(BROADCAST_SEND_QUEUE, {
-  concurrency: Number(process.env.BROADCAST_CONCURRENCY ?? 20),
+  // Memória: 8 é suficiente pra saturar o rate limiter (40 msg/s) com I/O
+  // assíncrono, mantendo o pico de RAM baixo. Ajustável via env.
+  concurrency: Number(process.env.BROADCAST_CONCURRENCY ?? 8),
 })
 export class BroadcastSendProcessor extends WorkerHost {
   private readonly logger = new Logger(BroadcastSendProcessor.name);

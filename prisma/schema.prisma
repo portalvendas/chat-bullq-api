@@ -2371,6 +2371,29 @@ model MessagePricing {
   @@map("message_pricing")
 }
 
+/// Custo REAL por mensagem, capturado do `pricing` do webhook de status da Meta
+/// (categoria + billable). Fonte única de custo (disparo + atendimento).
+/// costMicros = billable ? rate card[categoria] : 0. Idempotente por wamid.
+model WaMessageCost {
+  id               String          @id @default(cuid())
+  organizationId   String          @map("organization_id")
+  channelId        String          @map("channel_id")
+  wamid            String          @unique
+  category         MessageCategory
+  billable         Boolean         @default(true)
+  pricingModel     String?         @map("pricing_model")
+  waConversationId String?         @map("wa_conversation_id")
+  originType       String?         @map("origin_type")
+  costMicros       BigInt          @default(0) @map("cost_micros")
+  currency         String          @default("BRL")
+  occurredAt       DateTime        @map("occurred_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([organizationId, channelId, occurredAt])
+  @@index([channelId, category, occurredAt])
+  @@map("wa_message_costs")
+}
+
 /// Teto de gasto por empresa (com reserva pré-envio).
 model OrganizationBroadcastBudget {
   id             String       @id @default(cuid())

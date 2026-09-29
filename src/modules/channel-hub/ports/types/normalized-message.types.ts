@@ -124,6 +124,17 @@ export interface StatusUpdate {
   status: 'sent' | 'delivered' | 'read' | 'failed';
   timestamp: Date;
   errorMessage?: string;
+  /** Cobrança REAL da Meta (vem no webhook de status da Cloud API). */
+  pricing?: {
+    category?: string; // marketing | utility | authentication | service
+    billable?: boolean;
+    pricingModel?: string; // PMP | CBP
+  };
+  /** Conversa da Meta — origem determina o tipo de cobrança/janela. */
+  conversation?: {
+    id?: string;
+    originType?: string; // service | utility | marketing | authentication
+  };
 }
 
 export interface WebhookParseResult {

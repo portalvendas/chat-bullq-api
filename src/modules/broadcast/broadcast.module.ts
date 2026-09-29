@@ -14,6 +14,7 @@ import { WaRateLimiter } from './wa-rate-limiter';
 import { BroadcastWaSender } from './broadcast-wa.sender';
 import { BroadcastService } from './broadcast.service';
 import { BroadcastStatusService } from './broadcast-status.service';
+import { WaCostRecorderService } from './wa-cost-recorder.service';
 import { BroadcastSendProcessor } from './broadcast-send.processor';
 import { ContactImportService } from './contact-import.service';
 import { ContactImportProcessor } from './contact-import.processor';
@@ -52,12 +53,13 @@ import { ModulePermissionGuard } from '../../common/guards/module-permission.gua
     BroadcastWaSender,
     BroadcastService,
     BroadcastStatusService,
+    WaCostRecorderService,
     BroadcastSendProcessor,
     ContactImportService,
     ContactImportProcessor,
     BroadcastReconcileCron,
     BroadcastReconcileProcessor,
   ],
-  exports: [BroadcastStatusService],
+  exports: [BroadcastStatusService, WaCostRecorderService],
 })
 export class BroadcastModule {}

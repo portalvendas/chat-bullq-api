@@ -5,6 +5,7 @@ import axios from 'axios';
 import { PrismaService } from '../../../database/prisma.service';
 import { UploadsService } from '../messages/uploads.service';
 import { BroadcastStatusService } from '../../broadcast/broadcast-status.service';
+import { WaCostRecorderService } from '../../broadcast/wa-cost-recorder.service';
 import { IdempotencyService } from './idempotency.service';
 import { ContactResolverService } from './contact-resolver.service';
 import { ConversationResolverService } from './conversation-resolver.service';
@@ -116,6 +117,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
     private readonly broadcastStatus: BroadcastStatusService,
+    private readonly waCost: WaCostRecorderService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -1076,6 +1078,20 @@ export class InboundMessageProcessor extends WorkerHost {
         errorMessage: status.errorMessage,
       })
       .catch(() => undefined);
+
+    // Custo REAL da mensagem (categoria + billable do pricing da Meta). Fonte
+    // única de custo p/ o painel — cobre disparo e atendimento. Best-effort.
+    if (status.pricing || status.conversation) {
+      void this.waCost
+        .record({
+          wamid: status.externalMessageId,
+          channelId,
+          timestamp: status.timestamp,
+          pricing: status.pricing,
+          conversation: status.conversation,
+        })
+        .catch(() => undefined);
+    }
 
     const statusMap: Record<string, MessageStatus> = {
       sent: MessageStatus.SENT,

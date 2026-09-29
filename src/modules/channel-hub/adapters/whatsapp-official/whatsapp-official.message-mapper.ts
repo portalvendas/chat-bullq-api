@@ -100,6 +100,20 @@ export class WhatsAppOfficialMessageMapper {
       status: mapped,
       timestamp: new Date(parseInt(status.timestamp, 10) * 1000),
       errorMessage: status.errors?.[0]?.message,
+      // Custo real da Meta: categoria + se é cobrável. Antes era descartado.
+      pricing: status.pricing
+        ? {
+            category: status.pricing.category,
+            billable: status.pricing.billable,
+            pricingModel: status.pricing.pricing_model,
+          }
+        : undefined,
+      conversation: status.conversation
+        ? {
+            id: status.conversation.id,
+            originType: status.conversation.origin?.type,
+          }
+        : undefined,
     };
   }
 

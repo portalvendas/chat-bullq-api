@@ -89,6 +89,18 @@ export class DashboardController {
     return this.service.getIntakeHealth(orgId);
   }
 
+  @Get('wa-costs')
+  @ApiOperation({ summary: 'Custo real das mensagens WhatsApp por número/categoria/mês + uso da franquia de serviço' })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  getWaCosts(
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getWaCosts(orgId, from, to);
+  }
+
   @Get('overview')
   @ApiOperation({ summary: 'Get dashboard overview metrics' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })

@@ -1427,6 +1427,120 @@ export class DashboardService {
     return result.map((r) => ({ status: r.status, count: r._count }));
   }
 
+  /**
+   * CUSTO WHATSAPP: custo real por número (canal WHATSAPP_OFFICIAL), categoria e
+   * mês, a partir do ledger `wa_message_costs` (capturado do pricing da Meta).
+   * Inclui o consumo de mensagens de SERVICE vs a franquia de 1.000/número/mês
+   * (mudança Meta out/2026). Valores em micros de BRL como string (BigInt→JSON).
+   * Sem range => mês corrente.
+   */
+  async getWaCosts(organizationId: string, from?: string, to?: string) {
+    const now = new Date();
+    const start = from
+      ? new Date(from)
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const end = to ? new Date(to) : now;
+    const SERVICE_FREE = 1000;
+    const CATS = ['MARKETING', 'UTILITY', 'AUTHENTICATION', 'SERVICE'] as const;
+    type CatAgg = { count: number; costMicros: bigint };
+    const emptyCats = (): Record<string, CatAgg> =>
+      Object.fromEntries(
+        CATS.map((c) => [c, { count: 0, costMicros: 0n }]),
+      ) as Record<string, CatAgg>;
+
+    const [channels, grouped] = await Promise.all([
+      this.prisma.channel.findMany({
+        where: {
+          organizationId,
+          type: 'WHATSAPP_OFFICIAL' as any,
+          deletedAt: null,
+        },
+        select: { id: true, name: true, config: true },
+      }),
+      this.prisma.waMessageCost.groupBy({
+        by: ['channelId', 'category'],
+        where: { organizationId, occurredAt: { gte: start, lte: end } },
+        _count: { _all: true },
+        _sum: { costMicros: true },
+      }),
+    ]);
+
+    const byChannel = new Map<string, Record<string, CatAgg>>();
+    for (const g of grouped) {
+      const m = byChannel.get(g.channelId) ?? emptyCats();
+      m[String(g.category)] = {
+        count: g._count._all,
+        costMicros: g._sum.costMicros ?? 0n,
+      };
+      byChannel.set(g.channelId, m);
+    }
+
+    const phoneOf = (config: unknown): string | null => {
+      const c = (config ?? {}) as any;
+      return c.displayPhoneNumber ?? c.phoneNumber ?? c.phoneNumberId ?? null;
+    };
+    const catToObj = (m: Record<string, CatAgg>) =>
+      Object.fromEntries(
+        CATS.map((c) => [
+          c,
+          { count: m[c].count, costMicros: m[c].costMicros.toString() },
+        ]),
+      );
+
+    const totalsCats = emptyCats();
+    const channelsOut = (
+      channels as Array<{ id: string; name: string; config: unknown }>
+    ).map((ch) => {
+      const m = byChannel.get(ch.id) ?? emptyCats();
+      let totalCost = 0n;
+      let totalCount = 0;
+      for (const c of CATS) {
+        totalsCats[c].count += m[c].count;
+        totalsCats[c].costMicros += m[c].costMicros;
+        totalCost += m[c].costMicros;
+        totalCount += m[c].count;
+      }
+      const serviceUsed = m.SERVICE.count;
+      return {
+        channelId: ch.id,
+        name: ch.name,
+        phoneNumberId: phoneOf(ch.config),
+        byCategory: catToObj(m),
+        serviceUsed,
+        serviceFree: SERVICE_FREE,
+        servicePctUsed: Math.min(
+          100,
+          Math.round((serviceUsed / SERVICE_FREE) * 100),
+        ),
+        serviceOver: Math.max(0, serviceUsed - SERVICE_FREE),
+        totalCostMicros: totalCost.toString(),
+        totalCount,
+      };
+    });
+
+    let grandTotal = 0n;
+    let grandCount = 0;
+    for (const c of CATS) {
+      grandTotal += totalsCats[c].costMicros;
+      grandCount += totalsCats[c].count;
+    }
+
+    return {
+      from: start.toISOString(),
+      to: end.toISOString(),
+      serviceFreeAllowance: SERVICE_FREE,
+      channels: channelsOut.sort((a, b) =>
+        Number(BigInt(b.totalCostMicros) - BigInt(a.totalCostMicros)),
+      ),
+      totals: {
+        byCategory: catToObj(totalsCats),
+        totalCostMicros: grandTotal.toString(),
+        totalCount: grandCount,
+        serviceUsed: totalsCats.SERVICE.count,
+      },
+    };
+  }
+
   async getAgentPerformance(organizationId: string, range: DateRange) {
     const [conversations, currentLoadGroups] = await Promise.all([
       this.prisma.conversation.findMany({

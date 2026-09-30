@@ -2,6 +2,7 @@ import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type { Job, Queue } from 'bullmq';
 import { BroadcastStatusService } from './broadcast-status.service';
+import { WaServiceAllowanceService } from './wa-service-allowance.service';
 import {
   BROADCAST_RECONCILE_QUEUE,
   BROADCAST_RECONCILE_JOB,
@@ -37,12 +38,17 @@ export class BroadcastReconcileCron implements OnModuleInit {
 
 @Processor(BROADCAST_RECONCILE_QUEUE, { concurrency: 1 })
 export class BroadcastReconcileProcessor extends WorkerHost {
-  constructor(private readonly status: BroadcastStatusService) {
+  constructor(
+    private readonly status: BroadcastStatusService,
+    private readonly waAllowance: WaServiceAllowanceService,
+  ) {
     super();
   }
   async process(_job: Job): Promise<{ reconciled: number }> {
     const hours = Number(process.env.BROADCAST_RECONCILE_HOURS ?? 6);
     const reconciled = await this.status.reconcileStaleSent(hours);
+    // Alerta 1x/dia de franquia de serviço WhatsApp (best-effort, não bloqueia).
+    void this.waAllowance.checkAndAlert().catch(() => undefined);
     return { reconciled };
   }
 }

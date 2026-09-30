@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { PermissionGroupsModule } from '../permission-groups/permission-groups.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { WaServiceAllowanceService } from './wa-service-allowance.service';
 import {
   BROADCAST_SEND_QUEUE,
   CONTACT_IMPORT_QUEUE,
@@ -32,6 +34,7 @@ import { ModulePermissionGuard } from '../../common/guards/module-permission.gua
 @Module({
   imports: [
     PermissionGroupsModule,
+    NotificationsModule,
     BullModule.registerQueue(
       { name: BROADCAST_SEND_QUEUE },
       { name: CONTACT_IMPORT_QUEUE },
@@ -54,6 +57,7 @@ import { ModulePermissionGuard } from '../../common/guards/module-permission.gua
     BroadcastService,
     BroadcastStatusService,
     WaCostRecorderService,
+    WaServiceAllowanceService,
     BroadcastSendProcessor,
     ContactImportService,
     ContactImportProcessor,

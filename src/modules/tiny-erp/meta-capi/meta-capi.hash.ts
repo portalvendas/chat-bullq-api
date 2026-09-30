@@ -91,6 +91,16 @@ export function hashExternalId(v?: string | null): string | undefined {
   return s ? sha256(s) : undefined;
 }
 
+/**
+ * external_id genérico (ex.: id do contato no Kortia): trim + lowercase, então
+ * SHA-256. A LP/Pixel do site deve mandar o MESMO id normalizado igual para o
+ * casamento/dedup determinístico funcionar.
+ */
+export function hashId(v?: string | null): string | undefined {
+  const s = (v ?? '').trim().toLowerCase();
+  return s ? sha256(s) : undefined;
+}
+
 /** Divide "Nome Sobrenome" em first/last. */
 export function splitName(full?: string | null): { first?: string; last?: string } {
   const parts = (full ?? '').trim().split(/\s+/).filter(Boolean);

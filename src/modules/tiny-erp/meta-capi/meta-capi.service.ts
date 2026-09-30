@@ -10,6 +10,7 @@ import {
   hashZip,
   hashCountry,
   hashExternalId,
+  hashId,
   splitName,
   fbcFromFbclid,
 } from './meta-capi.hash';
@@ -331,6 +332,14 @@ export class MetaCapiService {
     const leadTs = crm?.createdAt ? crm.createdAt.getTime() : tsMs;
     const fbc = tr.fbc || fbcFromFbclid(tr.fbclid, leadTs);
 
+    // external_id: envia MÚLTIPLOS identificadores (a Meta aceita array) — o id
+    // do contato no Kortia (casa com o external_id do Pixel da LP) + o CPF/CNPJ.
+    // Quanto mais chaves, maior o match/dedup.
+    const externalIds = [
+      hashId(crm?.id),
+      hashExternalId(doc.clienteCpfCnpj),
+    ].filter((x): x is string => !!x);
+
     const user_data: Record<string, any> = {
       em: arr(hashEmail(email)),
       ph: arr(hashPhone(phone)),
@@ -340,7 +349,7 @@ export class MetaCapiService {
       st: arr(hashState(end.uf ?? end.estado)),
       zp: arr(hashZip(end.cep)),
       country: arr(hashCountry(end.pais)),
-      external_id: arr(hashExternalId(doc.clienteCpfCnpj)),
+      external_id: externalIds.length ? externalIds : undefined,
       fbc: fbc || undefined,
       fbp: tr.fbp || undefined,
       client_ip_address: tr.client_ip_address || tr.client_ip || tr.ip || undefined,
@@ -377,11 +386,16 @@ export class MetaCapiService {
     }
     if (doc.numero) custom_data.order_id = doc.numero;
 
+    // event_id determinístico no esquema do Kortia (KORTIA-PED-<numero> /
+    // KORTIA-ORC-<numero>) — para o Pixel do site poder deduplicar mandando o
+    // MESMO id. Sem número (raro), cai no id interno do documento.
+    const prefix = doc.kind === 'PEDIDO' ? 'PED' : 'ORC';
+    const eventId = `KORTIA-${prefix}-${doc.numero ?? doc.id}`;
+
     return {
       event_name: eventName,
       event_time: Math.floor(tsMs / 1000),
-      // Determinístico p/ deduplicar com o Pixel do site.
-      event_id: `${eventName.toLowerCase()}:${doc.id}`,
+      event_id: eventId,
       action_source: 'system_generated',
       user_data,
       custom_data,

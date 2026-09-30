@@ -33,14 +33,17 @@ export class WaServiceAllowanceService {
       const monthStart = new Date(
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
       );
-      const grouped = (await this.prisma.waMessageCost.groupBy({
+      const groupedRaw = await this.prisma.waMessageCost.groupBy({
         by: ['organizationId', 'channelId'],
         where: {
           category: MessageCategory.SERVICE,
           occurredAt: { gte: monthStart },
         },
         _count: { _all: true },
-      })) as Array<{
+      });
+      // Cast em 2 etapas (as unknown as): castar o retorno do groupBy direto
+      // faz o TS back-propagar pro argumento genérico e quebrar o build.
+      const grouped = groupedRaw as unknown as Array<{
         organizationId: string;
         channelId: string;
         _count: { _all: number };

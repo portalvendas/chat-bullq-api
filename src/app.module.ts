@@ -38,6 +38,7 @@ import { TinyModule } from './modules/tiny-erp/tiny.module';
 import { LeadDistributionModule } from './modules/lead-distribution/lead-distribution.module';
 import { CommercialRoutineModule } from './modules/commercial-routine/commercial-routine.module';
 import { BroadcastModule } from './modules/broadcast/broadcast.module';
+import { LeadEnrichmentModule } from './modules/lead-enrichment/lead-enrichment.module';
 import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { AutomationsModule } from './modules/automations/automations.module';
 // ProductsModule removido — catálogo agora vive no Trivapp e é consumido
@@ -98,6 +99,7 @@ import redisConfig from './config/redis.config';
     LeadDistributionModule,
     CommercialRoutineModule,
     BroadcastModule,
+    LeadEnrichmentModule,
     PlatformAdminModule,
   ],
 })

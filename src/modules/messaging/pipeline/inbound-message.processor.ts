@@ -6,6 +6,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { UploadsService } from '../messages/uploads.service';
 import { BroadcastStatusService } from '../../broadcast/broadcast-status.service';
 import { WaCostRecorderService } from '../../broadcast/wa-cost-recorder.service';
+import { LeadEnrichmentService } from '../../lead-enrichment/lead-enrichment.service';
 import { IdempotencyService } from './idempotency.service';
 import { ContactResolverService } from './contact-resolver.service';
 import { ConversationResolverService } from './conversation-resolver.service';
@@ -118,6 +119,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly uploads: UploadsService,
     private readonly broadcastStatus: BroadcastStatusService,
     private readonly waCost: WaCostRecorderService,
+    private readonly leadEnrichment: LeadEnrichmentService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -370,6 +372,15 @@ export class InboundMessageProcessor extends WorkerHost {
             contactId,
             (message.content as any)?.text,
           ).catch(() => undefined);
+          // Enriquecimento automático: se o lead mandou dados de cadastro
+          // (CPF, e-mail, CEP, nascimento, nome…), preenche o contato/card.
+          void this.leadEnrichment
+            .enrichFromText(
+              organizationId,
+              contactId,
+              (message.content as any)?.text,
+            )
+            .catch(() => undefined);
         }
       }
 

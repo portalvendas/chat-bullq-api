@@ -1542,6 +1542,100 @@ export class DashboardService {
   }
 
   /**
+   * Saúde de ENVIO da WhatsApp Oficial: detecta BLOQUEIO DE PAGAMENTO da Meta
+   * (erro 131042 "Business eligibility payment issue"). Quando o cartão/
+   * faturamento da WABA falha, TODA mensagem (template e texto) volta como
+   * FAILED com esse motivo e o operador só descobre abrindo a conversa. Este
+   * método olha as mensagens OUTBOUND recusadas e alimenta o banner em tela.
+   *
+   * `active` = houve recusa por pagamento nos últimos `ACTIVE_WINDOW_MIN` min
+   * — auto-limpa sozinho assim que o pagamento é ajustado e os envios voltam
+   * (não haverá nova falha por pagamento → a janela recente zera).
+   *
+   * Payload de saída:
+   * {
+   *   paymentBlock: {
+   *     active: true,
+   *     failedTotal: 143,        // falhas por pagamento nas últimas 24h
+   *     recentTotal: 27,         // falhas na janela "ativa"
+   *     lastAt: "2026-10-05T18:18:30.814Z",
+   *     activeWindowMin: 90,
+   *     channels: [{ channelId, name, failedCount, recentCount, firstAt, lastAt, sampleReason }]
+   *   }
+   * }
+   */
+  async getWaPaymentHealth(organizationId: string) {
+    const ACTIVE_WINDOW_MIN = 90;
+    const LOOKBACK_HOURS = 24;
+    const now = new Date();
+    const lookback = new Date(now.getTime() - LOOKBACK_HOURS * 3600_000);
+    const activeSince = new Date(now.getTime() - ACTIVE_WINDOW_MIN * 60_000);
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        channelId: string;
+        channelName: string;
+        failedCount: bigint;
+        recentCount: bigint;
+        firstAt: Date | null;
+        lastAt: Date | null;
+        sampleReason: string | null;
+      }>
+    >`
+      SELECT c.channel_id AS "channelId",
+             ch.name AS "channelName",
+             COUNT(*) AS "failedCount",
+             COUNT(*) FILTER (WHERE m.created_at >= ${activeSince}) AS "recentCount",
+             MIN(m.created_at) AS "firstAt",
+             MAX(m.created_at) AS "lastAt",
+             (ARRAY_AGG(m.failed_reason ORDER BY m.created_at DESC))[1] AS "sampleReason"
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      JOIN channels ch ON ch.id = c.channel_id
+      WHERE c.organization_id = ${organizationId}
+        AND m.direction = 'OUTBOUND'
+        AND m.status = 'FAILED'
+        AND m.created_at >= ${lookback}
+        AND (
+          m.failed_reason ILIKE '%eligibility%'
+          OR m.failed_reason ILIKE '%payment%'
+          OR m.failed_reason ILIKE '%pagamento%'
+          OR m.failed_reason ILIKE '%131042%'
+        )
+      GROUP BY c.channel_id, ch.name
+      ORDER BY "lastAt" DESC
+    `;
+
+    const channels = rows.map((r) => ({
+      channelId: r.channelId,
+      name: r.channelName,
+      failedCount: Number(r.failedCount),
+      recentCount: Number(r.recentCount),
+      firstAt: r.firstAt ? r.firstAt.toISOString() : null,
+      lastAt: r.lastAt ? r.lastAt.toISOString() : null,
+      sampleReason: r.sampleReason,
+    }));
+
+    const recentTotal = channels.reduce((s, c) => s + c.recentCount, 0);
+    const failedTotal = channels.reduce((s, c) => s + c.failedCount, 0);
+    const lastAt = channels.reduce<string | null>(
+      (acc, c) => (c.lastAt && (!acc || c.lastAt > acc) ? c.lastAt : acc),
+      null,
+    );
+
+    return {
+      paymentBlock: {
+        active: recentTotal > 0,
+        failedTotal,
+        recentTotal,
+        lastAt,
+        activeWindowMin: ACTIVE_WINDOW_MIN,
+        channels,
+      },
+    };
+  }
+
+  /**
    * DRILL-DOWN dos custos: lista as mensagens de uma categoria/número no período,
    * resolvendo cada `wamid` para o contato e a ORIGEM (atendimento x disparo) —
    * p/ o gestor auditar "quais mensagens geraram o custo". Valores em micros

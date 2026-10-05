@@ -117,6 +117,12 @@ export class DashboardController {
     return this.service.getWaCostMessages(orgId, channelId, category, from, to);
   }
 
+  @Get('wa-health')
+  @ApiOperation({ summary: 'Saúde de envio WhatsApp Oficial: bloqueio de pagamento da Meta (erro 131042)' })
+  getWaHealth(@CurrentOrg('id') orgId: string) {
+    return this.service.getWaPaymentHealth(orgId);
+  }
+
   @Get('overview')
   @ApiOperation({ summary: 'Get dashboard overview metrics' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })

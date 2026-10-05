@@ -18,6 +18,7 @@ import { TranscriptionService } from './transcription.service';
 import { UploadsService } from './uploads.service';
 import { MediaResolverService } from './media-resolver.service';
 import { SendMessageDto } from './dto/send-message.dto';
+import { ResendFailedDto } from './dto/resend-failed.dto';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../../common/guards';
 import {
   CurrentUser,
@@ -132,6 +133,37 @@ export class MessagesController {
       force: force === 'true' || force === '1',
       access,
     });
+  }
+
+  @Post('resend-failed')
+  @ApiOperation({
+    summary:
+      'Reenvia em lote as mensagens que falharam (padrão: bloqueio de pagamento/131042 nas últimas 24h). Recoloca na fila de envio.',
+  })
+  resendFailed(
+    @Body() dto: ResendFailedDto,
+    @CurrentUser('id') userId: string,
+    @CurrentOrg('id') orgId: string,
+    @CurrentChannelAccess() access: ChannelAccess,
+  ) {
+    return this.service.resendFailed(orgId, userId, access, {
+      scope: dto.scope,
+      windowHours: dto.windowHours,
+    });
+  }
+
+  @Post(':id/resend')
+  @ApiOperation({
+    summary:
+      'Reenvia uma mensagem OUTBOUND que falhou (status FAILED). Recoloca na fila de envio.',
+  })
+  resend(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentOrg('id') orgId: string,
+    @CurrentChannelAccess() access: ChannelAccess,
+  ) {
+    return this.service.resend(id, userId, orgId, access);
   }
 
   @Delete(':id')

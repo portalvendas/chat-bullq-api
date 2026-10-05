@@ -367,6 +367,285 @@ export class MessagesService {
   }
 
   /**
+   * Re-enfileira UMA mensagem OUTBOUND que ficou FAILED para nova tentativa
+   * de envio ao provider. Usado tanto pelo reenvio unitário (botão na bolha)
+   * quanto pelo reenvio em lote (banner de bloqueio de pagamento).
+   *
+   * Reconstrói o payload do job a partir da linha persistida (type/content e
+   * replyTo da metadata) — o OutboundMessageProcessor lê tudo do job, não do
+   * banco, então precisamos remontar exatamente como em send().
+   *
+   * Idempotência: a seleção é sempre feita por status=FAILED. Ao resetar para
+   * QUEUED antes de enfileirar, um clique/lote repetido não acha mais a mesma
+   * linha como FAILED e portanto não duplica o envio. O BullMQ ainda aplica
+   * 3 tentativas com backoff exponencial para falhas transitórias.
+   */
+  private async requeueOutbound(message: {
+    id: string;
+    type: MessageContentType;
+    content: unknown;
+    metadata: unknown;
+    conversationId: string;
+    channelId: string;
+    contactExternalId: string;
+  }): Promise<void> {
+    // Reseta o estado ANTES de enfileirar: fecha a janela de corrida em que o
+    // worker poderia pegar o job e sobrescrever um status que ainda era FAILED.
+    await this.prisma.message.update({
+      where: { id: message.id },
+      data: { status: MessageStatus.QUEUED, failedReason: null },
+    });
+
+    // Otimista: UI volta a bolha pra "enviando…" (relógio) na hora, sem
+    // esperar o roundtrip do worker.
+    this.realtimeGateway.emitToConversation(
+      message.conversationId,
+      'message:status',
+      {
+        messageId: message.id,
+        status: MessageStatus.QUEUED,
+        conversationId: message.conversationId,
+      },
+    );
+
+    const replyTo = (message.metadata as Record<string, any> | null)?.replyTo;
+
+    await this.outboundQueue.add(
+      'send-outbound',
+      {
+        messageId: message.id,
+        channelId: message.channelId,
+        contactExternalId: message.contactExternalId,
+        message: {
+          type: message.type,
+          content: message.content,
+          replyTo: replyTo?.externalMessageId
+            ? {
+                externalMessageId: replyTo.externalMessageId,
+                previewText: replyTo.previewText,
+                senderName: replyTo.senderName,
+              }
+            : undefined,
+        },
+      },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 3000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+  }
+
+  /**
+   * Reenvia uma única mensagem que falhou (botão na bolha FAILED).
+   *
+   * Regras:
+   *  - só OUTBOUND (mensagem do cliente não é nossa pra reenviar)
+   *  - só status FAILED; QUEUED é no-op idempotente (já está na fila), e
+   *    SENT/DELIVERED/READ já saíram — recusamos pra não mandar duplicado
+   *  - mensagem revogada não é reenviada
+   *
+   * Observação sobre janela de 24h: se a falha original foi "Re-engagement
+   * message" (cliente sem resposta há >24h), um reenvio de texto livre vai
+   * falhar de novo — nesses casos só template HSM resolve. O reenvio não tenta
+   * contornar isso; apenas recoloca na fila.
+   */
+  async resend(
+    messageId: string,
+    senderId: string,
+    organizationId: string,
+    access: ChannelAccess = 'ALL',
+  ): Promise<{ messageId: string; status: MessageStatus; requeued: boolean }> {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        conversation: {
+          select: {
+            id: true,
+            organizationId: true,
+            channelId: true,
+            contact: { select: { channels: true } },
+          },
+        },
+      },
+    });
+
+    if (!message) throw new NotFoundException('Message not found');
+    if (message.conversation.organizationId !== organizationId) {
+      throw new ForbiddenException();
+    }
+    this.channelAccess.assertChannelAccess(
+      access,
+      message.conversation.channelId,
+    );
+
+    if (message.direction !== MessageDirection.OUTBOUND) {
+      throw new BadRequestException(
+        'Só dá pra reenviar mensagens enviadas pelo time ou pela IA.',
+      );
+    }
+    if (message.revokedAt) {
+      throw new BadRequestException(
+        'Mensagem deletada não pode ser reenviada.',
+      );
+    }
+    if (message.status === MessageStatus.QUEUED) {
+      // Já está na fila (clique duplo / reenvio em andamento) — no-op.
+      return { messageId, status: MessageStatus.QUEUED, requeued: false };
+    }
+    if (message.status !== MessageStatus.FAILED) {
+      throw new BadRequestException(
+        'Essa mensagem não está com falha — não precisa reenviar.',
+      );
+    }
+
+    const contactChannel = message.conversation.contact.channels.find(
+      (cc) => cc.channelId === message.conversation.channelId,
+    );
+    if (!contactChannel) {
+      throw new NotFoundException('Contact channel not found');
+    }
+
+    await this.requeueOutbound({
+      id: message.id,
+      type: message.type,
+      content: message.content,
+      metadata: message.metadata,
+      conversationId: message.conversation.id,
+      channelId: message.conversation.channelId,
+      contactExternalId: contactChannel.externalId,
+    });
+
+    this.logger.log(
+      `Message resend enqueued: id=${message.id} channel=${message.conversation.channelId} actor=${senderId}`,
+    );
+
+    return { messageId, status: MessageStatus.QUEUED, requeued: true };
+  }
+
+  /**
+   * Reenvia EM LOTE as mensagens OUTBOUND que falharam na organização dentro
+   * de uma janela recente. Pensado pro cenário de bloqueio de pagamento da
+   * Meta (erro 131042): ajustado o pagamento, recoloca de uma vez tudo que a
+   * Meta recusou, sem o operador caçar conversa por conversa.
+   *
+   * - scope='payment' (padrão): só falhas de elegibilidade/pagamento (131042),
+   *   mesmo match do /dashboard/wa-health.
+   * - scope='all': qualquer falha na janela.
+   *
+   * Respeita o channel access do solicitante e pagina internamente o
+   * enfileiramento. Idempotente pela seleção status=FAILED (ver requeueOutbound).
+   */
+  async resendFailed(
+    organizationId: string,
+    senderId: string,
+    access: ChannelAccess = 'ALL',
+    opts: { scope?: 'payment' | 'all'; windowHours?: number } = {},
+  ): Promise<{ requeued: number; scanned: number; windowHours: number }> {
+    const scope = opts.scope ?? 'payment';
+    const windowHours =
+      opts.windowHours && opts.windowHours > 0 && opts.windowHours <= 72
+        ? opts.windowHours
+        : 24;
+    const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+    // Filtro de motivo alinhado ao getWaPaymentHealth (131042 / elegibilidade /
+    // pagamento, PT e EN). Em scope='all' não filtra motivo.
+    const paymentReasonFilter = {
+      OR: [
+        { failedReason: { contains: 'eligibility', mode: 'insensitive' as const } },
+        { failedReason: { contains: 'payment', mode: 'insensitive' as const } },
+        { failedReason: { contains: 'pagamento', mode: 'insensitive' as const } },
+        { failedReason: { contains: '131042', mode: 'insensitive' as const } },
+      ],
+    };
+
+    // Channel access: 'ALL' não filtra; Set vira cláusula IN. Set vazio =
+    // nenhum canal acessível → nada a fazer.
+    const channelFilter =
+      access === 'ALL'
+        ? {}
+        : { channelId: { in: [...access] } };
+    if (access !== 'ALL' && (access as Set<string>).size === 0) {
+      return { requeued: 0, scanned: 0, windowHours };
+    }
+
+    const where = {
+      direction: MessageDirection.OUTBOUND,
+      status: MessageStatus.FAILED,
+      revokedAt: null,
+      createdAt: { gte: since },
+      conversation: {
+        is: {
+          organizationId,
+          ...channelFilter,
+        },
+      },
+      ...(scope === 'payment' ? paymentReasonFilter : {}),
+    };
+
+    const candidates = await this.prisma.message.findMany({
+      where,
+      select: {
+        id: true,
+        type: true,
+        content: true,
+        metadata: true,
+        conversationId: true,
+        conversation: {
+          select: {
+            channelId: true,
+            contact: { select: { channels: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 1000,
+    });
+
+    let requeued = 0;
+    for (const m of candidates) {
+      const contactChannel = m.conversation.contact.channels.find(
+        (cc) => cc.channelId === m.conversation.channelId,
+      );
+      if (!contactChannel) {
+        // Sem canal do contato não dá pra remontar o destino — pula, mas loga
+        // pra não sumir silenciosamente.
+        this.logger.warn(
+          `Resend em lote: msg=${m.id} sem contactChannel pro canal ${m.conversation.channelId} — ignorada.`,
+        );
+        continue;
+      }
+      try {
+        await this.requeueOutbound({
+          id: m.id,
+          type: m.type,
+          content: m.content,
+          metadata: m.metadata,
+          conversationId: m.conversationId,
+          channelId: m.conversation.channelId,
+          contactExternalId: contactChannel.externalId,
+        });
+        requeued++;
+      } catch (err: unknown) {
+        this.logger.error(
+          `Resend em lote falhou ao enfileirar msg=${m.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Resend em lote: org=${organizationId} scope=${scope} janela=${windowHours}h ` +
+        `escaneadas=${candidates.length} reenfileiradas=${requeued} actor=${senderId}`,
+    );
+
+    return { requeued, scanned: candidates.length, windowHours };
+  }
+
+  /**
    * Marca uma mensagem como revogada (deletada pra todos). Tenta primeiro
    * propagar pro provider — se o canal suportar (Zappfy), o cliente final
    * vê "Esta mensagem foi apagada". Se o provider não suportar (Meta WA

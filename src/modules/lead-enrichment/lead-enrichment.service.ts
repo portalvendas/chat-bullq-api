@@ -63,6 +63,42 @@ export class LeadEnrichmentService {
     return { applied, contactId: conv.contactId, cadastro };
   }
 
+  /**
+   * EXECUÇÃO AUTOMÁTICA EM LOTE: varre as conversas com atividade de entrada
+   * recente e enriquece cada uma (fill-empty). Pega o que o hook por mensagem
+   * eventualmente não cobriu e também conversas antigas reativadas. Chamado pelo
+   * cron. @example { scanned: 120, enriched: 18 }
+   */
+  async enrichRecentConversations(
+    sinceDays = 2,
+    limit = 300,
+  ): Promise<{ scanned: number; enriched: number }> {
+    const since = new Date(Date.now() - sinceDays * 86400000);
+    const convs = await this.prisma.conversation.findMany({
+      where: {
+        messages: { some: { direction: 'INBOUND', createdAt: { gte: since } } },
+      },
+      select: { id: true, organizationId: true },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+    });
+    let enriched = 0;
+    for (const c of convs) {
+      try {
+        const r = await this.enrichFromConversation(c.organizationId, c.id);
+        if (r.applied.length) enriched++;
+      } catch {
+        /* best-effort por conversa */
+      }
+    }
+    if (enriched) {
+      this.logger.log(
+        `lead-enrichment batch: ${enriched}/${convs.length} conversas enriquecidas`,
+      );
+    }
+    return { scanned: convs.length, enriched };
+  }
+
   /** Cadastro atual pela conversa (GET — só leitura, p/ exibir no card). */
   async getCadastroByConversation(
     organizationId: string,
@@ -120,11 +156,25 @@ export class LeadEnrichmentService {
       const update: Record<string, any> = {};
       const applied: string[] = [];
 
-      // name / email no nível do contato (campos "fortes").
-      if (!contact.name && data.name) {
-        update.name = data.name;
-        applied.push('name');
+      // NOME: preenche se vazio, OU faz UPGRADE quando o lead manda o nome
+      // completo e o atual é só o 1º nome (ex.: perfil do WhatsApp "Aley" →
+      // "Aley Sadi Costa Ferreira"). Não sobrescreve um nome já completo.
+      if (data.name) {
+        const d = (s: string) =>
+          s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+        const cur = (contact.name ?? '').trim();
+        const nw = data.name.trim();
+        const curWords = cur ? cur.split(/\s+/).length : 0;
+        const nwWords = nw.split(/\s+/).length;
+        const upgrade =
+          !cur ||
+          (nwWords > curWords && curWords <= 2 && d(nw).startsWith(d(cur)));
+        if (upgrade && d(nw) !== d(cur)) {
+          update.name = nw;
+          applied.push('name');
+        }
       }
+      // E-MAIL: preenche só quando o contato não tem (não troca um e-mail bom).
       if (!contact.email && data.email) {
         update.email = data.email;
         applied.push('email');

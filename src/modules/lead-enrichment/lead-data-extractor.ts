@@ -192,10 +192,14 @@ function parseLoose(text: string): CadastroData {
     out.name = trimmed.replace(/\s+/g, ' ');
   }
 
-  // Endereço solto: linha com CEP + logradouro típico → guarda o texto cru.
-  if (!out.name && (cep || /\b(rua|r\.|avenida|av\.|travessa|rodovia|alameda|pra[çc]a)\b/i.test(text))) {
+  // Endereço solto: precisa de logradouro típico OU (CEP + texto com letras).
+  // Uma mensagem SÓ com CEP não vira "endereço" (senão o CEP aparecia no campo
+  // Endereço). Exige pelo menos uma palavra de 3+ letras.
+  const hasStreet = /\b(rua|r\.|avenida|av\.|travessa|rodovia|estrada|alameda|pra[çc]a|quadra|lote)\b/i.test(text);
+  const hasLetters = /[a-zà-ÿ]{3,}/i.test(trimmed);
+  if (!out.name && (hasStreet || (cep && hasLetters && trimmed.length > 12))) {
     const addr = trimmed.replace(/\s*\n\s*/g, ', ').replace(/\s+/g, ' ');
-    if (addr.length >= 8 && addr.length <= 200) out.addressText = addr;
+    if (addr.length >= 10 && addr.length <= 200) out.addressText = addr;
   }
 
   return out;

@@ -1606,15 +1606,55 @@ export class DashboardService {
       ORDER BY "lastAt" DESC
     `;
 
-    const channels = rows.map((r) => ({
-      channelId: r.channelId,
-      name: r.channelName,
-      failedCount: Number(r.failedCount),
-      recentCount: Number(r.recentCount),
-      firstAt: r.firstAt ? r.firstAt.toISOString() : null,
-      lastAt: r.lastAt ? r.lastAt.toISOString() : null,
-      sampleReason: r.sampleReason,
-    }));
+    // Sinal de RECUPERAÇÃO: último envio OUTBOUND que PASSOU (SENT/DELIVERED/
+    // READ) por canal. Se há sucesso mais recente que a última falha de
+    // pagamento, o bloqueio já foi resolvido na prática — o banner não deve
+    // mais aparecer, mesmo dentro da janela de 90 min. Sem isso, as falhas
+    // antigas seguravam o banner por até 90 min após o pagamento ser ajustado.
+    const successRows = await this.prisma.$queryRaw<
+      Array<{ channelId: string; lastSuccessAt: Date | null }>
+    >`
+      SELECT c.channel_id AS "channelId",
+             MAX(COALESCE(m.sent_at, m.created_at)) AS "lastSuccessAt"
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.organization_id = ${organizationId}
+        AND m.direction = 'OUTBOUND'
+        AND m.status IN ('SENT', 'DELIVERED', 'READ')
+        AND COALESCE(m.sent_at, m.created_at) >= ${lookback}
+      GROUP BY c.channel_id
+    `;
+    const lastSuccessByChannel = new Map<string, Date | null>(
+      successRows.map((r) => [r.channelId, r.lastSuccessAt]),
+    );
+
+    const channels = rows
+      .map((r) => {
+        const lastFailedAt = r.lastAt; // falha de pagamento mais recente
+        const lastSuccessAt = lastSuccessByChannel.get(r.channelId) ?? null;
+        // Recuperado = houve envio bem-sucedido DEPOIS da última falha.
+        const recovered = !!(
+          lastSuccessAt &&
+          lastFailedAt &&
+          lastSuccessAt.getTime() > lastFailedAt.getTime()
+        );
+        const recentCount = Number(r.recentCount);
+        return {
+          channelId: r.channelId,
+          name: r.channelName,
+          failedCount: Number(r.failedCount),
+          recentCount,
+          firstAt: r.firstAt ? r.firstAt.toISOString() : null,
+          lastAt: r.lastAt ? r.lastAt.toISOString() : null,
+          sampleReason: r.sampleReason,
+          // Bloqueio ativo: falha recente E ainda sem envio que passou depois.
+          activeBlock: recentCount > 0 && !recovered,
+        };
+      })
+      // Só canais ainda bloqueados entram no payload — assim o banner lista
+      // apenas números realmente travados e some sozinho quando o envio volta.
+      .filter((c) => c.activeBlock)
+      .map(({ activeBlock: _activeBlock, ...c }) => c);
 
     const recentTotal = channels.reduce((s, c) => s + c.recentCount, 0);
     const failedTotal = channels.reduce((s, c) => s + c.failedCount, 0);
@@ -1625,7 +1665,7 @@ export class DashboardService {
 
     return {
       paymentBlock: {
-        active: recentTotal > 0,
+        active: channels.length > 0,
         failedTotal,
         recentTotal,
         lastAt,

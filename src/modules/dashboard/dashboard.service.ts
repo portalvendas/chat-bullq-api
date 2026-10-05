@@ -1541,6 +1541,64 @@ export class DashboardService {
     };
   }
 
+  /**
+   * DRILL-DOWN dos custos: lista as mensagens de uma categoria/número no período,
+   * resolvendo cada `wamid` para o contato e a ORIGEM (atendimento x disparo) —
+   * p/ o gestor auditar "quais mensagens geraram o custo". Valores em micros
+   * como string. Capado em 300 linhas.
+   */
+  async getWaCostMessages(
+    organizationId: string,
+    channelId: string,
+    category: string,
+    from?: string,
+    to?: string,
+  ) {
+    const now = new Date();
+    const start = from
+      ? new Date(from)
+      : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const end = to ? new Date(to) : now;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        wamid: string;
+        costMicros: string;
+        occurredAt: Date;
+        billable: boolean;
+        contactName: string | null;
+        contactPhone: string | null;
+        origem: string;
+        broadcastName: string | null;
+        conversationId: string | null;
+      }>
+    >`
+      SELECT c.wamid,
+             c.cost_micros::text AS "costMicros",
+             c.occurred_at       AS "occurredAt",
+             c.billable,
+             COALESCE(ctm.name, ctb.name)   AS "contactName",
+             COALESCE(ctm.phone, ctb.phone) AS "contactPhone",
+             CASE WHEN br.wamid IS NOT NULL THEN 'disparo' ELSE 'atendimento' END AS origem,
+             b.name AS "broadcastName",
+             conv.id AS "conversationId"
+      FROM wa_message_costs c
+      LEFT JOIN messages m ON m.external_id = c.wamid
+      LEFT JOIN conversations conv ON conv.id = m.conversation_id
+      LEFT JOIN contacts ctm ON ctm.id = conv.contact_id
+      LEFT JOIN broadcast_recipients br ON br.wamid = c.wamid
+      LEFT JOIN broadcasts b ON b.id = br.broadcast_id
+      LEFT JOIN contacts ctb ON ctb.id = br.contact_id
+      WHERE c.organization_id = ${organizationId}
+        AND c.channel_id = ${channelId}
+        AND c.category = ${category}::"MessageCategory"
+        AND c.occurred_at >= ${start}
+        AND c.occurred_at <= ${end}
+      ORDER BY c.occurred_at DESC
+      LIMIT 300
+    `;
+    return rows;
+  }
+
   async getAgentPerformance(organizationId: string, range: DateRange) {
     const [conversations, currentLoadGroups] = await Promise.all([
       this.prisma.conversation.findMany({

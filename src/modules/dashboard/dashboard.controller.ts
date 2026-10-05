@@ -101,6 +101,22 @@ export class DashboardController {
     return this.service.getWaCosts(orgId, from, to);
   }
 
+  @Get('wa-costs/messages')
+  @ApiOperation({ summary: 'Drill-down: mensagens de uma categoria/número que geraram o custo' })
+  @ApiQuery({ name: 'channelId', required: true })
+  @ApiQuery({ name: 'category', required: true })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  getWaCostMessages(
+    @CurrentOrg('id') orgId: string,
+    @Query('channelId') channelId: string,
+    @Query('category') category: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getWaCostMessages(orgId, channelId, category, from, to);
+  }
+
   @Get('overview')
   @ApiOperation({ summary: 'Get dashboard overview metrics' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })

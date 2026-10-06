@@ -459,6 +459,10 @@ model Channel {
   // configuramos maior (ex: 120s) pra dar tempo do comprador mandar todas
   // as perguntas do anúncio antes de responder.
   aiDebounceSeconds Int?     @map("ai_debounce_seconds")
+  // Trava de follow-up por canal. true = este número NÃO dispara follow-up
+  // (cadências/Salesbots) — usado pra números WhatsApp Business (QR/Z-API)
+  // onde há restrição de disparo automático. default false = follow-up normal.
+  followUpBlocked Boolean   @default(false) @map("follow_up_blocked")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @updatedAt @map("updated_at")
   deletedAt      DateTime?   @map("deleted_at")

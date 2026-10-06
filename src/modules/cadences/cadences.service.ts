@@ -985,6 +985,20 @@ export class CadencesService implements OnModuleInit {
       },
     });
     if (!conversation) return 'skipped';
+
+    // TRAVA DE FOLLOW-UP POR CANAL: números marcados como "não disparar
+    // follow-up" (ex.: WhatsApp Business via QR/Z-API, que têm restrição de
+    // disparo automático) não enviam nenhuma mensagem de cadência/Salesbot.
+    // Checado aqui — o choke point único de envio de follow-up — pra cobrir
+    // todos os caminhos (manual, tag, etapa, inatividade).
+    if (conversation.channel?.followUpBlocked) {
+      this.logger.warn(
+        `Follow-up BLOQUEADO na conv ${conversationId}: canal ${conversation.channelId} ` +
+          `(${conversation.channel?.type}) está com follow-up desativado.`,
+      );
+      return 'blocked';
+    }
+
     const cc = conversation.contact.channels.find(
       (x) => x.channelId === conversation.channelId,
     );

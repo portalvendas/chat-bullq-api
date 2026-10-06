@@ -77,4 +77,19 @@ export class UpdateChannelDto {
   @IsInt()
   @Min(0)
   aiDebounceSeconds?: number | null;
+
+  /**
+   * Trava de follow-up por canal:
+   *   false (default) = o canal dispara follow-up (cadências/Salesbots) normal.
+   *   true            = este número NÃO dispara follow-up — usado p/ WhatsApp
+   *                     Business (QR/Z-API) com restrição de disparo automático.
+   */
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'true = bloqueia disparo de follow-up (cadências/Salesbots) por este canal',
+  })
+  @IsOptional()
+  @IsBoolean()
+  followUpBlocked?: boolean;
 }

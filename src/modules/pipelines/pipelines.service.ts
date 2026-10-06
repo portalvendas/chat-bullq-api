@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CardStatus, ConversationStatus, PipelineStageType } from '@prisma/client';
+import { SWITCHABLE_WHATSAPP_TYPES } from '../../common/constants/whatsapp.constants';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
@@ -1082,9 +1083,7 @@ export class PipelinesService {
       where: {
         id: channelId,
         organizationId,
-        type: {
-          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
-        },
+        type: { in: SWITCHABLE_WHATSAPP_TYPES },
       },
       select: { id: true },
     });
@@ -1163,9 +1162,7 @@ export class PipelinesService {
         organizationId,
         isActive: true,
         deletedAt: null,
-        type: {
-          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
-        },
+        type: { in: SWITCHABLE_WHATSAPP_TYPES },
       },
       select: { id: true, name: true, type: true },
       orderBy: { createdAt: 'asc' },

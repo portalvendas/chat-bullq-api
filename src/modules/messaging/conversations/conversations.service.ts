@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Conversation, ConversationStatus, ChannelType } from '@prisma/client';
+import { SWITCHABLE_WHATSAPP_TYPES } from '../../../common/constants/whatsapp.constants';
 import { ConversationsRepository, InboxFilters } from './conversations.repository';
 import { ConversationFsmService } from './conversation-fsm.service';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
@@ -852,9 +853,7 @@ export class ConversationsService {
         id: targetChannelId,
         organizationId,
         deletedAt: null,
-        type: {
-          in: ['WHATSAPP_ZAPI', 'WHATSAPP_OFFICIAL', 'WHATSAPP_ZAPPFY'] as any,
-        },
+        type: { in: SWITCHABLE_WHATSAPP_TYPES },
       },
       select: { id: true, type: true },
     });

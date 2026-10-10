@@ -26,7 +26,18 @@ export interface LlmImagePart {
   base64?: { mediaType: string; data: string };
 }
 
-export type LlmContentPart = LlmTextPart | LlmImagePart;
+/**
+ * Document input block (ex.: PDF). Anthropic aceita URL pública ou base64.
+ * Usado pra ler comprovantes em PDF (quando não é imagem).
+ */
+export interface LlmDocumentPart {
+  type: 'document';
+  url?: string;
+  /** base64 sem o prefixo `data:...;base64,`; mediaType ex. 'application/pdf'. */
+  base64?: { mediaType: string; data: string };
+}
+
+export type LlmContentPart = LlmTextPart | LlmImagePart | LlmDocumentPart;
 export type LlmContent = string | LlmContentPart[];
 
 export interface LlmMessage {

@@ -355,13 +355,20 @@ export class LlmService {
    */
   private toUserContentBlocks(
     content: LlmMessage['content'],
-  ): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
+  ): Array<
+    | Anthropic.TextBlockParam
+    | Anthropic.ImageBlockParam
+    | Anthropic.DocumentBlockParam
+  > {
     const raw =
       typeof content === 'string'
         ? [{ type: 'text' as const, text: content }]
         : content;
-    const blocks: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> =
-      [];
+    const blocks: Array<
+      | Anthropic.TextBlockParam
+      | Anthropic.ImageBlockParam
+      | Anthropic.DocumentBlockParam
+    > = [];
     for (const part of raw) {
       if (part.type === 'text') {
         if (!part.text || part.text.length === 0) continue;
@@ -393,6 +400,25 @@ export class LlmService {
           });
         }
         // Image sem url nem base64 → drop silenciosamente.
+        continue;
+      }
+      if (part.type === 'document') {
+        if (part.url) {
+          blocks.push({
+            type: 'document',
+            source: { type: 'url', url: part.url },
+          });
+        } else if (part.base64) {
+          blocks.push({
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: part.base64.data,
+            },
+          });
+        }
+        // Document sem url nem base64 → drop silenciosamente.
       }
     }
     return blocks;

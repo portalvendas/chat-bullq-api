@@ -8,9 +8,12 @@ import {
   Res,
   Logger,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import {
@@ -19,8 +22,10 @@ import {
   Patch,
 } from '@nestjs/common';
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
-import { Public, CurrentOrg } from '../../common/decorators';
+import { Public, CurrentOrg, CurrentUser } from '../../common/decorators';
 import { TinyService } from './tiny.service';
+import { TinyReceiptsService } from './tiny-receipts.service';
+import { UploadsService } from '../messaging/messages/uploads.service';
 import { MetaCapiService, MetaCapiConfigInput } from './meta-capi/meta-capi.service';
 
 /**
@@ -42,7 +47,68 @@ export class TinyController {
   constructor(
     private readonly service: TinyService,
     private readonly capi: MetaCapiService,
+    private readonly receipts: TinyReceiptsService,
   ) {}
+
+  // ── Comprovantes de pagamento do pedido ──────────────────────────────
+
+  @Get('documents/:id/comprovantes')
+  @ApiOperation({ summary: 'Lista os comprovantes de pagamento do pedido' })
+  listComprovantes(
+    @CurrentOrg('id') orgId: string,
+    @Param('id') id: string,
+  ) {
+    return this.receipts.list(orgId, id);
+  }
+
+  @Post('documents/:id/comprovante')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: UploadsService.MAX_MEDIA_BYTES },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      'Anexa um comprovante (PDF/JPG) ao pedido; lê forma de pagamento/valor/data por IA.',
+  })
+  uploadComprovante(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @UploadedFile()
+    file?: { buffer: Buffer; mimetype: string; originalname?: string },
+  ) {
+    if (!file) throw new BadRequestException('file é obrigatório');
+    return this.receipts.upload(orgId, id, file, userId);
+  }
+
+  @Patch('documents/:id/comprovante/:receiptId')
+  @ApiOperation({ summary: 'Edita forma de pagamento/valor/data de um comprovante' })
+  updateComprovante(
+    @CurrentOrg('id') orgId: string,
+    @Param('id') id: string,
+    @Param('receiptId') receiptId: string,
+    @Body()
+    dto: {
+      valor?: number | null;
+      metodo?: string | null;
+      parcelas?: number | null;
+      dataPagamento?: string | null;
+    },
+  ) {
+    return this.receipts.update(orgId, id, receiptId, dto ?? {});
+  }
+
+  @Delete('documents/:id/comprovante/:receiptId')
+  @ApiOperation({ summary: 'Remove um comprovante do pedido' })
+  removeComprovante(
+    @CurrentOrg('id') orgId: string,
+    @Param('id') id: string,
+    @Param('receiptId') receiptId: string,
+  ) {
+    return this.receipts.remove(orgId, id, receiptId);
+  }
 
   @Get('capi/config')
   @ApiOperation({ summary: 'Config da integração Meta CAPI (token mascarado)' })

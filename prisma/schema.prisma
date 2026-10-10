@@ -2146,11 +2146,49 @@ model TinyDocument {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   capiEvents   MetaCapiEvent[]
+  receipts     TinyReceipt[]
 
   @@unique([organizationId, kind, tinyId], name: "uq_tinydoc_org_kind_tinyid")
   @@index([organizationId, contactId], name: "idx_tinydoc_org_contact")
   @@index([organizationId, kind], name: "idx_tinydoc_org_kind")
   @@map("tiny_documents")
+}
+
+/// Comprovante de pagamento anexado a um pedido (TinyDocument). Pode haver
+/// VÁRIOS por pedido (entrada + parcelas): a soma dos valores é comparada com
+/// o total do pedido. Dados de forma de pagamento/valor/data são extraídos do
+/// arquivo por IA (visão) e editáveis. Tabela própria (fora do `raw` do
+/// TinyDocument) pra o sync do Tiny nunca sobrescrever.
+model TinyReceipt {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  tinyDocumentId String    @map("tiny_document_id")
+  /// URL pública do arquivo (PDF/JPG) salvo via UploadsService.
+  url            String
+  mimeType       String?   @map("mime_type")
+  fileName       String?   @map("file_name")
+  /// Valor do comprovante (R$) — extraído ou editado à mão.
+  valor          Decimal?  @db.Decimal(14, 2)
+  /// Forma de pagamento: pix | cartao | parcelamento | boleto | transferencia | dinheiro | outro | desconhecido.
+  metodo         String?
+  parcelas       Int?
+  /// Data do pagamento (do comprovante).
+  dataPagamento  DateTime? @map("data_pagamento")
+  /// A IA considerou que o arquivo É um comprovante de pagamento?
+  ehComprovante  Boolean?  @map("eh_comprovante")
+  /// Status da extração: ok | falhou | manual.
+  statusExtracao String?   @map("status_extracao")
+  observacao     String?
+  extraidoEm     DateTime? @map("extraido_em")
+  uploadedById   String?   @map("uploaded_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tinyDocument TinyDocument @relation(fields: [tinyDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([tinyDocumentId], name: "idx_tinyreceipt_doc")
+  @@index([organizationId], name: "idx_tinyreceipt_org")
+  @@map("tiny_receipts")
 }
 
 /// Configuração da integração com a Conversions API (CAPI) da Meta, por org.

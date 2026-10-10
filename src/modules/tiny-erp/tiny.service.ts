@@ -1574,6 +1574,36 @@ export class TinyService {
       }
     }
 
+    // Comprovantes de pagamento (vários por pedido): conta + soma dos valores
+    // por documento desta página, pra comparar com o total e alertar na linha.
+    const docIds = rows.map((d) => d.id);
+    const recByDoc = new Map<string, { count: number; soma: number }>();
+    if (docIds.length > 0) {
+      const agg = await this.prisma.tinyReceipt.groupBy({
+        by: ['tinyDocumentId'],
+        where: { tinyDocumentId: { in: docIds } },
+        _count: { _all: true },
+        _sum: { valor: true },
+      });
+      for (const g of agg) {
+        recByDoc.set(g.tinyDocumentId, {
+          count: g._count._all,
+          soma: Number(g._sum.valor ?? 0),
+        });
+      }
+    }
+    const statusComprovante = (
+      d: (typeof rows)[number],
+    ): 'sem' | 'parcial' | 'confere' | 'excedente' | 'na' => {
+      if (d.kind !== 'PEDIDO') return 'na'; // só pedidos exigem comprovante
+      const rec = recByDoc.get(d.id);
+      if (!rec || rec.count === 0) return 'sem';
+      if (d.valor == null) return 'confere'; // sem total pra comparar
+      const diff = rec.soma - Number(d.valor);
+      if (Math.abs(diff) <= 0.01) return 'confere';
+      return diff < 0 ? 'parcial' : 'excedente';
+    };
+
     return {
       items: rows.map((d) => ({
         id: d.id,
@@ -1587,6 +1617,10 @@ export class TinyService {
         clienteTelefone: d.clienteTelefone,
         vendedor: d.vendedor,
         matchedBy: d.matchedBy,
+        // Comprovantes: quantos, soma e status vs total do pedido.
+        comprovanteCount: recByDoc.get(d.id)?.count ?? 0,
+        comprovanteSoma: recByDoc.get(d.id)?.soma ?? 0,
+        comprovanteStatus: statusComprovante(d),
         // Dias entre a data do documento (orçamento/pedido) e a última mensagem
         // enviada ao cliente. null quando falta data ou nunca houve envio.
         diasOrcamentoUltimaMsg:

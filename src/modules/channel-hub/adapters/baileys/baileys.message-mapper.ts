@@ -5,6 +5,7 @@ import {
   NormalizedMessageContent,
   MessageContentType,
 } from '../../ports/types';
+import { canonicalPhone } from '../../../../common/phone.util';
 
 /**
  * Traduz eventos do socket Baileys (`messages.upsert`) para o
@@ -26,9 +27,11 @@ export class BaileysMessageMapper {
     return String(jid).replace(/[:@].*$/, '').replace(/\D/g, '');
   }
 
-  /** `5511999998888` -> `5511999998888@s.whatsapp.net`. */
+  /** `5511999998888` -> `5511999998888@s.whatsapp.net`.
+   *  Canonicaliza pro padrão BR (insere o 9º dígito / DDI 55 quando aplicável)
+   *  antes de montar o JID — números crus/sem o 9 não entregam no WhatsApp. */
   numberToJid(number: string): string {
-    const digits = String(number).replace(/\D/g, '');
+    const digits = (canonicalPhone(number) ?? String(number)).replace(/\D/g, '');
     return `${digits}@s.whatsapp.net`;
   }
 

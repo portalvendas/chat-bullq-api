@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { CardStatus, ConversationStatus, PipelineStageType } from '@prisma/client';
 import { SWITCHABLE_WHATSAPP_TYPES } from '../../common/constants/whatsapp.constants';
+import { canonicalPhone } from '../../common/phone.util';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
@@ -1076,8 +1077,18 @@ export class PipelinesService {
       include: { contact: { select: { id: true, name: true, phone: true } } },
     });
     if (!card?.contact) throw new NotFoundException('Card/contato não encontrado');
-    const phone = card.contact.phone?.replace(/\D/g, '');
-    if (!phone) throw new BadRequestException('Contato sem telefone válido');
+    // Normaliza pro padrão BR (DDI 55 + DDD + 9 dígitos) e VALIDA antes de
+    // iniciar. Sem isso, um telefone incompleto/sem o 9º dígito era gravado cru
+    // como externalId e o provider "aceitava" o envio (1 check) mas NUNCA
+    // entregava — e no Baileys ficava preso em "enviado". Melhor recusar com
+    // mensagem clara do que criar uma conversa que não entrega.
+    const phone = canonicalPhone(card.contact.phone);
+    if (!phone || !/^55\d{2}9\d{8}$/.test(phone)) {
+      throw new BadRequestException(
+        'O telefone do lead parece incompleto ou inválido (esperado DDD + número com 9 dígitos). ' +
+          'Corrija o contato antes de iniciar a conversa.',
+      );
+    }
 
     const channel = await this.prisma.channel.findFirst({
       where: {

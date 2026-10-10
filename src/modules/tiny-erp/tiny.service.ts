@@ -1280,33 +1280,45 @@ export class TinyService {
     const convs = contactIds.length
       ? await this.prisma.conversation.findMany({
           where: { contactId: { in: contactIds } },
-          select: {
-            id: true,
-            contactId: true,
-            lastMessageAt: true,
-            messages: {
-              where: { direction: 'INBOUND' as const },
-              orderBy: { createdAt: 'asc' },
-              take: 1,
-              select: { createdAt: true },
-            },
-          },
+          select: { id: true, contactId: true, lastMessageAt: true },
           orderBy: { lastMessageAt: 'desc' },
         })
       : [];
 
-    // Por contato: 1º inbound (mais antigo) e a conversa mais recente (p/ abrir).
+    // Agrega 1º e último INBOUND por conversa (server-side), depois reduz por
+    // contato. 1º inbound → detecta origem; último inbound → "tempo sem contato".
+    const convToContact = new Map<string, string | null>(
+      convs.map((cv) => [cv.id, cv.contactId]),
+    );
+    const convIds = convs.map((cv) => cv.id);
+    const inboundAgg = convIds.length
+      ? await this.prisma.message.groupBy({
+          by: ['conversationId'],
+          where: { conversationId: { in: convIds }, direction: 'INBOUND' as const },
+          _min: { createdAt: true },
+          _max: { createdAt: true },
+        })
+      : [];
+
     const firstInboundByContact = new Map<string, Date>();
+    const lastInboundByContact = new Map<string, Date>();
+    for (const a of inboundAgg) {
+      const cid = convToContact.get(a.conversationId);
+      if (!cid) continue;
+      if (a._min.createdAt) {
+        const cur = firstInboundByContact.get(cid);
+        if (!cur || a._min.createdAt < cur) firstInboundByContact.set(cid, a._min.createdAt);
+      }
+      if (a._max.createdAt) {
+        const cur = lastInboundByContact.get(cid);
+        if (!cur || a._max.createdAt > cur) lastInboundByContact.set(cid, a._max.createdAt);
+      }
+    }
+    // Conversa mais recente por contato (convs já ordenadas desc) — p/ abrir inbox.
     const latestConvByContact = new Map<string, string>();
     for (const cv of convs) {
-      if (!cv.contactId) continue;
-      if (!latestConvByContact.has(cv.contactId)) {
-        latestConvByContact.set(cv.contactId, cv.id); // já ordenado desc
-      }
-      const inb = cv.messages[0]?.createdAt;
-      if (inb) {
-        const cur = firstInboundByContact.get(cv.contactId);
-        if (!cur || inb < cur) firstInboundByContact.set(cv.contactId, inb);
+      if (cv.contactId && !latestConvByContact.has(cv.contactId)) {
+        latestConvByContact.set(cv.contactId, cv.id);
       }
     }
 
@@ -1321,6 +1333,10 @@ export class TinyService {
           : 'funil';
       const conversationId =
         c.conversationId ?? (cid ? latestConvByContact.get(cid) ?? null : null);
+      // "Tempo sem contato": desde a última mensagem do cliente; se nunca houve
+      // inbound (lead só de card/funil), desde a criação do lead.
+      const lastInbound = cid ? lastInboundByContact.get(cid) : undefined;
+      const lastContactAt = (lastInbound ?? c.createdAt).toISOString();
       return {
         cardId: c.id,
         title: c.title,
@@ -1329,6 +1345,7 @@ export class TinyService {
         conversationId,
         origem,
         createdAt: c.createdAt.toISOString(),
+        lastContactAt,
       };
     });
 

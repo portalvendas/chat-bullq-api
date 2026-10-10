@@ -63,18 +63,27 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
       timeout: 60000,
     });
     const buffer = Buffer.from(resp.data);
-    const mimeType =
-      content.mimeType ||
-      (resp.headers['content-type'] as string) ||
-      'audio/ogg';
+    const fetchedType = resp.headers['content-type'] as string | undefined;
+    // Usa SEMPRE o content-type real do arquivo servido (ex.: audio/ogg) e não
+    // o mimeType que veio na mensagem — se o arquivo foi transcodado p/ ogg, é
+    // o content-type servido que vale pro /media da Meta.
+    const mimeType = fetchedType || content.mimeType || 'audio/ogg';
     const filename =
       content.fileName || `audio.${mimeType.includes('ogg') ? 'ogg' : 'bin'}`;
+
+    this.logger.log(
+      `WA Official audio: baixando p/ /media url=${content.mediaUrl} ` +
+        `bytes=${buffer.length} fetchType=${fetchedType ?? '?'} mime=${mimeType}`,
+    );
 
     const mediaId = await this.httpClient.uploadMedia(channel, {
       buffer,
       mimeType,
       filename,
     });
+    this.logger.log(
+      `WA Official audio: upload /media OK mediaId=${mediaId} (envio por id)`,
+    );
     content.mediaId = mediaId;
     message.content = content as any;
   }

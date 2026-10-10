@@ -134,6 +134,27 @@ export class TinyController {
     return this.service.summary(orgId, from, to, vendedor);
   }
 
+  @Get('leads-no-response')
+  @ApiOperation({
+    summary:
+      'Lista paginada dos leads SEM RESPOSTA do período (drill-down do card) com origem e link pro inbox',
+  })
+  leadsNoResponse(
+    @CurrentOrg('id') orgId: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.leadsNoResponseList(
+      orgId,
+      from,
+      to,
+      Number(page) || 1,
+      Number(limit) || 50,
+    );
+  }
+
   @Get('vendors')
   @ApiOperation({ summary: 'Vendedores distintos no período (opções do filtro)' })
   vendors(

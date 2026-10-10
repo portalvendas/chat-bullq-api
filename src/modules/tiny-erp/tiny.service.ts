@@ -1215,6 +1215,135 @@ export class TinyService {
   }
 
   /**
+   * LISTA dos leads SEM RESPOSTA do período (o drill-down do card "Sem
+   * resposta"). Mesma definição do contador: cards criados na janela cujo
+   * contato nunca recebeu OUTBOUND (o time não respondeu). NÃO filtra por
+   * vendedor — igual ao contador — pra bater com o número mostrado.
+   *
+   * Para cada lead resolve:
+   *  - conversationId pra abrir no inbox (o do card; senão a conversa mais
+   *    recente do contato), ou null quando não há conversa nenhuma;
+   *  - origem da PRIMEIRA criação no CRM:
+   *      'whatsapp' = veio de mensagem do lead no WhatsApp (há INBOUND do
+   *                   contato até/antes da criação do card — o inbound criou o
+   *                   card via ensureEntryCard);
+   *      'funil'    = criado como CARD no funil (Lead Ads / Landing Page /
+   *                   manual), sem conversa ou com o 1º inbound DEPOIS do card.
+   *
+   * Paginado (offset) — ordena do mais novo pro mais antigo.
+   */
+  async leadsNoResponseList(
+    organizationId: string,
+    from?: string,
+    to?: string,
+    page = 1,
+    limit = 50,
+  ) {
+    const range = this.buildRange(from, to);
+    const take = Math.min(Math.max(limit, 1), 200);
+    const skip = (Math.max(page, 1) - 1) * take;
+
+    const where = {
+      organizationId,
+      ...(range ? { createdAt: range } : {}),
+      // sem NENHUM OUTBOUND no contato → o time nunca respondeu
+      NOT: {
+        contact: {
+          conversations: {
+            some: { messages: { some: { direction: 'OUTBOUND' as const } } },
+          },
+        },
+      },
+    };
+
+    const [total, cards] = await Promise.all([
+      this.prisma.card.count({ where }),
+      this.prisma.card.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          createdAt: true,
+          conversationId: true,
+          contact: { select: { id: true, name: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+    ]);
+
+    // Resolve origem + conversa pra abrir, por contato (1 query só pra página).
+    const contactIds = [
+      ...new Set(cards.map((c) => c.contact?.id).filter((x): x is string => !!x)),
+    ];
+    const convs = contactIds.length
+      ? await this.prisma.conversation.findMany({
+          where: { contactId: { in: contactIds } },
+          select: {
+            id: true,
+            contactId: true,
+            lastMessageAt: true,
+            messages: {
+              where: { direction: 'INBOUND' as const },
+              orderBy: { createdAt: 'asc' },
+              take: 1,
+              select: { createdAt: true },
+            },
+          },
+          orderBy: { lastMessageAt: 'desc' },
+        })
+      : [];
+
+    // Por contato: 1º inbound (mais antigo) e a conversa mais recente (p/ abrir).
+    const firstInboundByContact = new Map<string, Date>();
+    const latestConvByContact = new Map<string, string>();
+    for (const cv of convs) {
+      if (!cv.contactId) continue;
+      if (!latestConvByContact.has(cv.contactId)) {
+        latestConvByContact.set(cv.contactId, cv.id); // já ordenado desc
+      }
+      const inb = cv.messages[0]?.createdAt;
+      if (inb) {
+        const cur = firstInboundByContact.get(cv.contactId);
+        if (!cur || inb < cur) firstInboundByContact.set(cv.contactId, inb);
+      }
+    }
+
+    // Tolerância: o card do inbound é criado logo DEPOIS da mensagem; damos 2min.
+    const EPS_MS = 2 * 60 * 1000;
+    const items = cards.map((c) => {
+      const cid = c.contact?.id ?? null;
+      const firstInbound = cid ? firstInboundByContact.get(cid) : undefined;
+      const origem: 'whatsapp' | 'funil' =
+        firstInbound && firstInbound.getTime() <= c.createdAt.getTime() + EPS_MS
+          ? 'whatsapp'
+          : 'funil';
+      const conversationId =
+        c.conversationId ?? (cid ? latestConvByContact.get(cid) ?? null : null);
+      return {
+        cardId: c.id,
+        title: c.title,
+        name: c.contact?.name ?? c.title ?? null,
+        phone: c.contact?.phone ?? null,
+        conversationId,
+        origem,
+        createdAt: c.createdAt.toISOString(),
+      };
+    });
+
+    return {
+      items,
+      pagination: {
+        page: Math.max(page, 1),
+        limit: take,
+        total,
+        totalPages: Math.ceil(total / take),
+      },
+    };
+  }
+
+  /**
    * Mapa id->nome dos vendedores, derivado do `raw` dos PEDIDOS (a listagem de
    * pedidos traz vendedor {id, nome}). O detalhe do ORÇAMENTO só traz
    * vendedor.id — sem nome — e o endpoint /vendedores do Tiny não devolve nome;

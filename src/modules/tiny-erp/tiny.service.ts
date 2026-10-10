@@ -1080,31 +1080,99 @@ export class TinyService {
       organizationId,
       ...(range ? { createdAt: range } : {}),
     };
-    const [pedidos, orcamentos, vendPed, vendOrc, leadsCount] = await Promise.all([
-      this.prisma.tinyDocument.aggregate({
-        where: pw,
-        _count: { _all: true },
-        _sum: { valor: true },
-      }),
-      this.prisma.tinyDocument.aggregate({
-        where: ow,
-        _count: { _all: true },
-        _sum: { valor: true },
-      }),
-      this.prisma.tinyDocument.groupBy({
-        by: ['vendedor'],
-        where: pw,
-        _count: { _all: true },
-        _sum: { valor: true },
-      }),
-      this.prisma.tinyDocument.groupBy({
-        by: ['vendedor'],
-        where: ow,
-        _count: { _all: true },
-        _sum: { valor: true },
-      }),
-      this.prisma.card.count({ where: leadWhere }),
-    ]);
+    // Leads "sem resposta" = o time nunca enviou NENHUMA mensagem OUTBOUND pro
+    // contato daquele card (ninguém respondeu o lead). Cards sem contato
+    // vinculado também contam como sem resposta (não têm conversa → não têm
+    // OUTBOUND). Calculado por subtração (total - respondidos) pra ficar só em
+    // COUNTs, sem puxar linhas.
+    const leadsRespondedWhere = {
+      ...leadWhere,
+      contact: {
+        conversations: {
+          some: { messages: { some: { direction: 'OUTBOUND' as const } } },
+        },
+      },
+    };
+
+    const [pedidos, orcamentos, vendPed, vendOrc, leadsCount, leadsResponded] =
+      await Promise.all([
+        this.prisma.tinyDocument.aggregate({
+          where: pw,
+          _count: { _all: true },
+          _sum: { valor: true },
+        }),
+        this.prisma.tinyDocument.aggregate({
+          where: ow,
+          _count: { _all: true },
+          _sum: { valor: true },
+        }),
+        this.prisma.tinyDocument.groupBy({
+          by: ['vendedor'],
+          where: pw,
+          _count: { _all: true },
+          _sum: { valor: true },
+        }),
+        this.prisma.tinyDocument.groupBy({
+          by: ['vendedor'],
+          where: ow,
+          _count: { _all: true },
+          _sum: { valor: true },
+        }),
+        this.prisma.card.count({ where: leadWhere }),
+        this.prisma.card.count({ where: leadsRespondedWhere }),
+      ]);
+
+    const leadsNoResponse = Math.max(0, leadsCount - leadsResponded);
+
+    // Comparativo com o PERÍODO ANTERIOR de mesmo tamanho (mesma base dos
+    // cards e do leads/dia). Só dá pra comparar quando há janela fechada
+    // (from E to). Em "Tudo"/janela aberta, previous=null e o front esconde
+    // os chips de variação.
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    let previous: {
+      pedidos: { count: number; total: number };
+      orcamentos: { count: number; total: number };
+      leads: { count: number; perDay: number };
+    } | null = null;
+    let periodDays: number | null = null;
+
+    if (range?.gte && range?.lte) {
+      const lenMs = range.lte.getTime() - range.gte.getTime();
+      periodDays = Math.max(1, Math.ceil(lenMs / DAY_MS));
+      const prevRange: DateRange = {
+        gte: new Date(range.gte.getTime() - lenMs),
+        lte: new Date(range.gte.getTime() - 1),
+      };
+      const [pedPrev, orcPrev, leadsPrev] = await Promise.all([
+        this.prisma.tinyDocument.aggregate({
+          where: this.pedidoWhere(organizationId, prevRange, vendedor),
+          _count: { _all: true },
+          _sum: { valor: true },
+        }),
+        this.prisma.tinyDocument.aggregate({
+          where: this.orcamentoWhere(organizationId, prevRange, vendedor),
+          _count: { _all: true },
+          _sum: { valor: true },
+        }),
+        this.prisma.card.count({
+          where: { organizationId, createdAt: prevRange },
+        }),
+      ]);
+      previous = {
+        pedidos: {
+          count: pedPrev._count._all,
+          total: Number(pedPrev._sum.valor ?? 0),
+        },
+        orcamentos: {
+          count: orcPrev._count._all,
+          total: Number(orcPrev._sum.valor ?? 0),
+        },
+        leads: {
+          count: leadsPrev,
+          perDay: Number((leadsPrev / periodDays).toFixed(2)),
+        },
+      };
+    }
 
     // Une pedidos e propostas por nome de vendedor.
     const byVend = new Map<
@@ -1131,7 +1199,17 @@ export class TinyService {
     return {
       pedidos: { count: pedidos._count._all, total: Number(pedidos._sum.valor ?? 0) },
       orcamentos: { count: orcamentos._count._all, total: Number(orcamentos._sum.valor ?? 0) },
-      leads: { count: leadsCount },
+      leads: {
+        count: leadsCount,
+        // média de leads/dia no período (null quando a janela é aberta/"Tudo")
+        perDay:
+          periodDays != null
+            ? Number((leadsCount / periodDays).toFixed(2))
+            : null,
+        // leads sem resposta do time (nenhum OUTBOUND) no período
+        noResponse: leadsNoResponse,
+      },
+      previous,
       porVendedor,
     };
   }

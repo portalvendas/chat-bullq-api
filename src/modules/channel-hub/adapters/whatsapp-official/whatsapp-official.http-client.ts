@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Channel } from '@prisma/client';
 import axios, { AxiosInstance } from 'axios';
-import FormData from 'form-data';
+// CommonJS import: `import FormData from 'form-data'` compila mas quebra em
+// runtime ("form_data_1.default is not a constructor"), pois o pacote é CJS
+// (module.exports = FormData, sem .default). import = require resolve isso.
+import FormData = require('form-data');
 
 interface WaOfficialConfig {
   accessToken: string;

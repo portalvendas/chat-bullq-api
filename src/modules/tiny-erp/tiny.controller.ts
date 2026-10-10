@@ -241,9 +241,19 @@ export class TinyController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('vendedor') vendedor?: string,
+    @Query('comprovante') comprovante?: string,
   ) {
     const k = kind === 'ORCAMENTO' ? 'ORCAMENTO' : 'PEDIDO';
-    return this.service.listDocuments(orgId, k, Number(page) || 1, Number(limit) || 30, from, to, vendedor);
+    return this.service.listDocuments(
+      orgId,
+      k,
+      Number(page) || 1,
+      Number(limit) || 30,
+      from,
+      to,
+      vendedor,
+      comprovante,
+    );
   }
 
   @Patch('documents/:id/vendedor')

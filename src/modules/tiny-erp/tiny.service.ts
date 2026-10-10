@@ -1500,6 +1500,24 @@ export class TinyService {
    * Listagem paginada de documentos por tipo, com o LEAD vinculado (contato do
    * CRM) já embutido — pronto pra tabela do frontend. Ordena por data desc.
    */
+  /**
+   * Status do comprovante de um pedido: compara a soma dos comprovantes com o
+   * total. 'na' = não se aplica (orçamento). Usado no filtro e na listagem.
+   */
+  private computeComprovanteStatus(
+    kind: string,
+    valor: number | null,
+    count: number,
+    soma: number,
+  ): 'sem' | 'parcial' | 'confere' | 'excedente' | 'na' {
+    if (kind !== 'PEDIDO') return 'na';
+    if (count === 0) return 'sem';
+    if (valor == null) return 'confere';
+    const diff = soma - valor;
+    if (Math.abs(diff) <= 0.01) return 'confere';
+    return diff < 0 ? 'parcial' : 'excedente';
+  }
+
   async listDocuments(
     organizationId: string,
     kind: 'PEDIDO' | 'ORCAMENTO',
@@ -1508,26 +1526,87 @@ export class TinyService {
     from?: string,
     to?: string,
     vendedor?: string,
+    comprovanteStatus?: string,
   ) {
     const range = this.buildRange(from, to);
-    const where =
+    const baseWhere =
       kind === 'PEDIDO'
         ? this.pedidoWhere(organizationId, range, vendedor)
         : this.orcamentoWhere(organizationId, range, vendedor);
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
-    const [total, rows] = await Promise.all([
-      this.prisma.tinyDocument.count({ where }),
-      this.prisma.tinyDocument.findMany({
+    const orderBy = [
+      { data: 'desc' as const },
+      { createdAt: 'desc' as const },
+    ];
+    const contactSelect = {
+      contact: { select: { id: true, name: true, phone: true, email: true } },
+    };
+
+    // Filtro por status de comprovante (só pedidos). 'sem' resolve por relação
+    // (sem join de soma); 'parcial'/'confere'/'excedente' precisam da soma vs
+    // total — aí materializamos os ids que batem, com a mesma ordenação, e
+    // paginamos sobre eles.
+    const statusFilter =
+      kind === 'PEDIDO' && comprovanteStatus ? comprovanteStatus : null;
+    const sumBased =
+      !!statusFilter &&
+      ['parcial', 'confere', 'excedente'].includes(statusFilter);
+
+    let where: Record<string, any> = baseWhere;
+    let total: number;
+    let pageIds: string[] | null = null;
+
+    if (sumBased) {
+      const candidates = await this.prisma.tinyDocument.findMany({
         where,
-        orderBy: [{ data: 'desc' }, { createdAt: 'desc' }],
-        skip,
-        take,
-        include: {
-          contact: { select: { id: true, name: true, phone: true, email: true } },
-        },
-      }),
-    ]);
+        orderBy,
+        select: { id: true, valor: true },
+      });
+      const candIds = candidates.map((c) => c.id);
+      const candRec = new Map<string, { count: number; soma: number }>();
+      if (candIds.length > 0) {
+        const agg = await this.prisma.tinyReceipt.groupBy({
+          by: ['tinyDocumentId'],
+          where: { tinyDocumentId: { in: candIds } },
+          _count: { _all: true },
+          _sum: { valor: true },
+        });
+        for (const g of agg) {
+          candRec.set(g.tinyDocumentId, {
+            count: g._count._all,
+            soma: Number(g._sum.valor ?? 0),
+          });
+        }
+      }
+      const matchedIds = candidates
+        .filter((c) => {
+          const rec = candRec.get(c.id);
+          return (
+            this.computeComprovanteStatus(
+              'PEDIDO',
+              c.valor != null ? Number(c.valor) : null,
+              rec?.count ?? 0,
+              rec?.soma ?? 0,
+            ) === statusFilter
+          );
+        })
+        .map((c) => c.id);
+      total = matchedIds.length;
+      pageIds = matchedIds.slice(skip, skip + take);
+    } else {
+      if (statusFilter === 'sem') {
+        where = { ...baseWhere, receipts: { none: {} } };
+      }
+      total = await this.prisma.tinyDocument.count({ where });
+    }
+
+    const rows = await this.prisma.tinyDocument.findMany({
+      where: pageIds ? { ...where, id: { in: pageIds } } : where,
+      orderBy,
+      ...(pageIds ? {} : { skip, take }),
+      include: contactSelect,
+    });
 
     // Resolve a conversa mais recente de cada lead (contato) desta página, num
     // único batch, pra o front conseguir "ir para a conversa" a partir do pedido.
@@ -1592,16 +1671,14 @@ export class TinyService {
         });
       }
     }
-    const statusComprovante = (
-      d: (typeof rows)[number],
-    ): 'sem' | 'parcial' | 'confere' | 'excedente' | 'na' => {
-      if (d.kind !== 'PEDIDO') return 'na'; // só pedidos exigem comprovante
+    const statusComprovante = (d: (typeof rows)[number]) => {
       const rec = recByDoc.get(d.id);
-      if (!rec || rec.count === 0) return 'sem';
-      if (d.valor == null) return 'confere'; // sem total pra comparar
-      const diff = rec.soma - Number(d.valor);
-      if (Math.abs(diff) <= 0.01) return 'confere';
-      return diff < 0 ? 'parcial' : 'excedente';
+      return this.computeComprovanteStatus(
+        d.kind,
+        d.valor != null ? Number(d.valor) : null,
+        rec?.count ?? 0,
+        rec?.soma ?? 0,
+      );
     };
 
     return {

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChannelType, Channel } from '@prisma/client';
 import axios from 'axios';
+import { audioBufferToMp3 } from '../../../../common/audio-convert.util';
 import { OutboundChannelPort } from '../../ports/outbound-channel.port';
 import {
   NormalizedOutboundMessage,
@@ -79,15 +80,28 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
         return { video: { url: c.mediaUrl }, caption, mimetype: c.mimeType || undefined };
       case MessageContentType.AUDIO: {
         if (!c.mediaUrl) throw new Error('AUDIO sem mediaUrl');
-        // Áudio de saída do CRM é sempre nota de voz OGG/Opus (transcodada no
-        // upload). Passamos os BYTES (Buffer), não a URL: por URL o Baileys
-        // frequentemente não consegue montar duração/forma-de-onda e a nota de
-        // voz chega sem tocar. Com Buffer + ptt:true + codec, vira nota de voz.
+        // O OGG/Opus não reproduz de forma confiável no destino (nota de voz
+        // chega sem tocar). Convertemos pra MP3 e enviamos como arquivo de
+        // áudio (ptt:false) — toca em qualquer WhatsApp. Baixamos os bytes e
+        // passamos Buffer (por URL o Baileys às vezes nem monta a mídia).
+        const raw = await this.fetchBytes(c.mediaUrl);
         const isOgg = String(c.mimeType || '').includes('ogg');
-        const buffer = await this.fetchBytes(c.mediaUrl);
-        return isOgg
-          ? { audio: buffer, mimetype: 'audio/ogg; codecs=opus', ptt: true }
-          : { audio: buffer, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
+        if (isOgg) {
+          try {
+            const mp3 = await audioBufferToMp3(raw);
+            return { audio: mp3, mimetype: 'audio/mpeg', ptt: false };
+          } catch (err: any) {
+            this.logger.warn(
+              `Baileys audio: ogg->mp3 falhou (${err?.message ?? err}) — envia ogg como nota de voz`,
+            );
+            return {
+              audio: raw,
+              mimetype: 'audio/ogg; codecs=opus',
+              ptt: true,
+            };
+          }
+        }
+        return { audio: raw, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
       }
       case MessageContentType.DOCUMENT:
         if (!c.mediaUrl) throw new Error('DOCUMENT sem mediaUrl');

@@ -1,6 +1,12 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ChannelType, Channel } from '@prisma/client';
 import axios from 'axios';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as crypto from 'crypto';
 import { OutboundChannelPort, ResolveMediaHint } from '../../ports/outbound-channel.port';
 import {
   NormalizedOutboundMessage,
@@ -76,16 +82,71 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
         `bytes=${buffer.length} fetchType=${fetchedType ?? '?'} mime=${mimeType}`,
     );
 
+    // A Meta ACEITA o OGG/Opus no /media (retorna id) mas, na prática, o
+    // destinatário recebe "este áudio não está mais disponível" — o Cloud API
+    // não serve o OGG de forma confiável. Convertendo pra MP3 (audio/mpeg),
+    // que o WhatsApp sempre reproduz, antes do upload. Se a conversão falhar,
+    // cai no OGG mesmo (melhor tentar do que não enviar).
+    let uploadBuffer: Buffer = buffer;
+    let uploadMime = mimeType;
+    let uploadName = filename;
+    if (mimeType.includes('ogg')) {
+      try {
+        uploadBuffer = await this.oggToMp3(buffer);
+        uploadMime = 'audio/mpeg';
+        uploadName = 'audio.mp3';
+        this.logger.log(
+          `WA Official audio: ogg->mp3 OK bytes=${uploadBuffer.length}`,
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `WA Official audio: ogg->mp3 falhou (${err?.message ?? err}) — envia ogg`,
+        );
+      }
+    }
+
     const mediaId = await this.httpClient.uploadMedia(channel, {
-      buffer,
-      mimeType,
-      filename,
+      buffer: uploadBuffer,
+      mimeType: uploadMime,
+      filename: uploadName,
     });
     this.logger.log(
-      `WA Official audio: upload /media OK mediaId=${mediaId} (envio por id)`,
+      `WA Official audio: upload /media OK mediaId=${mediaId} mime=${uploadMime} (envio por id)`,
     );
     content.mediaId = mediaId;
+    content.mimeType = uploadMime; // reflete o formato realmente enviado
     message.content = content as any;
+  }
+
+  /** Converte um áudio (buffer OGG/Opus) para MP3 via ffmpeg (arquivos temporários). */
+  private async oggToMp3(buffer: Buffer): Promise<Buffer> {
+    const execFileAsync = promisify(execFile);
+    const id = crypto.randomBytes(8).toString('hex');
+    const src = path.join(os.tmpdir(), `wa-${id}.ogg`);
+    const out = path.join(os.tmpdir(), `wa-${id}.mp3`);
+    await fs.promises.writeFile(src, buffer);
+    try {
+      await execFileAsync(
+        'ffmpeg',
+        [
+          '-hide_banner',
+          '-loglevel', 'error',
+          '-y',
+          '-i', src,
+          '-vn',
+          '-c:a', 'libmp3lame',
+          '-b:a', '64k',
+          '-ac', '1',
+          '-ar', '44100',
+          out,
+        ],
+        { timeout: 30_000 },
+      );
+      return await fs.promises.readFile(out);
+    } finally {
+      fs.promises.unlink(src).catch(() => undefined);
+      fs.promises.unlink(out).catch(() => undefined);
+    }
   }
 
   async sendTypingIndicator(_channel: Channel, _contactExternalId: string): Promise<void> {

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Channel } from '@prisma/client';
 import axios, { AxiosInstance } from 'axios';
+import FormData from 'form-data';
 
 interface WaOfficialConfig {
   accessToken: string;
@@ -47,6 +48,51 @@ export class WhatsAppOfficialHttpClient {
     } catch (error: any) {
       this.logger.error(
         `WA Official API error: ${error.response?.data?.error?.message || error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Faz upload do arquivo de mídia para a Cloud API (`POST /{phoneNumberId}/media`)
+   * e retorna o `media id`. Enviar mídia por ID é durável: a Meta guarda a
+   * própria cópia, diferente do `link` (que depende da nossa URL pública
+   * continuar acessível e não ser purgada pela retenção — causa do áudio que
+   * o destinatário via como "não está mais disponível").
+   */
+  async uploadMedia(
+    channel: Channel,
+    file: { buffer: Buffer; mimeType: string; filename: string },
+  ): Promise<string> {
+    const cfg = this.getConfig(channel);
+    const form = new FormData();
+    form.append('messaging_product', 'whatsapp');
+    form.append('type', file.mimeType);
+    form.append('file', file.buffer, {
+      filename: file.filename,
+      contentType: file.mimeType,
+    });
+    try {
+      const { data } = await axios.post(
+        `https://graph.facebook.com/${cfg.apiVersion}/${cfg.phoneNumberId}/media`,
+        form,
+        {
+          headers: {
+            Authorization: `Bearer ${cfg.accessToken}`,
+            ...form.getHeaders(),
+          },
+          timeout: 60000,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        },
+      );
+      if (!data?.id) {
+        throw new Error('Upload de mídia não retornou id');
+      }
+      return data.id as string;
+    } catch (error: any) {
+      this.logger.error(
+        `WA Official media upload error: ${error.response?.data?.error?.message || error.message}`,
       );
       throw error;
     }

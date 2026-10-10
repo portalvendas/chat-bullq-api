@@ -152,7 +152,11 @@ export class WhatsAppOfficialMessageMapper {
         return {
           ...base,
           type: 'audio',
-          audio: { link: message.content.mediaUrl },
+          // Preferir `id` (upload durável no /media da Meta) — resolvido pelo
+          // adapter antes do denormalize. Fallback pro link se não houver id.
+          audio: (message.content as Record<string, any>).mediaId
+            ? { id: (message.content as Record<string, any>).mediaId }
+            : { link: message.content.mediaUrl },
         };
 
       case MessageContentType.VIDEO:

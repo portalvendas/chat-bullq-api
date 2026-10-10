@@ -67,9 +67,17 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
       case MessageContentType.VIDEO:
         if (!c.mediaUrl) throw new Error('VIDEO sem mediaUrl');
         return { video: { url: c.mediaUrl }, caption, mimetype: c.mimeType || undefined };
-      case MessageContentType.AUDIO:
+      case MessageContentType.AUDIO: {
         if (!c.mediaUrl) throw new Error('AUDIO sem mediaUrl');
-        return { audio: { url: c.mediaUrl }, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
+        // Áudio de saída do CRM é sempre nota de voz OGG/Opus (transcodada no
+        // upload). Sem ptt:true + codec explícito, o WhatsApp não entregava a
+        // nota de voz (ficava 1 tique). Pra áudios não-ogg (raro), mantém o
+        // envio como arquivo de áudio comum.
+        const isOgg = String(c.mimeType || '').includes('ogg');
+        return isOgg
+          ? { audio: { url: c.mediaUrl }, mimetype: 'audio/ogg; codecs=opus', ptt: true }
+          : { audio: { url: c.mediaUrl }, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
+      }
       case MessageContentType.DOCUMENT:
         if (!c.mediaUrl) throw new Error('DOCUMENT sem mediaUrl');
         return {

@@ -1,7 +1,13 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ChannelType, Channel } from '@prisma/client';
+import axios from 'axios';
 import { OutboundChannelPort, ResolveMediaHint } from '../../ports/outbound-channel.port';
-import { NormalizedOutboundMessage, SendResult, RateLimitConfig } from '../../ports/types';
+import {
+  NormalizedOutboundMessage,
+  SendResult,
+  RateLimitConfig,
+  MessageContentType,
+} from '../../ports/types';
 import { WhatsAppOfficialMessageMapper } from './whatsapp-official.message-mapper';
 import { WhatsAppOfficialHttpClient } from './whatsapp-official.http-client';
 import { UploadsService } from '../../../messaging/messages/uploads.service';
@@ -22,6 +28,12 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
     contactExternalId: string,
     message: NormalizedOutboundMessage,
   ): Promise<SendResult> {
+    // ÁUDIO: sobe os bytes pro /media da Meta e envia por `id` (durável), em vez
+    // de `link`. Por link o destinatário via "áudio não está mais disponível"
+    // quando a Meta re-buscava a URL (não-pública / purgada pela retenção).
+    // A Cloud API guarda a própria cópia quando enviado por id.
+    await this.ensureUploadedMediaId(channel, message);
+
     const payload = this.mapper.denormalize(message, contactExternalId);
     const response = await this.httpClient.sendMessage(channel, payload);
 
@@ -29,6 +41,42 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
       externalId: response?.messages?.[0]?.id || '',
       providerResponse: response,
     };
+  }
+
+  /**
+   * Para ÁUDIO: baixa o arquivo da nossa `mediaUrl` e faz upload pro endpoint
+   * /media da Cloud API, gravando o `mediaId` resolvido em message.content pra
+   * o mapper montar `{ audio: { id } }`. Best-effort tipado: se faltar mediaUrl
+   * ou já houver mediaId, não faz nada. Erros de upload sobem (mensagem vira
+   * FAILED e fica visível) em vez de cair no link quebrado.
+   */
+  private async ensureUploadedMediaId(
+    channel: Channel,
+    message: NormalizedOutboundMessage,
+  ): Promise<void> {
+    if (message.type !== MessageContentType.AUDIO) return;
+    const content = (message.content ?? {}) as Record<string, any>;
+    if (content.mediaId || !content.mediaUrl) return;
+
+    const resp = await axios.get<ArrayBuffer>(content.mediaUrl, {
+      responseType: 'arraybuffer',
+      timeout: 60000,
+    });
+    const buffer = Buffer.from(resp.data);
+    const mimeType =
+      content.mimeType ||
+      (resp.headers['content-type'] as string) ||
+      'audio/ogg';
+    const filename =
+      content.fileName || `audio.${mimeType.includes('ogg') ? 'ogg' : 'bin'}`;
+
+    const mediaId = await this.httpClient.uploadMedia(channel, {
+      buffer,
+      mimeType,
+      filename,
+    });
+    content.mediaId = mediaId;
+    message.content = content as any;
   }
 
   async sendTypingIndicator(_channel: Channel, _contactExternalId: string): Promise<void> {

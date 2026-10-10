@@ -214,6 +214,28 @@ export class LeadDistributionService {
   }
 
   /**
+   * Vendedor DONO do canal (número), se configurado e ainda membro ativo da
+   * org. Retorna null quando o canal não tem dono ou o dono saiu da org
+   * (nesse caso a distribuição cai no sorteio/fallback).
+   */
+  async ownerForChannel(
+    organizationId: string,
+    channelId?: string | null,
+  ): Promise<string | null> {
+    if (!channelId) return null;
+    const ch = await this.prisma.channel.findFirst({
+      where: { id: channelId, organizationId, deletedAt: null },
+      select: { ownerUserId: true },
+    });
+    if (!ch?.ownerUserId) return null;
+    const member = await this.prisma.userOrganization.findFirst({
+      where: { organizationId, userId: ch.ownerUserId },
+      select: { userId: true },
+    });
+    return member ? ch.ownerUserId : null;
+  }
+
+  /**
    * Distribui um lead na ENTRADA (criação do card / nova conversa). Regra:
    *  1) STICKINESS — se o contato já tem dono, o lead fica com ele (não sorteia);
    *  2) senão, SORTEIO PONDERADO pela regra do funil do lead.
@@ -228,15 +250,26 @@ export class LeadDistributionService {
     conversationId?: string | null;
     cardId?: string | null;
     pipelineId?: string | null;
+    /** Canal (número) por onde o lead entrou. Se o canal tem um vendedor dono
+     *  (ownerUserId), ele é atribuído ANTES do sorteio — alinha a distribuição
+     *  ao número da LP/inbound. */
+    channelId?: string | null;
   }): Promise<string | null> {
-    const { organizationId, contactId, conversationId, cardId, pipelineId } =
+    const { organizationId, contactId, conversationId, cardId, pipelineId, channelId } =
       params;
 
-    // 1) Stickiness tem prioridade sobre o sorteio.
+    // 1) Stickiness tem prioridade sobre tudo (lead que já tem dono gruda).
     let userId = await this.existingOwnerForContact(organizationId, contactId);
-    let source: 'sticky' | 'weighted' = 'sticky';
+    let source: 'sticky' | 'weighted' | 'channel' = 'sticky';
 
-    // 2) Sem dono ainda → sorteia pela regra do funil.
+    // 2) Dono do número (canal) — o cliente fala com aquele número, então o
+    //    dono dele recebe o lead. Vem antes do sorteio ponderado.
+    if (!userId && channelId) {
+      userId = await this.ownerForChannel(organizationId, channelId);
+      if (userId) source = 'channel';
+    }
+
+    // 3) Sem dono ainda → sorteia pela regra do funil (fallback).
     if (!userId) {
       userId = await this.pickForPipeline(organizationId, pipelineId ?? null);
       source = 'weighted';

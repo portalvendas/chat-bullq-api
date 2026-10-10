@@ -834,6 +834,7 @@ export class PipelinesService {
           contactId,
           cardId: contactCard.id,
           pipelineId: contactCard.pipelineId,
+          channelId: ctx?.channelId ?? null,
         })
         .catch(() => undefined);
       return null;
@@ -866,6 +867,7 @@ export class PipelinesService {
         contactId,
         cardId: card.id,
         pipelineId: target.pipelineId,
+        channelId: ctx?.channelId ?? null,
       })
       .catch(() => undefined);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });
@@ -898,6 +900,7 @@ export class PipelinesService {
           conversationId,
           cardId: existing.id,
           pipelineId: existing.pipelineId,
+          channelId: ctx?.channelId ?? null,
         })
         .catch(() => undefined);
       return null;
@@ -920,6 +923,7 @@ export class PipelinesService {
             conversationId,
             cardId: contactCard.id,
             pipelineId: contactCard.pipelineId,
+            channelId: ctx?.channelId ?? null,
           })
           .catch(() => undefined);
         return null;
@@ -954,6 +958,7 @@ export class PipelinesService {
         conversationId,
         cardId: card.id,
         pipelineId: target.pipelineId,
+        channelId: ctx?.channelId ?? null,
       })
       .catch(() => undefined);
     this.realtime.emitToOrg(organizationId, 'card:created', { card });

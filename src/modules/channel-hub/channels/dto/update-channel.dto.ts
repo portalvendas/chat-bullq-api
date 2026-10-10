@@ -92,4 +92,18 @@ export class UpdateChannelDto {
   @IsOptional()
   @IsBoolean()
   followUpBlocked?: boolean;
+
+  /**
+   * Vendedor DONO deste número. Leads que entram por este canal (inbound ou
+   * LP com numero_whatsapp = este número) são atribuídos a ele na distribuição,
+   * antes do sorteio ponderado. null/'' = sem dono (cai no sorteio).
+   */
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'userId do vendedor dono do número; null = sem dono',
+  })
+  @IsOptional()
+  @IsString()
+  ownerUserId?: string | null;
 }

@@ -63,6 +63,71 @@ export class PublicLeadsService {
     return digits || null;
   }
 
+  /**
+   * Resolve o número de WhatsApp (ex.: vindo do `numero_whatsapp` da LP) pro
+   * canal correspondente da org. Casa por `phoneVariants` (com/sem 9º dígito,
+   * com/sem DDI) contra o número guardado no `config` do canal
+   * (displayPhoneNumber/phone/number...) e, pros canais Baileys, contra o
+   * telefone da sessão. Retorna null quando não há match (aí a distribuição
+   * cai no sorteio/fallback).
+   */
+  private async resolveChannelByPhone(
+    organizationId: string,
+    rawPhone?: string | null,
+  ): Promise<string | null> {
+    if (!rawPhone) return null;
+    const wanted = new Set(phoneVariants(rawPhone));
+    if (!wanted.size) return null;
+
+    const channels = await this.prisma.channel.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        type: {
+          in: [
+            'WHATSAPP_OFFICIAL',
+            'WHATSAPP_ZAPPFY',
+            'WHATSAPP_ZAPI',
+            'WHATSAPP_BAILEYS',
+          ] as any,
+        },
+      },
+      select: { id: true, config: true },
+    });
+
+    const matches = (value: unknown): boolean =>
+      !!value && phoneVariants(value).some((v) => wanted.has(v));
+
+    for (const ch of channels) {
+      const cfg = (ch.config ?? {}) as Record<string, any>;
+      if (
+        matches(cfg.displayPhoneNumber) ||
+        matches(cfg.phoneNumber) ||
+        matches(cfg.phone) ||
+        matches(cfg.number) ||
+        matches(cfg.numero)
+      ) {
+        return ch.id;
+      }
+    }
+
+    // Baileys guarda o número na sessão, não no config.
+    const chIds = channels.map((c) => c.id);
+    if (chIds.length) {
+      const sessions = await this.prisma.whatsappBaileysSession.findMany({
+        where: { channelId: { in: chIds } },
+        select: { channelId: true, phone: true },
+      });
+      const hit = sessions.find((s) => matches(s.phone));
+      if (hit) return hit.channelId;
+    }
+
+    this.logger.warn(
+      `numero_whatsapp "${rawPhone}" não casou com nenhum canal da org ${organizationId} — distribuição segue no sorteio/fallback.`,
+    );
+    return null;
+  }
+
   private extractTracking(body: Record<string, any>): Record<string, any> {
     const t: Record<string, any> = {};
     // objeto tracking explícito, se vier
@@ -177,6 +242,21 @@ export class PublicLeadsService {
       this.pick(body, ['source', 'origem', 'lead_source']) ?? 'landing_page';
     const tracking = this.extractTracking(body);
 
+    // Número de WhatsApp que a LP sorteou pro visitante (distribuição por
+    // número). Resolve pro canal correspondente — quem é dono daquele número
+    // recebe o lead na distribuição (assignEntry via ctx.channelId).
+    const numeroWhatsapp = this.pick(body, [
+      'numero_whatsapp',
+      'numeroWhatsapp',
+      'numero',
+      'canal',
+      'form_fields[numero_whatsapp]',
+    ]);
+    const channelId = await this.resolveChannelByPhone(
+      organizationId,
+      numeroWhatsapp,
+    );
+
     // Campos do CARD (antes ignorados): descrição, valor e título explícito.
     const description =
       this.pick(body, [
@@ -231,6 +311,7 @@ export class PublicLeadsService {
       source,
       tracking,
       raw: body,
+      ...(numeroWhatsapp ? { numeroWhatsapp } : {}),
       ...(leadScore != null ? { leadScore } : {}),
       ...(temperature ? { leadTemperature: temperature } : {}),
     };
@@ -240,8 +321,13 @@ export class PublicLeadsService {
       contact.id,
       title,
       cardMeta,
-      // Roteamento por origem: LP usa leadSource + utm_source.
-      { leadSource: source, utmSource: (tracking as any)?.utm_source ?? null },
+      // Roteamento por origem: LP usa leadSource + utm_source. channelId (do
+      // numero_whatsapp) direciona o lead pro vendedor dono daquele número.
+      {
+        leadSource: source,
+        utmSource: (tracking as any)?.utm_source ?? null,
+        channelId: channelId ?? undefined,
+      },
       { description, value },
     );
 

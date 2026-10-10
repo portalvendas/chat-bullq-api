@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ChannelType, Channel } from '@prisma/client';
+import axios from 'axios';
 import { OutboundChannelPort } from '../../ports/outbound-channel.port';
 import {
   NormalizedOutboundMessage,
@@ -41,9 +42,18 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
     message: NormalizedOutboundMessage,
   ): Promise<SendResult> {
     const target = this.resolveSendTarget(contactExternalId);
-    const content = this.buildContent(message);
+    const content = await this.buildContent(message);
     const res = await this.manager.sendContent(channel.id, target, content);
     return { externalId: res.id, providerResponse: res };
+  }
+
+  /** Baixa os bytes de uma mediaUrl pública (pra passar Buffer ao Baileys). */
+  private async fetchBytes(url: string): Promise<Buffer> {
+    const r = await axios.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+      timeout: 60000,
+    });
+    return Buffer.from(r.data);
   }
 
   /**
@@ -52,7 +62,7 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
    * (mesma URL pública que os outros provedores consomem) e faz o upload
    * cifrado pro WhatsApp. `caption` cai no texto do nó quando não há legenda.
    */
-  private buildContent(message: NormalizedOutboundMessage): any {
+  private async buildContent(message: NormalizedOutboundMessage): Promise<any> {
     const c = (message.content ?? {}) as any;
     const caption: string | undefined = c.caption ?? c.text ?? undefined;
     switch (message.type) {
@@ -70,13 +80,14 @@ export class BaileysOutboundAdapter implements OutboundChannelPort {
       case MessageContentType.AUDIO: {
         if (!c.mediaUrl) throw new Error('AUDIO sem mediaUrl');
         // Áudio de saída do CRM é sempre nota de voz OGG/Opus (transcodada no
-        // upload). Sem ptt:true + codec explícito, o WhatsApp não entregava a
-        // nota de voz (ficava 1 tique). Pra áudios não-ogg (raro), mantém o
-        // envio como arquivo de áudio comum.
+        // upload). Passamos os BYTES (Buffer), não a URL: por URL o Baileys
+        // frequentemente não consegue montar duração/forma-de-onda e a nota de
+        // voz chega sem tocar. Com Buffer + ptt:true + codec, vira nota de voz.
         const isOgg = String(c.mimeType || '').includes('ogg');
+        const buffer = await this.fetchBytes(c.mediaUrl);
         return isOgg
-          ? { audio: { url: c.mediaUrl }, mimetype: 'audio/ogg; codecs=opus', ptt: true }
-          : { audio: { url: c.mediaUrl }, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
+          ? { audio: buffer, mimetype: 'audio/ogg; codecs=opus', ptt: true }
+          : { audio: buffer, mimetype: c.mimeType || 'audio/mpeg', ptt: false };
       }
       case MessageContentType.DOCUMENT:
         if (!c.mediaUrl) throw new Error('DOCUMENT sem mediaUrl');

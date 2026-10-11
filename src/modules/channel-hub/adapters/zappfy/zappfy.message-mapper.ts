@@ -182,10 +182,14 @@ export class ZappfyMessageMapper {
           payload: withReply({
             number,
             file: message.content.mediaUrl,
-            // "ptt" renders as a native voice note on WhatsApp. "audio" would
-            // render as a forwarded audio file, which is wrong UX for a
-            // message the user just recorded in the app.
-            type: 'ptt',
+            // "ptt" = nota de voz nativa (exige OGG/Opus). Quando o adapter
+            // converteu p/ MP3 (audio/mpeg), ptt não toca — manda como "audio"
+            // (arquivo de áudio reproduzível). Senão, mantém ptt (OGG).
+            type: String(
+              (message.content as Record<string, any>).mimeType || '',
+            ).includes('mpeg')
+              ? 'audio'
+              : 'ptt',
           }),
         };
 

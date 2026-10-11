@@ -5,7 +5,9 @@ import {
   NormalizedOutboundMessage,
   SendResult,
   RateLimitConfig,
+  MessageContentType,
 } from '../../ports/types';
+import { convertOutboundAudioToMp3DataUri } from '../../../../common/audio-convert.util';
 import { ZappfyMessageMapper } from './zappfy.message-mapper';
 import { ZappfyHttpClient } from './zappfy.http-client';
 
@@ -24,6 +26,14 @@ export class ZappfyOutboundAdapter implements OutboundChannelPort {
     contactExternalId: string,
     message: NormalizedOutboundMessage,
   ): Promise<SendResult> {
+    // OGG/Opus não toca no destino — converte p/ MP3 (data URI) antes de enviar.
+    // O mapper troca type 'ptt'->'audio' quando o mime vira audio/mpeg.
+    if (message.type === MessageContentType.AUDIO) {
+      await convertOutboundAudioToMp3DataUri(
+        message.content as Record<string, any>,
+        this.logger,
+      );
+    }
     const { endpoint, payload } = this.mapper.denormalize(
       message,
       contactExternalId,

@@ -5,7 +5,9 @@ import {
   NormalizedOutboundMessage,
   SendResult,
   RateLimitConfig,
+  MessageContentType,
 } from '../../ports/types';
+import { convertOutboundAudioToMp3DataUri } from '../../../../common/audio-convert.util';
 import { ZApiMessageMapper } from './zapi.message-mapper';
 import { ZApiHttpClient } from './zapi.http-client';
 import { PrismaService } from '../../../../database/prisma.service';
@@ -57,6 +59,13 @@ export class ZApiOutboundAdapter implements OutboundChannelPort {
       channel.id,
       contactExternalId,
     );
+    // OGG/Opus não toca no destino — converte p/ MP3 (data URI) antes de enviar.
+    if (message.type === MessageContentType.AUDIO) {
+      await convertOutboundAudioToMp3DataUri(
+        message.content as Record<string, any>,
+        this.logger,
+      );
+    }
     const { endpoint, payload } = this.mapper.denormalize(message, sendPhone);
     const response = await this.httpClient.sendRequest(
       channel,

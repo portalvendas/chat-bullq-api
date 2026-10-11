@@ -191,6 +191,10 @@ model Organization {
   /// via secret-cipher (AES-256-GCM, env ENCRYPTION_KEY). BYOK: cada
   /// empresa usa a própria chave/consumo. NULL = não configurada.
   aiAnthropicKeyEnc    String? @map("ai_anthropic_key_enc") @db.Text
+  /// Chave da API da OpenAI DESTA empresa (BYOK), cifrada em repouso. Usada na
+  /// transcrição de áudio (Whisper). NULL = usa a chave global do servidor
+  /// (env OPENAI_API_KEY), se houver.
+  aiOpenaiKeyEnc       String? @map("ai_openai_key_enc") @db.Text
   /// Assinatura fixa anexada ao FINAL de toda resposta enviada pela IA
   /// (determinístico, no envio — não depende do modelo lembrar). NULL/vazio
   /// = sem assinatura. Ex: "Aguardamos sua compra e ficamos à disposição, Armazém Decora."

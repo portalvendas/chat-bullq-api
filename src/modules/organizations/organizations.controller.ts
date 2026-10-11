@@ -17,6 +17,7 @@ import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SetAiKeyDto } from './dto/set-ai-key.dto';
 import { LlmKeyService } from '../ai-agents/llm/llm-key.service';
+import { OpenaiKeyService } from '../ai-agents/llm/openai-key.service';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
 import { CurrentUser, CurrentOrg, Roles, Public } from '../../common/decorators';
@@ -29,6 +30,7 @@ export class OrganizationsController {
   constructor(
     private readonly service: OrganizationsService,
     private readonly llmKey: LlmKeyService,
+    private readonly openaiKey: OpenaiKeyService,
   ) {}
 
   @Get('current')
@@ -80,6 +82,28 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Remove a chave do Claude desta empresa' })
   clearAiKey(@CurrentOrg('id') orgId: string) {
     return this.llmKey.clearKey(orgId);
+  }
+
+  // ─── Chave da API da OpenAI (BYOK) — transcrição de áudio ──────────
+  @Get('current/openai-key')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Status da chave da OpenAI desta empresa (mascarado)' })
+  getOpenaiKey(@CurrentOrg('id') orgId: string) {
+    return this.openaiKey.getStatus(orgId);
+  }
+
+  @Put('current/openai-key')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Configura a chave da OpenAI (valida antes de gravar)' })
+  setOpenaiKey(@CurrentOrg('id') orgId: string, @Body() dto: SetAiKeyDto) {
+    return this.openaiKey.setKey(orgId, dto.apiKey, { test: dto.test });
+  }
+
+  @Delete('current/openai-key')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Remove a chave da OpenAI desta empresa' })
+  clearOpenaiKey(@CurrentOrg('id') orgId: string) {
+    return this.openaiKey.clearKey(orgId);
   }
 
   @Get('members')

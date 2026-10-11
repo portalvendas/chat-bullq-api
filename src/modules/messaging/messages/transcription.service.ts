@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma.service';
 import { ChannelAdapterRegistry } from '../../channel-hub/channel-adapter.registry';
 import { MediaResolverService } from './media-resolver.service';
+import { OpenaiKeyService } from '../../ai-agents/llm/openai-key.service';
 import axios from 'axios';
 
 export interface TranscriptionResult {
@@ -35,6 +36,7 @@ export class TranscriptionService {
     private readonly config: ConfigService,
     private readonly adapterRegistry: ChannelAdapterRegistry,
     private readonly mediaResolver: MediaResolverService,
+    private readonly openaiKey: OpenaiKeyService,
   ) {}
 
   async transcribe(
@@ -66,10 +68,12 @@ export class TranscriptionService {
       return metadata.transcription as TranscriptionResult;
     }
 
-    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    // Chave da OpenAI: a da empresa (configurada na UI, BYOK) → fallback na
+    // env global OPENAI_API_KEY do servidor.
+    const apiKey = await this.openaiKey.resolveKey(organizationId);
     if (!apiKey) {
       throw new BadRequestException(
-        'OPENAI_API_KEY not configured on the server',
+        'Chave da OpenAI não configurada. Configure em Configurações → IA (chave da OpenAI) ou defina OPENAI_API_KEY no servidor.',
       );
     }
 

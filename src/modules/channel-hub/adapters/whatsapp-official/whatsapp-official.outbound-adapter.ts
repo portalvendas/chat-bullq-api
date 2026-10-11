@@ -24,15 +24,24 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
     private readonly uploads: UploadsService,
   ) {}
 
+  private static readonly MEDIA_TYPES = new Set<MessageContentType>([
+    MessageContentType.IMAGE,
+    MessageContentType.VIDEO,
+    MessageContentType.AUDIO,
+    MessageContentType.DOCUMENT,
+    MessageContentType.STICKER,
+  ]);
+
   async sendMessage(
     channel: Channel,
     contactExternalId: string,
     message: NormalizedOutboundMessage,
   ): Promise<SendResult> {
-    // ÁUDIO: sobe os bytes pro /media da Meta e envia por `id` (durável), em vez
-    // de `link`. Por link o destinatário via "áudio não está mais disponível"
-    // quando a Meta re-buscava a URL (não-pública / purgada pela retenção).
-    // A Cloud API guarda a própria cópia quando enviado por id.
+    // TODA MÍDIA: sobe os bytes pro /media da Meta e envia por `id` (durável),
+    // em vez de `link`. Por link a Meta re-busca a nossa URL e, se ela sumir
+    // (retenção 45d / não-pública), o destinatário vê "mídia não disponível".
+    // Enviando por id a Cloud API guarda a própria cópia. (Áudio OGG também é
+    // convertido p/ MP3 aqui — o Cloud API não serve OGG de forma confiável.)
     await this.ensureUploadedMediaId(channel, message);
 
     const payload = this.mapper.denormalize(message, contactExternalId);
@@ -45,17 +54,17 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
   }
 
   /**
-   * Para ÁUDIO: baixa o arquivo da nossa `mediaUrl` e faz upload pro endpoint
-   * /media da Cloud API, gravando o `mediaId` resolvido em message.content pra
-   * o mapper montar `{ audio: { id } }`. Best-effort tipado: se faltar mediaUrl
-   * ou já houver mediaId, não faz nada. Erros de upload sobem (mensagem vira
-   * FAILED e fica visível) em vez de cair no link quebrado.
+   * Para QUALQUER mídia (imagem/vídeo/áudio/documento/sticker): baixa o arquivo
+   * da nossa `mediaUrl`, faz upload pro /media da Cloud API e grava o `mediaId`
+   * em message.content pro mapper montar `{ <tipo>: { id } }`. Erros de upload
+   * sobem (a mensagem vira FAILED e fica visível) em vez de cair no link
+   * quebrado. Best-effort tipado: sem mediaUrl ou já com mediaId, não faz nada.
    */
   private async ensureUploadedMediaId(
     channel: Channel,
     message: NormalizedOutboundMessage,
   ): Promise<void> {
-    if (message.type !== MessageContentType.AUDIO) return;
+    if (!WhatsAppOfficialOutboundAdapter.MEDIA_TYPES.has(message.type)) return;
     const content = (message.content ?? {}) as Record<string, any>;
     if (content.mediaId || !content.mediaUrl) return;
 
@@ -63,36 +72,20 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
       responseType: 'arraybuffer',
       timeout: 60000,
     });
-    const buffer = Buffer.from(resp.data);
+    let uploadBuffer: Buffer = Buffer.from(resp.data);
     const fetchedType = resp.headers['content-type'] as string | undefined;
-    // Usa SEMPRE o content-type real do arquivo servido (ex.: audio/ogg) e não
-    // o mimeType que veio na mensagem — se o arquivo foi transcodado p/ ogg, é
-    // o content-type servido que vale pro /media da Meta.
-    const mimeType = fetchedType || content.mimeType || 'audio/ogg';
-    const filename =
-      content.fileName || `audio.${mimeType.includes('ogg') ? 'ogg' : 'bin'}`;
+    // Usa o content-type real do arquivo servido (mais confiável que o mime
+    // que veio na mensagem, que pode estar desatualizado após transcode).
+    let uploadMime = fetchedType || content.mimeType || 'application/octet-stream';
+    let uploadName = content.fileName || 'arquivo';
 
-    this.logger.log(
-      `WA Official audio: baixando p/ /media url=${content.mediaUrl} ` +
-        `bytes=${buffer.length} fetchType=${fetchedType ?? '?'} mime=${mimeType}`,
-    );
-
-    // A Meta ACEITA o OGG/Opus no /media (retorna id) mas, na prática, o
-    // destinatário recebe "este áudio não está mais disponível" — o Cloud API
-    // não serve o OGG de forma confiável. Convertendo pra MP3 (audio/mpeg),
-    // que o WhatsApp sempre reproduz, antes do upload. Se a conversão falhar,
-    // cai no OGG mesmo (melhor tentar do que não enviar).
-    let uploadBuffer: Buffer = buffer;
-    let uploadMime = mimeType;
-    let uploadName = filename;
-    if (mimeType.includes('ogg')) {
+    // ÁUDIO OGG → MP3: a Meta aceita o OGG no /media mas não serve direito
+    // ("áudio não está mais disponível"). MP3 toca em qualquer WhatsApp.
+    if (message.type === MessageContentType.AUDIO && uploadMime.includes('ogg')) {
       try {
-        uploadBuffer = await audioBufferToMp3(buffer);
+        uploadBuffer = await audioBufferToMp3(uploadBuffer);
         uploadMime = 'audio/mpeg';
         uploadName = 'audio.mp3';
-        this.logger.log(
-          `WA Official audio: ogg->mp3 OK bytes=${uploadBuffer.length}`,
-        );
       } catch (err: any) {
         this.logger.warn(
           `WA Official audio: ogg->mp3 falhou (${err?.message ?? err}) — envia ogg`,
@@ -106,10 +99,11 @@ export class WhatsAppOfficialOutboundAdapter implements OutboundChannelPort {
       filename: uploadName,
     });
     this.logger.log(
-      `WA Official audio: upload /media OK mediaId=${mediaId} mime=${uploadMime} (envio por id)`,
+      `WA Official media: ${message.type} upload /media OK mediaId=${mediaId} ` +
+        `mime=${uploadMime} bytes=${uploadBuffer.length} (envio por id)`,
     );
     content.mediaId = mediaId;
-    content.mimeType = uploadMime; // reflete o formato realmente enviado
+    content.mimeType = uploadMime;
     message.content = content as any;
   }
 

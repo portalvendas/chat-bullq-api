@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ChannelHubModule } from '../channel-hub/channel-hub.module';
 import { RatingsModule } from '../ratings/ratings.module';
 import { AiAgentsModule } from '../ai-agents/ai-agents.module';
+import { LlmModule } from '../ai-agents/llm/llm.module';
 import { WatchdogModule } from '../routing/watchdog/watchdog.module';
 import { PipelinesModule } from '../pipelines/pipelines.module';
 import { InstagramCommentsModule } from '../instagram-comments/instagram-comments.module';
@@ -41,6 +42,7 @@ import { ContactsRepository } from './contacts/contacts.repository';
     forwardRef(() => ChannelHubModule),
     RatingsModule,
     AiAgentsModule,
+    LlmModule,
     WatchdogModule,
     PipelinesModule,
     InstagramCommentsModule,

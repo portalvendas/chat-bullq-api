@@ -21,7 +21,8 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { ChannelType } from '@prisma/client';
+import { ChannelType, MessageStatus } from '@prisma/client';
+import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import makeWASocket, {
   DisconnectReason,
   downloadMediaMessage,
@@ -72,6 +73,7 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
     private readonly authState: BaileysAuthStateService,
     private readonly mapper: BaileysMessageMapper,
     private readonly uploads: UploadsService,
+    private readonly realtime: RealtimeGateway,
     @InjectQueue('inbound-messages') private readonly inboundQueue: Queue,
   ) {}
 
@@ -241,11 +243,101 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
           );
         }
       });
+
+      // Acks de entrega/leitura das NOSSAS mensagens (fromMe). Sem isto o inbox
+      // mostrava 1 tique pra sempre nos canais Baileys (nunca recebíamos o
+      // Entregue/Lido). Atualiza o status e emite pro front refletir.
+      sock.ev.on('messages.update', (updates: any[]) => {
+        this.handleStatusUpdate(channelId, organizationId, updates).catch((e) =>
+          this.logger.warn(
+            `messages.update canal=${channelId}: ${e?.message ?? e}`,
+          ),
+        );
+      });
     } catch (e: any) {
       this.logger.error(`connect canal=${channelId}: ${e?.message ?? e}`);
       s.status = 'disconnected';
     } finally {
       s.starting = false;
+    }
+  }
+
+  /** Ordem dos status pra não regredir (ex.: não voltar de READ pra SENT). */
+  private statusRank(s: MessageStatus): number {
+    const rank: Record<string, number> = {
+      QUEUED: 0,
+      SENT: 1,
+      DELIVERED: 2,
+      READ: 3,
+      FAILED: 4,
+    };
+    return rank[s] ?? 0;
+  }
+
+  /** Código de status do Baileys (WAMessageStatus) → nosso MessageStatus. */
+  private baileysStatusToOurs(code: number): MessageStatus | null {
+    switch (code) {
+      case 0:
+        return MessageStatus.FAILED; // ERROR
+      case 2:
+        return MessageStatus.SENT; // SERVER_ACK
+      case 3:
+        return MessageStatus.DELIVERED; // DELIVERY_ACK
+      case 4:
+      case 5:
+        return MessageStatus.READ; // READ / PLAYED
+      default:
+        return null; // 1 = PENDING / desconhecido
+    }
+  }
+
+  /**
+   * Aplica os acks de entrega/leitura das mensagens que NÓS enviamos (fromMe).
+   * Casa pela nossa `externalId` (= key.id do Baileys), avança o status sem
+   * regredir e emite `message:status` pro inbox atualizar os tiques.
+   */
+  private async handleStatusUpdate(
+    channelId: string,
+    organizationId: string,
+    updates: any[],
+  ): Promise<void> {
+    for (const u of updates ?? []) {
+      const key = u?.key;
+      const upd = u?.update;
+      if (!key?.fromMe || !key?.id || !upd) continue;
+      const code = Number(upd.status);
+      if (!Number.isFinite(code)) continue;
+      const next = this.baileysStatusToOurs(code);
+      if (!next) continue;
+
+      const msg = await this.prisma.message.findFirst({
+        where: {
+          externalId: key.id,
+          conversation: { is: { channelId, organizationId } },
+        },
+        select: { id: true, status: true, conversationId: true },
+      });
+      if (!msg) continue;
+
+      // FAILED vence (a não ser que já tenha sido lida); senão só avança.
+      if (next !== MessageStatus.FAILED) {
+        if (this.statusRank(next) <= this.statusRank(msg.status)) continue;
+      } else if (msg.status === MessageStatus.READ) {
+        continue;
+      }
+
+      const data: Record<string, any> = { status: next };
+      if (next === MessageStatus.DELIVERED) data.deliveredAt = new Date();
+      if (next === MessageStatus.READ) data.readAt = new Date();
+      await this.prisma.message
+        .update({ where: { id: msg.id }, data })
+        .catch(() => undefined);
+
+      this.realtime.emitToConversation(msg.conversationId, 'message:status', {
+        messageId: msg.id,
+        status: next,
+        conversationId: msg.conversationId,
+      });
     }
   }
 

@@ -134,6 +134,18 @@ export class WhatsAppOfficialMessageMapper {
       base.context = { message_id: message.replyTo.externalMessageId };
     }
 
+    // Preferir `id` (upload durável no /media da Meta, resolvido pelo adapter
+    // antes do denormalize) em vez de `link` — por link a Meta re-busca a nossa
+    // URL e, se ela sumir (retenção 45d / indisponível), o destinatário vê
+    // "mídia não disponível". Fallback pro link quando não há id.
+    const mediaId = (message.content as Record<string, any>).mediaId as
+      | string
+      | undefined;
+    const mediaRef = (extra?: Record<string, any>) =>
+      mediaId
+        ? { id: mediaId, ...(extra ?? {}) }
+        : { link: message.content.mediaUrl, ...(extra ?? {}) };
+
     switch (message.type) {
       case MessageContentType.TEXT:
         return { ...base, type: 'text', text: { body: message.content.text } };
@@ -142,50 +154,31 @@ export class WhatsAppOfficialMessageMapper {
         return {
           ...base,
           type: 'image',
-          image: {
-            link: message.content.mediaUrl,
-            caption: message.content.caption,
-          },
+          image: mediaRef({ caption: message.content.caption }),
         };
 
       case MessageContentType.AUDIO:
-        return {
-          ...base,
-          type: 'audio',
-          // Preferir `id` (upload durável no /media da Meta) — resolvido pelo
-          // adapter antes do denormalize. Fallback pro link se não houver id.
-          audio: (message.content as Record<string, any>).mediaId
-            ? { id: (message.content as Record<string, any>).mediaId }
-            : { link: message.content.mediaUrl },
-        };
+        return { ...base, type: 'audio', audio: mediaRef() };
 
       case MessageContentType.VIDEO:
         return {
           ...base,
           type: 'video',
-          video: {
-            link: message.content.mediaUrl,
-            caption: message.content.caption,
-          },
+          video: mediaRef({ caption: message.content.caption }),
         };
 
       case MessageContentType.DOCUMENT:
         return {
           ...base,
           type: 'document',
-          document: {
-            link: message.content.mediaUrl,
+          document: mediaRef({
             filename: message.content.fileName,
             caption: message.content.caption,
-          },
+          }),
         };
 
       case MessageContentType.STICKER:
-        return {
-          ...base,
-          type: 'sticker',
-          sticker: { link: message.content.mediaUrl },
-        };
+        return { ...base, type: 'sticker', sticker: mediaRef() };
 
       case MessageContentType.LOCATION:
         return {

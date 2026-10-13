@@ -1,0 +1,40 @@
+name: Deploy API (VPS)
+
+# Auto-deploy no VPS a cada push na main (substitui o auto-deploy do Render).
+# Conecta por SSH e roda o mesmo fluxo manual validado no handoff.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # permite disparar manualmente pela aba Actions
+
+# Nunca roda dois deploys ao mesmo tempo (evita recriar o container no meio
+# de outro build). Não cancela o que já está rodando.
+concurrency:
+  group: deploy-api-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          port: ${{ secrets.VPS_PORT }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # Para qualquer passo que falhar (build quebrado etc.) — se o build
+          # falha, o `up` não roda e o container ANTIGO continua no ar.
+          script_stop: true
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            cd /opt/kortiacrm/api
+            git fetch origin main
+            git reset --hard origin/main   # garante a cópia do VPS == main (sem conflito)
+            cd /opt/kortiacrm
+            docker compose build kortiacrm-api
+            docker compose up -d --no-deps kortiacrm-api
+            docker image prune -f
+            echo "Deploy OK — commit $(git -C /opt/kortiacrm/api rev-parse --short HEAD)"

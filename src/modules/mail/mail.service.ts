@@ -34,7 +34,7 @@ export class MailService {
   }
 
   private get webAppUrl(): string {
-    return (process.env.WEB_APP_URL || 'https://chat-bullq-web.onrender.com').replace(
+    return (process.env.WEB_APP_URL || 'https://app.kortiacrm.com.br').replace(
       /\/$/,
       '',
     );

@@ -683,7 +683,7 @@ export class PlatformAdminService {
     );
 
     const webAppUrl = (
-      process.env.WEB_APP_URL || 'https://chat-bullq-web.onrender.com'
+      process.env.WEB_APP_URL || 'https://app.kortiacrm.com.br'
     ).replace(/\/$/, '');
 
     return {

@@ -1,7 +1,7 @@
 import { GraphEdge, GraphNode, NodeHandle, WorkflowGraph } from './cadences.graph';
 
 /**
- * Conversor de bots exportados do Kommo (Salesbot) para o grafo do Chat Bullq.
+ * Conversor de bots exportados do Kommo (Salesbot) para o grafo do Kortia.
  *
  * O export do Kommo tem a forma `{ type_functionality, model: { text } }`, onde
  * `model.text` é um JSON (string) de PASSOS indexados por número. Cada passo tem

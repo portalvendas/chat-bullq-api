@@ -169,7 +169,7 @@ export class MessagesController {
   @Delete(':id')
   @ApiOperation({
     summary:
-      'Deletar mensagem pra todos. Tenta propagar pro provider — Zappfy suporta (some no app do cliente), Meta WA Cloud e Instagram não suportam (some só no Chat BullQ).',
+      'Deletar mensagem pra todos. Tenta propagar pro provider — Zappfy suporta (some no app do cliente), Meta WA Cloud e Instagram não suportam (some só no Kortia).',
   })
   revoke(
     @Param('id') id: string,

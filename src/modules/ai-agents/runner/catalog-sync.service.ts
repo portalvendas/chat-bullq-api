@@ -22,7 +22,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * cacheable block — TTL of 5min keeps token cost predictable while
  * letting offer edits reach the agent within minutes.
  *
- * One cache entry per organizationId. When Chat BullQ becomes truly
+ * One cache entry per organizationId. When Kortia becomes truly
  * multi-tenant (each org has its own MEMBERS_TENANT_*), this will need
  * a per-org mapping; today it falls back to the single Bravy tenant.
  */

@@ -108,7 +108,7 @@ export class CapabilitiesLayerService {
       sections.push('');
 
       // Instruções de prompt das skills — bloco separado pra ficar visível
-      // (no Chat BullQ atual, isso entra como bullet solto e o LLM ignora).
+      // (no Kortia atual, isso entra como bullet solto e o LLM ignora).
       const withInstructions = skills.filter(
         (s) => (s.promptInstructions ?? '').trim().length > 0,
       );

@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { TinyHttpClient } from './tiny.http-client';
 import { MetaCapiService } from './meta-capi/meta-capi.service';
+import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
 import { ConversationStatus } from '@prisma/client';
 
 /** Situações de pedido do Tiny v3 (código → rótulo). */
@@ -60,6 +61,7 @@ export class TinyService {
     private readonly http: TinyHttpClient,
     private readonly config: ConfigService,
     private readonly metaCapi: MetaCapiService,
+    private readonly metaCapiLeads: MetaCapiLeadsService,
   ) {}
 
   // ── OAuth ──────────────────────────────────────────────────────────
@@ -214,6 +216,13 @@ export class TinyService {
         await this.metaCapi.emitPending(organizationId);
       } catch (err: any) {
         this.logger.warn(`CAPI emitPending falhou (best-effort): ${err?.message ?? err}`);
+      }
+      // Lead qualificado (mesmo critério do dashboard) — roda depois do sync
+      // pra já enxergar orçamentos/pedidos novos. No-op se desligado.
+      try {
+        await this.metaCapiLeads.emitQualifiedLeads(organizationId);
+      } catch (err: any) {
+        this.logger.warn(`CAPI qualified leads falhou (best-effort): ${err?.message ?? err}`);
       }
       await this.prisma.tinyIntegration.update({
         where: { organizationId },

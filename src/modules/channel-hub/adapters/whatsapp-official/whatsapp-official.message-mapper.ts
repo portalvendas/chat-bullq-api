@@ -32,6 +32,19 @@ export class WhatsAppOfficialMessageMapper {
       result.replyTo = { externalMessageId: message.context.id };
     }
 
+    // Click-to-WhatsApp: a 1ª mensagem após o clique no anúncio traz `referral`.
+    const ref = message.referral;
+    if (ref && (ref.ctwa_clid || ref.source_id)) {
+      result.adReferral = {
+        ctwaClid: ref.ctwa_clid ? String(ref.ctwa_clid) : undefined,
+        sourceId: ref.source_id ? String(ref.source_id) : undefined,
+        sourceType: ref.source_type ? String(ref.source_type) : undefined,
+        sourceUrl: ref.source_url ? String(ref.source_url) : undefined,
+        headline: ref.headline ? String(ref.headline) : undefined,
+        body: ref.body ? String(ref.body) : undefined,
+      };
+    }
+
     return result;
   }
 

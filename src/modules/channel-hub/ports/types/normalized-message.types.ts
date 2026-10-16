@@ -77,7 +77,23 @@ export interface NormalizedInboundMessage {
   isGroup?: boolean;
   isEcho?: boolean;
   senderName?: string;
+  /** Origem de anúncio (Click-to-WhatsApp). Só vem na 1ª msg após o clique. */
+  adReferral?: AdReferral;
   rawPayload: unknown;
+}
+
+/**
+ * Referral de anúncio Click-to-WhatsApp. Oficial: `message.referral`
+ * (source_id = id do anúncio, ctwa_clid = id do clique). Baileys:
+ * `contextInfo.externalAdReply`.
+ */
+export interface AdReferral {
+  ctwaClid?: string;
+  sourceId?: string;
+  sourceType?: string;
+  sourceUrl?: string;
+  headline?: string;
+  body?: string;
 }
 
 /**

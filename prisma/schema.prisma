@@ -283,6 +283,7 @@ model Organization {
   tinyDocuments   TinyDocument[]
   metaCapiConfig  MetaCapiConfig?
   metaCapiEvents  MetaCapiEvent[]
+  metaCapiLeadEvents MetaCapiLeadEvent[]
   leadDistributionConfig LeadDistributionConfig?
   commercialRoutineConfig CommercialRoutineConfig?
   routineDailyChecks     RoutineDailyCheck[]
@@ -2216,6 +2217,10 @@ model MetaCapiConfig {
   addToCartEnabled  Boolean @default(true) @map("add_to_cart_enabled")
   /// Situações de ORÇAMENTO que disparam `AddToCart`. Vazio = qualquer.
   addToCartSituacoes Json @default("[]") @map("add_to_cart_situacoes")
+  /// Envia o evento de LEAD QUALIFICADO (mesmo critério do dashboard comercial).
+  qualifiedLeadEnabled   Boolean @default(false) @map("qualified_lead_enabled")
+  /// Nome do evento (custom) — usado pra criar a conversão personalizada na Meta.
+  qualifiedLeadEventName String  @default("QualifiedLead") @map("qualified_lead_event_name")
   lastError      String?  @map("last_error") @db.Text
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -2248,6 +2253,33 @@ model MetaCapiEvent {
   @@unique([tinyDocumentId, eventName], name: "uq_capi_doc_event")
   @@index([organizationId, eventName], name: "idx_capi_org_event")
   @@map("meta_capi_events")
+}
+
+/// Log + idempotência dos eventos CAPI por CONTATO (lead qualificado).
+/// Unique (contato, evento) = 1 envio por lead; `attempts` limita retentativas.
+model MetaCapiLeadEvent {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  contactId      String   @map("contact_id")
+  eventName      String   @map("event_name")
+  /// sent | failed
+  status         String
+  /// system_generated | business_messaging
+  actionSource   String?  @map("action_source")
+  /// won | stage | score | pedido | orcamento
+  reason         String?
+  attempts       Int      @default(1)
+  httpStatus     Int?     @map("http_status")
+  fbTraceId      String?  @map("fb_trace_id")
+  error          String?  @db.Text
+  eventId        String?  @map("event_id")
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, eventName], name: "uq_capi_lead_contact_event", map: "uq_capi_lead_contact_event")
+  @@index([organizationId, eventName], map: "idx_capi_lead_org_event")
+  @@map("meta_capi_lead_events")
 }
 
 

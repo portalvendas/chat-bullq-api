@@ -8,6 +8,7 @@ import { TinyCronService, TINY_QUEUE } from './tiny.cron.service';
 import { TinyProcessor } from './tiny.processor';
 import { MetaCapiService } from './meta-capi/meta-capi.service';
 import { MetaCapiHttpClient } from './meta-capi/meta-capi.http-client';
+import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
 import { LlmModule } from '../ai-agents/llm/llm.module';
 import { UploadsService } from '../messaging/messages/uploads.service';
 
@@ -22,6 +23,7 @@ import { UploadsService } from '../messaging/messages/uploads.service';
     TinyProcessor,
     MetaCapiService,
     MetaCapiHttpClient,
+    MetaCapiLeadsService,
     // UploadsService é standalone (só depende de ConfigService global) — provê
     // uma instância local pra salvar os arquivos de comprovante.
     UploadsService,

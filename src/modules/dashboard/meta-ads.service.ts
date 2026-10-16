@@ -223,4 +223,60 @@ export class MetaAdsService {
       .catch(() => undefined);
     return { total: Math.round(total * 100) / 100, byCampaign };
   }
+
+  /** Cache ad_id → nomes (campanha/conjunto/anúncio). Nomes mudam pouco. */
+  private readonly adCache = new Map<string, { at: number; v: ResolvedAd | null }>();
+
+  /**
+   * Resolve um ad_id (ex.: `source_id` do referral do Click-to-WhatsApp) para
+   * campanha/conjunto/anúncio via Marketing API, com o MESMO token do gasto.
+   * Assim o lead do WhatsApp entra no dashboard com o nome da campanha que casa
+   * com o gasto. Best-effort: null se não configurado/sem acesso. Cache 6h.
+   */
+  async resolveAd(organizationId: string, adId: string): Promise<ResolvedAd | null> {
+    const id = String(adId ?? '').trim();
+    if (!/^\d+$/.test(id)) return null;
+    const key = `${organizationId}:${id}`;
+    const hit = this.adCache.get(key);
+    if (hit && Date.now() - hit.at < 6 * 3600 * 1000) return hit.v;
+
+    const r = await this.row(organizationId);
+    if (!r || r.status !== 'active') return null;
+    const token = this.safeDecrypt(r.access_token_enc);
+    const proof = this.proof(token);
+    let v: ResolvedAd | null = null;
+    try {
+      const resp: any = await axios.get(`${GRAPH}/${id}`, {
+        params: {
+          fields: 'name,adset{id,name},campaign{id,name}',
+          access_token: token,
+          ...(proof ? { appsecret_proof: proof } : {}),
+        },
+        timeout: 10000,
+      });
+      const d = resp.data ?? {};
+      v = {
+        adId: id,
+        adName: d.name ?? null,
+        adsetId: d.adset?.id ?? null,
+        adsetName: d.adset?.name ?? null,
+        campaignId: d.campaign?.id ?? null,
+        campaignName: d.campaign?.name ?? null,
+      };
+    } catch (err: any) {
+      const msg = err?.response?.data?.error?.message || err?.message || 'erro';
+      this.logger.warn(`resolveAd falhou (org ${organizationId}, ad ${id}): ${msg}`);
+    }
+    this.adCache.set(key, { at: Date.now(), v });
+    return v;
+  }
+}
+
+export interface ResolvedAd {
+  adId: string;
+  adName: string | null;
+  adsetId: string | null;
+  adsetName: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
 }

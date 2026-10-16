@@ -26,6 +26,8 @@ export interface MetaCapiConfigInput {
   purchaseSituacoes?: string[];
   addToCartEnabled?: boolean;
   addToCartSituacoes?: string[];
+  qualifiedLeadEnabled?: boolean;
+  qualifiedLeadEventName?: string;
 }
 
 /** Doc mínimo que o CAPI precisa (subset da TinyDocument). */
@@ -88,10 +90,31 @@ export class MetaCapiService {
         purchaseSituacoes: ['Faturada', 'Aprovada'],
         addToCartEnabled: true,
         addToCartSituacoes: [] as string[],
+        qualifiedLeadEnabled: false,
+        qualifiedLeadEventName: 'QualifiedLead',
+        qualifiedLeadStats: null as null | { sent: number; failed: number; last: string | null },
         hasToken: false,
         lastError: null,
       };
     }
+    // Resumo dos envios de lead qualificado (últimos 30 dias) pra mostrar na tela.
+    const stats = await this.prisma.metaCapiLeadEvent.groupBy({
+      by: ['status'],
+      where: {
+        organizationId,
+        eventName: c.qualifiedLeadEventName,
+        sentAt: { gte: new Date(Date.now() - 30 * 24 * 3600 * 1000) },
+      },
+      _count: { _all: true },
+      _max: { sentAt: true },
+    });
+    const sentRow = stats.find((s) => s.status === 'sent');
+    const failedRow = stats.find((s) => s.status === 'failed');
+    const qualifiedLeadStats = {
+      sent: sentRow?._count._all ?? 0,
+      failed: failedRow?._count._all ?? 0,
+      last: sentRow?._max.sentAt ? sentRow._max.sentAt.toISOString() : null,
+    };
     return {
       enabled: c.enabled,
       pixelId: c.pixelId,
@@ -101,6 +124,9 @@ export class MetaCapiService {
       purchaseSituacoes: (c.purchaseSituacoes as string[]) ?? [],
       addToCartEnabled: c.addToCartEnabled,
       addToCartSituacoes: (c.addToCartSituacoes as string[]) ?? [],
+      qualifiedLeadEnabled: c.qualifiedLeadEnabled,
+      qualifiedLeadEventName: c.qualifiedLeadEventName,
+      qualifiedLeadStats,
       hasToken: !!c.accessToken,
       lastError: c.lastError,
     };
@@ -126,6 +152,14 @@ export class MetaCapiService {
         : {}),
       ...(dto.addToCartSituacoes !== undefined
         ? { addToCartSituacoes: dto.addToCartSituacoes as any }
+        : {}),
+      ...(dto.qualifiedLeadEnabled !== undefined
+        ? { qualifiedLeadEnabled: !!dto.qualifiedLeadEnabled }
+        : {}),
+      // Nome do evento: só letras/números/_ (padrão de evento custom da Meta).
+      ...(typeof dto.qualifiedLeadEventName === 'string' &&
+      /^[A-Za-z][A-Za-z0-9_]{1,49}$/.test(dto.qualifiedLeadEventName.trim())
+        ? { qualifiedLeadEventName: dto.qualifiedLeadEventName.trim() }
         : {}),
       ...tokenPatch,
     };
@@ -299,6 +333,8 @@ export class MetaCapiService {
       purchaseSituacoes: (c.purchaseSituacoes as string[]) ?? [],
       addToCartEnabled: c.addToCartEnabled,
       addToCartSituacoes: (c.addToCartSituacoes as string[]) ?? [],
+      qualifiedLeadEnabled: c.qualifiedLeadEnabled,
+      qualifiedLeadEventName: c.qualifiedLeadEventName || 'QualifiedLead',
     };
   }
 

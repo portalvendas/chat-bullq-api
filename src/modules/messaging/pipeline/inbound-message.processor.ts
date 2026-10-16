@@ -7,6 +7,7 @@ import { UploadsService } from '../messages/uploads.service';
 import { BroadcastStatusService } from '../../broadcast/broadcast-status.service';
 import { WaCostRecorderService } from '../../broadcast/wa-cost-recorder.service';
 import { LeadEnrichmentService } from '../../lead-enrichment/lead-enrichment.service';
+import { AdAttributionService } from '../../ad-attribution/ad-attribution.service';
 import { IdempotencyService } from './idempotency.service';
 import { ContactResolverService } from './contact-resolver.service';
 import { ConversationResolverService } from './conversation-resolver.service';
@@ -120,6 +121,7 @@ export class InboundMessageProcessor extends WorkerHost {
     private readonly broadcastStatus: BroadcastStatusService,
     private readonly waCost: WaCostRecorderService,
     private readonly leadEnrichment: LeadEnrichmentService,
+    private readonly adAttribution: AdAttributionService,
     @InjectQueue('chatbot-processor') private readonly chatbotQueue: Queue,
   ) {
     super();
@@ -253,6 +255,20 @@ export class InboundMessageProcessor extends WorkerHost {
             `ensureEntryCard falhou (conv ${conversationId}): ${err?.message ?? err}`,
           );
         }
+      }
+
+      // Click-to-WhatsApp: grava a origem do anúncio (ad/campanha/ctwa_clid) no
+      // contato e no card. DEPOIS do ensureEntryCard (o card já existe).
+      // Fire-and-forget: a resolução do nome da campanha é I/O externo.
+      if (message.adReferral && !message.isEcho && !message.isGroup && contactId) {
+        void this.adAttribution
+          .recordCtwa({
+            organizationId,
+            contactId,
+            conversationId,
+            referral: message.adReferral,
+          })
+          .catch(() => undefined);
       }
 
       // Auto-tag por FONTE: aplica em TODO inbound humano (não só na criação do

@@ -4,6 +4,7 @@ import {
   NormalizedInboundMessage,
   NormalizedMessageContent,
   MessageContentType,
+  AdReferral,
 } from '../../ports/types';
 import { canonicalPhone } from '../../../../common/phone.util';
 
@@ -100,7 +101,46 @@ export class BaileysMessageMapper {
       result.replyTo = { externalMessageId: stanzaId };
     }
 
+    if (!isEcho) {
+      const ad = this.extractAdReply(message);
+      if (ad) result.adReferral = ad;
+    }
+
     return result;
+  }
+
+  /**
+   * Click-to-WhatsApp no Baileys: o anúncio vem em
+   * `<tipo>.contextInfo.externalAdReply` (texto, imagem… e wrappers
+   * ephemeral/viewOnce). Só considera quando há id do clique ou do anúncio —
+   * evita confundir com link preview comum.
+   */
+  private extractAdReply(message: any): AdReferral | undefined {
+    const candidates: any[] = [];
+    const scan = (m: any, depth = 0) => {
+      if (!m || typeof m !== 'object' || depth > 3) return;
+      for (const v of Object.values(m)) {
+        if (!v || typeof v !== 'object') continue;
+        const ear = (v as any).contextInfo?.externalAdReply;
+        if (ear) candidates.push(ear);
+        if ((v as any).message) scan((v as any).message, depth + 1);
+      }
+    };
+    scan(message);
+    for (const e of candidates) {
+      const ctwa = e.ctwaClid ?? e.ctwa_clid;
+      const src = e.sourceId ?? e.source_id;
+      if (!ctwa && !src) continue;
+      return {
+        ctwaClid: ctwa ? String(ctwa) : undefined,
+        sourceId: src ? String(src) : undefined,
+        sourceType: e.sourceType ? String(e.sourceType) : undefined,
+        sourceUrl: e.sourceUrl ? String(e.sourceUrl) : undefined,
+        headline: e.title ? String(e.title) : undefined,
+        body: e.body ? String(e.body) : undefined,
+      };
+    }
+    return undefined;
   }
 
   /** Extrai texto puro de `conversation` ou `extendedTextMessage`. */

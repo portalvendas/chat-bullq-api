@@ -6,6 +6,8 @@ export interface CapiEvent {
   event_time: number;
   event_id?: string;
   action_source: string;
+  /** Só em action_source=business_messaging (ex.: 'whatsapp'). */
+  messaging_channel?: string;
   event_source_url?: string;
   user_data: Record<string, any>;
   custom_data?: Record<string, any>;

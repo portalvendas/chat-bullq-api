@@ -11,6 +11,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { LeadDistributionModule } from '../lead-distribution/lead-distribution.module';
 import { BroadcastModule } from '../broadcast/broadcast.module';
 import { LeadEnrichmentModule } from '../lead-enrichment/lead-enrichment.module';
+import { AdAttributionModule } from '../ad-attribution/ad-attribution.module';
 import { IdempotencyService } from './pipeline/idempotency.service';
 import { ContactResolverService } from './pipeline/contact-resolver.service';
 import { ConversationResolverService } from './pipeline/conversation-resolver.service';
@@ -45,6 +46,7 @@ import { ContactsRepository } from './contacts/contacts.repository';
     LlmModule,
     WatchdogModule,
     PipelinesModule,
+    AdAttributionModule,
     InstagramCommentsModule,
     NotificationsModule,
     LeadDistributionModule,

@@ -32,9 +32,11 @@ type RawCfg = NonNullable<Awaited<ReturnType<MetaCapiService['loadRawConfig']>>>
  * Evento de LEAD QUALIFICADO para a Meta (CAPI) — fecha o loop de qualidade:
  * a campanha passa a aprender quem virou lead BOM, não só quem preencheu.
  *
- * Critério = o MESMO do dashboard comercial ("Qualificado"):
- *   card GANHO  OU  gerou PEDIDO/ORÇAMENTO no Tiny  OU  avançou da etapa de
- *   entrada do funil  OU  leadScore >= 40.
+ * Critério:
+ *   card GANHO  OU  gerou PEDIDO/ORÇAMENTO no Tiny  OU  está numa das ETAPAS
+ *   escolhidas na config  OU  leadScore >= 40.
+ *   (Não usa "avançou qualquer etapa": no funil real, follow-ups AUTOMÁTICOS e
+ *   "Perdido" ficam depois da entrada e eram ~70% dos "qualificados".)
  * Escopo: cards criados nos últimos 30 dias, fora de marketplace (ML/Shopee
  * não são lead de anúncio). 1 evento por contato (idempotente), até 3
  * tentativas em caso de falha.
@@ -71,16 +73,12 @@ export class MetaCapiLeadsService {
       return;
     }
     const eventName = (cfg.qualifiedLeadEventName || 'QualifiedLead').trim();
+    // Etapas escolhidas na tela. Vazio = nenhuma etapa conta (só ganho,
+    // orçamento/pedido e lead score). Array vazio em ANY() → sempre falso.
+    const stageIds: string[] = cfg.qualifiedLeadStageIds ?? [];
 
     const rows = await this.prisma.$queryRaw<Candidate[]>`
-      WITH entry AS (
-        SELECT s.pipeline_id, MIN(s."order") AS mo
-        FROM pipeline_stages s
-        JOIN pipelines p ON p.id = s.pipeline_id
-        WHERE p.organization_id = ${organizationId}
-        GROUP BY s.pipeline_id
-      ),
-      docs AS (
+      WITH docs AS (
         SELECT d.contact_id,
                bool_or(d.kind = 'PEDIDO')    AS has_ped,
                bool_or(d.kind = 'ORCAMENTO') AS has_orc
@@ -99,12 +97,10 @@ export class MetaCapiLeadsService {
           WHEN c.status::text = 'WON'       THEN 'won'
           WHEN COALESCE(dx.has_ped, false)  THEN 'pedido'
           WHEN COALESCE(dx.has_orc, false)  THEN 'orcamento'
-          WHEN s."order" > e.mo             THEN 'stage'
+          WHEN c.stage_id = ANY(${stageIds}::text[]) THEN 'stage'
           ELSE 'score'
         END                          AS reason
       FROM cards c
-      JOIN pipeline_stages s ON s.id = c.stage_id
-      JOIN entry e ON e.pipeline_id = c.pipeline_id
       JOIN contacts ct ON ct.id = c.contact_id AND ct.deleted_at IS NULL
       LEFT JOIN conversations conv ON conv.id = c.conversation_id
       LEFT JOIN channels ch ON ch.id = conv.channel_id
@@ -114,7 +110,7 @@ export class MetaCapiLeadsService {
         AND (ch.type IS NULL OR ch.type::text NOT IN ('MERCADO_LIVRE', 'SHOPEE'))
         AND (
           c.status::text = 'WON'
-          OR s."order" > e.mo
+          OR c.stage_id = ANY(${stageIds}::text[])
           OR COALESCE(dx.has_ped, false)
           OR COALESCE(dx.has_orc, false)
           OR (CASE WHEN (c.metadata->>'leadScore') ~ '^[0-9]+$'

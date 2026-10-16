@@ -2221,6 +2221,10 @@ model MetaCapiConfig {
   qualifiedLeadEnabled   Boolean @default(false) @map("qualified_lead_enabled")
   /// Nome do evento (custom) — usado pra criar a conversão personalizada na Meta.
   qualifiedLeadEventName String  @default("QualifiedLead") @map("qualified_lead_event_name")
+  /// Etapas do funil que contam como "qualificado" (ids). Vazio = nenhuma etapa
+  /// (só ganho / orçamento / pedido / lead score). NÃO usa "avançou qualquer
+  /// etapa": follow-ups automáticos e "Perdido" inflariam o sinal.
+  qualifiedLeadStageIds  Json    @default("[]") @map("qualified_lead_stage_ids")
   lastError      String?  @map("last_error") @db.Text
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")

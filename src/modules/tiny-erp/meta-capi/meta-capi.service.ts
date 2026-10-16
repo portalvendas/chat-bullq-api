@@ -28,6 +28,7 @@ export interface MetaCapiConfigInput {
   addToCartSituacoes?: string[];
   qualifiedLeadEnabled?: boolean;
   qualifiedLeadEventName?: string;
+  qualifiedLeadStageIds?: string[];
 }
 
 /** Doc mínimo que o CAPI precisa (subset da TinyDocument). */
@@ -92,6 +93,7 @@ export class MetaCapiService {
         addToCartSituacoes: [] as string[],
         qualifiedLeadEnabled: false,
         qualifiedLeadEventName: 'QualifiedLead',
+        qualifiedLeadStageIds: [] as string[],
         qualifiedLeadStats: null as null | { sent: number; failed: number; last: string | null },
         hasToken: false,
         lastError: null,
@@ -126,6 +128,7 @@ export class MetaCapiService {
       addToCartSituacoes: (c.addToCartSituacoes as string[]) ?? [],
       qualifiedLeadEnabled: c.qualifiedLeadEnabled,
       qualifiedLeadEventName: c.qualifiedLeadEventName,
+      qualifiedLeadStageIds: toStringArray(c.qualifiedLeadStageIds),
       qualifiedLeadStats,
       hasToken: !!c.accessToken,
       lastError: c.lastError,
@@ -160,6 +163,9 @@ export class MetaCapiService {
       ...(typeof dto.qualifiedLeadEventName === 'string' &&
       /^[A-Za-z][A-Za-z0-9_]{1,49}$/.test(dto.qualifiedLeadEventName.trim())
         ? { qualifiedLeadEventName: dto.qualifiedLeadEventName.trim() }
+        : {}),
+      ...(Array.isArray(dto.qualifiedLeadStageIds)
+        ? { qualifiedLeadStageIds: toStringArray(dto.qualifiedLeadStageIds) as any }
         : {}),
       ...tokenPatch,
     };
@@ -335,6 +341,7 @@ export class MetaCapiService {
       addToCartSituacoes: (c.addToCartSituacoes as string[]) ?? [],
       qualifiedLeadEnabled: c.qualifiedLeadEnabled,
       qualifiedLeadEventName: c.qualifiedLeadEventName || 'QualifiedLead',
+      qualifiedLeadStageIds: toStringArray(c.qualifiedLeadStageIds),
     };
   }
 
@@ -622,6 +629,17 @@ export class MetaCapiService {
     const n = typeof v === 'number' ? v : Number(v);
     return isNaN(n) ? null : n;
   }
+}
+
+/** Normaliza um Json/unknown em lista de strings não vazias e únicas. */
+function toStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    const s = typeof x === 'string' ? x.trim() : '';
+    if (s && !out.includes(s)) out.push(s);
+  }
+  return out;
 }
 
 /** Envolve um hash em array (formato que a Meta espera pra user_data). */

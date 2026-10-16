@@ -34,7 +34,7 @@ type RawCfg = NonNullable<Awaited<ReturnType<MetaCapiService['loadRawConfig']>>>
  *
  * Critério:
  *   card GANHO  OU  gerou PEDIDO/ORÇAMENTO no Tiny  OU  está numa das ETAPAS
- *   escolhidas na config  OU  leadScore >= 40.
+ *   escolhidas na config  OU  leadScore >= corte da config (padrão 60).
  *   (Não usa "avançou qualquer etapa": no funil real, follow-ups AUTOMÁTICOS e
  *   "Perdido" ficam depois da entrada e eram ~70% dos "qualificados".)
  * Escopo: cards criados nos últimos 30 dias, fora de marketplace (ML/Shopee
@@ -76,6 +76,8 @@ export class MetaCapiLeadsService {
     // Etapas escolhidas na tela. Vazio = nenhuma etapa conta (só ganho,
     // orçamento/pedido e lead score). Array vazio em ANY() → sempre falso.
     const stageIds: string[] = cfg.qualifiedLeadStageIds ?? [];
+    // Corte do lead score da LP (101 = critério de score desligado).
+    const minScore: number = cfg.qualifiedLeadMinScore ?? 60;
 
     const rows = await this.prisma.$queryRaw<Candidate[]>`
       WITH docs AS (
@@ -114,7 +116,7 @@ export class MetaCapiLeadsService {
           OR COALESCE(dx.has_ped, false)
           OR COALESCE(dx.has_orc, false)
           OR (CASE WHEN (c.metadata->>'leadScore') ~ '^[0-9]+$'
-                   THEN (c.metadata->>'leadScore')::numeric ELSE 0 END) >= 40
+                   THEN (c.metadata->>'leadScore')::numeric ELSE 0 END) >= ${minScore}
         )
         AND NOT EXISTS (
           SELECT 1 FROM meta_capi_lead_events le

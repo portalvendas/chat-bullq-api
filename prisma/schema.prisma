@@ -2225,6 +2225,9 @@ model MetaCapiConfig {
   /// (só ganho / orçamento / pedido / lead score). NÃO usa "avançou qualquer
   /// etapa": follow-ups automáticos e "Perdido" inflariam o sinal.
   qualifiedLeadStageIds  Json    @default("[]") @map("qualified_lead_stage_ids")
+  /// Lead score (vindo da LP) mínimo pra contar como qualificado. Dados reais:
+  /// 40-59 converte igual a lead sem score (~15%); 60+ converte 23-30%.
+  qualifiedLeadMinScore  Int     @default(60) @map("qualified_lead_min_score")
   lastError      String?  @map("last_error") @db.Text
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")

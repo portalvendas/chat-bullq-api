@@ -29,6 +29,7 @@ export interface MetaCapiConfigInput {
   qualifiedLeadEnabled?: boolean;
   qualifiedLeadEventName?: string;
   qualifiedLeadStageIds?: string[];
+  qualifiedLeadMinScore?: number;
 }
 
 /** Doc mínimo que o CAPI precisa (subset da TinyDocument). */
@@ -94,6 +95,7 @@ export class MetaCapiService {
         qualifiedLeadEnabled: false,
         qualifiedLeadEventName: 'QualifiedLead',
         qualifiedLeadStageIds: [] as string[],
+        qualifiedLeadMinScore: 60,
         qualifiedLeadStats: null as null | { sent: number; failed: number; last: string | null },
         hasToken: false,
         lastError: null,
@@ -129,6 +131,7 @@ export class MetaCapiService {
       qualifiedLeadEnabled: c.qualifiedLeadEnabled,
       qualifiedLeadEventName: c.qualifiedLeadEventName,
       qualifiedLeadStageIds: toStringArray(c.qualifiedLeadStageIds),
+      qualifiedLeadMinScore: c.qualifiedLeadMinScore,
       qualifiedLeadStats,
       hasToken: !!c.accessToken,
       lastError: c.lastError,
@@ -166,6 +169,16 @@ export class MetaCapiService {
         : {}),
       ...(Array.isArray(dto.qualifiedLeadStageIds)
         ? { qualifiedLeadStageIds: toStringArray(dto.qualifiedLeadStageIds) as any }
+        : {}),
+      // Corte do score: inteiro 0–101 (101 = desliga o critério de score).
+      ...(typeof dto.qualifiedLeadMinScore === 'number' &&
+      Number.isFinite(dto.qualifiedLeadMinScore)
+        ? {
+            qualifiedLeadMinScore: Math.min(
+              101,
+              Math.max(0, Math.round(dto.qualifiedLeadMinScore)),
+            ),
+          }
         : {}),
       ...tokenPatch,
     };
@@ -342,6 +355,7 @@ export class MetaCapiService {
       qualifiedLeadEnabled: c.qualifiedLeadEnabled,
       qualifiedLeadEventName: c.qualifiedLeadEventName || 'QualifiedLead',
       qualifiedLeadStageIds: toStringArray(c.qualifiedLeadStageIds),
+      qualifiedLeadMinScore: c.qualifiedLeadMinScore ?? 60,
     };
   }
 

@@ -16,6 +16,9 @@ import { PrismaService } from '../../../../database/prisma.service';
 
 type KeyStore = Record<string, Record<string, any>>;
 
+/** Janela pra agrupar rajadas de keys.set numa única gravação. */
+const KEYS_FLUSH_DEBOUNCE_MS = 1000;
+
 @Injectable()
 export class BaileysAuthStateService {
   private readonly logger = new Logger(BaileysAuthStateService.name);
@@ -41,7 +44,8 @@ export class BaileysAuthStateService {
       ? JSON.parse(JSON.stringify(row.keys), BufferJSON.reviver)
       : {};
 
-    const persist = async () => {
+    // Grava o blob inteiro (creds + keys) — UMA escrita.
+    const writeNow = async () => {
       try {
         const credsJson = JSON.parse(JSON.stringify(creds, BufferJSON.replacer));
         const keysJson = JSON.parse(JSON.stringify(keys, BufferJSON.replacer));
@@ -53,6 +57,54 @@ export class BaileysAuthStateService {
       } catch (e: any) {
         this.logger.error(`persist auth channel=${channelId}: ${e?.message ?? e}`);
       }
+    };
+
+    /*
+     * Coalescência (single-flight por canal). Antes, CADA keys.set disparava um
+     * upsert do blob inteiro em paralelo; numa reconexão/sync de histórico o
+     * Baileys chama keys.set centenas de vezes em segundos → centenas de
+     * upserts simultâneos esgotavam o pool do Prisma (5 conexões) e travavam a
+     * API inteira (login, webhooks, outbox). Agora: no máximo 1 escrita em voo
+     * por canal; chamadas durante a escrita só marcam "dirty" e geram UMA
+     * regravação no fim, já com o estado mais recente (o blob é sempre o
+     * estado completo em memória, então nada se perde).
+     */
+    let inFlight: Promise<void> | null = null;
+    let dirty = false;
+    let timer: NodeJS.Timeout | null = null;
+
+    const flush = (): Promise<void> => {
+      if (inFlight) {
+        dirty = true;
+        return inFlight;
+      }
+      inFlight = (async () => {
+        do {
+          dirty = false;
+          await writeNow();
+        } while (dirty);
+      })().finally(() => {
+        inFlight = null;
+      });
+      return inFlight;
+    };
+
+    // keys.set: agrupa rajadas numa janela curta antes de gravar.
+    const scheduleFlush = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void flush();
+      }, KEYS_FLUSH_DEBOUNCE_MS);
+    };
+
+    // creds.update: grava já (coalescido) — creds são críticos pra reconexão.
+    const persist = async () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      await flush();
     };
 
     const state: AuthenticationState = {
@@ -80,8 +132,8 @@ export class BaileysAuthStateService {
               else delete keys[category][id];
             }
           }
-          // best-effort; a persistência definitiva também ocorre no creds.update
-          void persist();
+          // Agrupado (debounce + single-flight); o creds.update também força flush.
+          scheduleFlush();
         },
       } as AuthenticationState['keys'],
     };

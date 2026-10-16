@@ -42,6 +42,21 @@ interface DocForCapi {
   clienteEmail: string | null;
   contactId: string | null;
   raw: any;
+  isMarketplace?: boolean | null;
+  natureza?: string | null;
+  matchedBy?: string | null;
+  matchManual?: boolean | null;
+}
+
+/**
+ * "Venda efetiva" — MESMO critério do dashboard (TinyService.pedidoWhere):
+ * pedido de marketplace (ML/Shopee/…) e natureza diferente de "Venda" (remessa,
+ * bonificação, "outra saída") NÃO são compra vinda de anúncio. Enviá-los como
+ * Purchase infla compras/ROAS no Gerenciador da Meta.
+ */
+function isVendaEfetiva(doc: Pick<DocForCapi, 'isMarketplace' | 'natureza'>): boolean {
+  if (doc.isMarketplace) return false;
+  return (doc.natureza ?? '').toLowerCase().includes('venda');
 }
 
 // Eventos website (dataset do Pixel) só são aceitos dentro de ~7 dias.
@@ -226,6 +241,10 @@ export class MetaCapiService {
       clienteEmail: true,
       contactId: true,
       raw: true,
+      isMarketplace: true,
+      natureza: true,
+      matchedBy: true,
+      matchManual: true,
     } as const;
 
     const pedidos = cfg.purchaseSituacoes.length
@@ -235,6 +254,9 @@ export class MetaCapiService {
             kind: 'PEDIDO',
             data: { gte: since },
             situacao: { in: cfg.purchaseSituacoes },
+            // Venda efetiva (mesmo filtro do dashboard).
+            isMarketplace: false,
+            natureza: { contains: 'venda', mode: 'insensitive' },
             capiEvents: { none: { eventName: 'Purchase', status: 'sent' } },
           },
           select,
@@ -286,6 +308,8 @@ export class MetaCapiService {
   ): 'Purchase' | 'AddToCart' | null {
     const sit = (doc.situacao ?? '').trim();
     if (doc.kind === 'PEDIDO') {
+      // Guarda também aqui (maybeEmit é público): só venda efetiva vira Purchase.
+      if (!isVendaEfetiva(doc)) return null;
       return cfg.purchaseSituacoes.some((s) => s.trim().toLowerCase() === sit.toLowerCase())
         ? 'Purchase'
         : null;
@@ -443,7 +467,20 @@ export class MetaCapiService {
       };
     };
 
-    if (doc.contactId) return load(doc.contactId);
+    if (doc.contactId) {
+      // Vínculo manual (feito na tela) é confiável. Vínculo automático só por
+      // NOME é fraco: com homônimo mandaríamos telefone/fbc de OUTRA pessoa e a
+      // Meta atribuiria a venda ao anúncio errado. Regra: nome parcial nunca;
+      // nome exato só se for ÚNICO no CRM. Sem vínculo, o evento sobe só com os
+      // dados do próprio Tiny (seguro).
+      if (!doc.matchManual && doc.matchedBy === 'name_partial') return null;
+      if (!doc.matchManual && doc.matchedBy === 'name') {
+        const c = await load(doc.contactId);
+        if (!c?.name) return null;
+        return (await this.isUniqueName(organizationId, c.name)) ? c : null;
+      }
+      return load(doc.contactId);
+    }
 
     const matched = await this.matchContactId(organizationId, doc);
     if (!matched) return null;
@@ -515,20 +552,33 @@ export class MetaCapiService {
       if (c) return { id: c.id, by: 'email' };
     }
 
-    // 4) Nome exato (case-insensitive) — fallback fraco, ultimo recurso.
+    // 4) Nome exato (case-insensitive) — fallback fraco: só vale se ÚNICO.
     const nome = (doc.clienteNome || '').trim();
     if (nome.length >= 4) {
-      const c = await this.prisma.contact.findFirst({
+      const rows = await this.prisma.contact.findMany({
         where: {
           organizationId,
           deletedAt: null,
           name: { equals: nome, mode: 'insensitive' },
         },
         select: { id: true },
+        take: 2,
       });
-      if (c) return { id: c.id, by: 'name' };
+      if (rows.length === 1) return { id: rows[0].id, by: 'name' };
     }
     return null;
+  }
+
+  /** True quando exatamente 1 contato ativo da org tem esse nome. */
+  private async isUniqueName(organizationId: string, name: string): Promise<boolean> {
+    const n = await this.prisma.contact.count({
+      where: {
+        organizationId,
+        deletedAt: null,
+        name: { equals: name.trim(), mode: 'insensitive' },
+      },
+    });
+    return n === 1;
   }
 
   private num(v: any): number | null {

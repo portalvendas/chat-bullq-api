@@ -192,6 +192,14 @@ export class TinyService {
       } catch (err: any) {
         this.logger.warn(`enrichLinkedContacts falhou (best-effort): ${err?.message ?? err}`);
       }
+      // Religa documentos do MESMO cliente do Tiny ao contato já ligado de forma
+      // forte (CPF/telefone/e-mail/manual) — antes do envio à Meta.
+      try {
+        const n = await this.relinkBySameTinyContact(organizationId);
+        if (n > 0) this.logger.log(`relinkBySameTinyContact: ${n} documento(s) religados`);
+      } catch (err: any) {
+        this.logger.warn(`relinkBySameTinyContact falhou (best-effort): ${err?.message ?? err}`);
+      }
       // Reconciliação de exclusões (throttle 6h) — SÓ no sync em background
       // (cron). Fora do caminho manual pra não somar ao timeout da request.
       if (opts?.reconcile) {
@@ -597,6 +605,44 @@ export class TinyService {
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
       .filter((t) => t.length >= 2);
+  }
+
+  // ── Religação pelo cliente do Tiny ───────────────────────────────────
+
+  /**
+   * Orçamentos e pedidos do MESMO cliente no Tiny (`tiny_contato_id`) passam a
+   * apontar para o contato do CRM que já foi ligado a esse cliente de forma
+   * FORTE (CPF/CNPJ, telefone, e-mail ou vínculo manual). Cobre o caso comum:
+   * o orçamento chega sem telefone (só casaria por nome), mas o pedido do mesmo
+   * cliente veio com CPF.
+   *
+   * Regras:
+   *  - só religa documentos SEM vínculo ou ligados só por nome (nunca mexe em
+   *    vínculo forte nem em vínculo manual);
+   *  - o cliente do Tiny precisa apontar para UM único contato forte (se dois
+   *    contatos diferentes disputam o mesmo cliente, não religa nada);
+   *  - grava `matched_by = 'tiny_contato'` (rastreável no relatório E1).
+   * Idempotente (SQL único). Retorna quantos documentos mudaram.
+   */
+  async relinkBySameTinyContact(organizationId: string): Promise<number> {
+    return this.prisma.$executeRaw`
+      WITH strong AS (
+        SELECT tiny_contato_id, MIN(contact_id) AS contact_id
+        FROM tiny_documents
+        WHERE organization_id = ${organizationId}
+          AND tiny_contato_id IS NOT NULL
+          AND contact_id IS NOT NULL
+          AND (match_manual = true OR matched_by IN ('cpf_cnpj', 'phone', 'email'))
+        GROUP BY tiny_contato_id
+        HAVING COUNT(DISTINCT contact_id) = 1
+      )
+      UPDATE tiny_documents d
+      SET contact_id = s.contact_id, matched_by = 'tiny_contato', updated_at = now()
+      FROM strong s
+      WHERE d.organization_id = ${organizationId}
+        AND d.tiny_contato_id = s.tiny_contato_id
+        AND d.match_manual = false
+        AND (d.contact_id IS NULL OR d.matched_by IN ('name', 'name_partial'))`;
   }
 
   // ── Enriquecimento do lead a partir dos documentos (Tiny) ────────────

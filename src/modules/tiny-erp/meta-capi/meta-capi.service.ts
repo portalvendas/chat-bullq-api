@@ -16,6 +16,7 @@ import {
 } from './meta-capi.hash';
 import { phoneVariants } from '../../../common/phone.util';
 import { webContextFromTracking } from './meta-capi.web';
+import { businessMessagingContext } from './meta-capi.bm';
 
 export interface MetaCapiConfigInput {
   enabled?: boolean;
@@ -100,6 +101,7 @@ export class MetaCapiService {
         qualifiedLeadMinScore: 60,
         websiteUrl: null as string | null,
         qualifiedLeadStats: null as null | { sent: number; failed: number; last: string | null },
+        docStats: null as null | Awaited<ReturnType<MetaCapiService['docStats']>>,
         hasToken: false,
         lastError: null,
       };
@@ -137,9 +139,57 @@ export class MetaCapiService {
       qualifiedLeadMinScore: c.qualifiedLeadMinScore,
       websiteUrl: c.websiteUrl,
       qualifiedLeadStats,
+      docStats: await this.docStats(organizationId),
       hasToken: !!c.accessToken,
       lastError: c.lastError,
     };
+  }
+
+  /**
+   * Saúde do envio de vendas/orçamentos (últimos 30 dias) para o card da CAPI:
+   * quanto está ligado a um contato (e por qual força) e quanto foi aceito pela
+   * Meta como evento de site. Pedidos = só venda efetiva (mesmo filtro do
+   * dashboard e do envio).
+   *
+   * Saída: { pedidos: { total, ligadosForte, ligadosNome, semLigacao, enviados,
+   *          enviadosSite }, orcamentos: { … } }
+   */
+  private async docStats(organizationId: string) {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        kind: string;
+        total: bigint;
+        forte: bigint;
+        nome: bigint;
+        sem: bigint;
+        enviados: bigint;
+        site: bigint;
+      }>
+    >`
+      SELECT d.kind,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE d.contact_id IS NOT NULL AND (d.match_manual OR d.matched_by IN ('cpf_cnpj','phone','email','tiny_contato'))) AS forte,
+        COUNT(*) FILTER (WHERE d.contact_id IS NOT NULL AND NOT d.match_manual AND d.matched_by IN ('name','name_partial')) AS nome,
+        COUNT(*) FILTER (WHERE d.contact_id IS NULL) AS sem,
+        COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM meta_capi_events e WHERE e.tiny_document_id = d.id AND e.status = 'sent')) AS enviados,
+        COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM meta_capi_events e WHERE e.tiny_document_id = d.id AND e.status = 'sent' AND e.action_source = 'website')) AS site
+      FROM tiny_documents d
+      WHERE d.organization_id = ${organizationId}
+        AND d.data >= now() - interval '30 days'
+        AND (d.kind = 'ORCAMENTO' OR (d.is_marketplace = false AND d.natureza ILIKE '%venda%'))
+      GROUP BY d.kind`;
+    const pick = (kind: string) => {
+      const r = rows.find((x) => x.kind === kind);
+      return {
+        total: Number(r?.total ?? 0),
+        ligadosForte: Number(r?.forte ?? 0),
+        ligadosNome: Number(r?.nome ?? 0),
+        semLigacao: Number(r?.sem ?? 0),
+        enviados: Number(r?.enviados ?? 0),
+        enviadosSite: Number(r?.site ?? 0),
+      };
+    };
+    return { pedidos: pick('PEDIDO'), orcamentos: pick('ORCAMENTO') };
   }
 
   async updateConfig(organizationId: string, dto: MetaCapiConfigInput) {
@@ -246,20 +296,35 @@ export class MetaCapiService {
     if (existing?.status === 'sent') return;
 
     try {
-      const event = await this.buildEvent(
+      const { event, bm } = await this.buildEvent(
         organizationId,
         doc,
         eventName,
         cfg.currency,
         cfg.websiteUrl,
       );
-      const result = await this.http.sendEvents({
-        pixelId: cfg.pixelId,
-        accessToken: cfg.accessToken,
-        apiVersion: cfg.apiVersion,
-        events: [event],
-        testEventCode: cfg.testEventCode,
-      });
+      const send = (ev: CapiEvent) =>
+        this.http.sendEvents({
+          pixelId: cfg.pixelId!,
+          accessToken: cfg.accessToken!,
+          apiVersion: cfg.apiVersion,
+          events: [ev],
+          testEventCode: cfg.testEventCode,
+        });
+      // Lead de anúncio de WhatsApp: tenta business_messaging (ctwa_clid);
+      // se a Meta recusar (ex.: dataset não vinculado à WABA), cai no padrão.
+      let actionSource = event.action_source;
+      let result = bm ? await send(bm) : null;
+      if (result?.ok) {
+        actionSource = 'business_messaging';
+      } else {
+        if (bm) {
+          this.logger.warn(
+            `CAPI ${eventName} business_messaging recusado doc=${doc.numero ?? doc.id} (${result?.error}); usando ${event.action_source}`,
+          );
+        }
+        result = await send(event);
+      }
       await this.prisma.metaCapiEvent.upsert({
         where: { uq_capi_doc_event: { tinyDocumentId: doc.id, eventName } },
         create: {
@@ -272,9 +337,11 @@ export class MetaCapiService {
           error: result.ok ? null : result.error ?? null,
           value: this.num(doc.valor),
           eventId: event.event_id ?? null,
+          actionSource,
         },
         update: {
           status: result.ok ? 'sent' : 'failed',
+          actionSource,
           httpStatus: result.httpStatus,
           fbTraceId: result.fbTraceId ?? null,
           error: result.ok ? null : result.error ?? null,
@@ -408,7 +475,7 @@ export class MetaCapiService {
     eventName: 'Purchase' | 'AddToCart',
     currency: string,
     websiteUrl?: string | null,
-  ): Promise<CapiEvent> {
+  ): Promise<{ event: CapiEvent; bm: CapiEvent | null }> {
     // Endereço do cliente (do detalhe do pedido, quando presente no raw).
     const cli = (doc.raw?.cliente ?? {}) as Record<string, any>;
     const end = (cli.endereco ??
@@ -500,7 +567,7 @@ export class MetaCapiService {
     const web = crm ? webContextFromTracking(tr, websiteUrl) : null;
     if (web) user_data.client_user_agent = web.userAgent;
 
-    return {
+    const event: CapiEvent = {
       event_name: eventName,
       event_time: Math.floor(tsMs / 1000),
       event_id: eventId,
@@ -509,6 +576,28 @@ export class MetaCapiService {
       user_data,
       custom_data,
     };
+
+    // Lead de anúncio de WhatsApp (sem dados de LP): variante business_messaging
+    // com o id do clique. O maybeEmit tenta ela primeiro e cai no `event`.
+    let bm: CapiEvent | null = null;
+    if (!web && crm) {
+      const ctx = await businessMessagingContext(this.prisma, crm.id, tr);
+      if (ctx) {
+        bm = {
+          event_name: eventName,
+          event_time: Math.floor(tsMs / 1000),
+          event_id: eventId,
+          action_source: 'business_messaging',
+          messaging_channel: 'whatsapp',
+          user_data: {
+            whatsapp_business_account_id: ctx.wabaId,
+            ctwa_clid: ctx.ctwaClid,
+          },
+          custom_data,
+        };
+      }
+    }
+    return { event, bm };
   }
 
   /**

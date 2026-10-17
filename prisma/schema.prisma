@@ -2250,6 +2250,8 @@ model MetaCapiEvent {
   eventName      String   @map("event_name")
   /// sent | failed
   status         String
+  /// website | business_messaging | system_generated (como foi enviado).
+  actionSource   String?  @map("action_source")
   httpStatus     Int?     @map("http_status")
   fbTraceId      String?  @map("fb_trace_id")
   error          String?  @db.Text

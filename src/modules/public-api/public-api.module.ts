@@ -4,6 +4,8 @@ import { PublicDashboardController } from './controllers/public-dashboard.contro
 import { PublicMercadoLivreController } from './controllers/public-mercadolivre.controller';
 import { PublicLeadsController } from './controllers/public-leads.controller';
 import { PublicLeadsService } from './services/public-leads.service';
+import { PublicReportsController } from './controllers/public-reports.controller';
+import { ConversionsReportService } from './services/conversions-report.service';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { AuthModule } from '../auth/auth.module';
 import { MercadoLivreModule } from '../channel-hub/adapters/mercado-livre/mercadolivre.module';
@@ -16,7 +18,8 @@ import { PipelinesModule } from '../pipelines/pipelines.module';
     PublicDashboardController,
     PublicMercadoLivreController,
     PublicLeadsController,
+    PublicReportsController,
   ],
-  providers: [PublicLeadsService],
+  providers: [PublicLeadsService, ConversionsReportService],
 })
 export class PublicApiModule {}

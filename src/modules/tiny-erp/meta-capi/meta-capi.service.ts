@@ -15,6 +15,7 @@ import {
   fbcFromFbclid,
 } from './meta-capi.hash';
 import { phoneVariants } from '../../../common/phone.util';
+import { webContextFromTracking } from './meta-capi.web';
 
 export interface MetaCapiConfigInput {
   enabled?: boolean;
@@ -30,6 +31,7 @@ export interface MetaCapiConfigInput {
   qualifiedLeadEventName?: string;
   qualifiedLeadStageIds?: string[];
   qualifiedLeadMinScore?: number;
+  websiteUrl?: string | null;
 }
 
 /** Doc mínimo que o CAPI precisa (subset da TinyDocument). */
@@ -96,6 +98,7 @@ export class MetaCapiService {
         qualifiedLeadEventName: 'QualifiedLead',
         qualifiedLeadStageIds: [] as string[],
         qualifiedLeadMinScore: 60,
+        websiteUrl: null as string | null,
         qualifiedLeadStats: null as null | { sent: number; failed: number; last: string | null },
         hasToken: false,
         lastError: null,
@@ -132,6 +135,7 @@ export class MetaCapiService {
       qualifiedLeadEventName: c.qualifiedLeadEventName,
       qualifiedLeadStageIds: toStringArray(c.qualifiedLeadStageIds),
       qualifiedLeadMinScore: c.qualifiedLeadMinScore,
+      websiteUrl: c.websiteUrl,
       qualifiedLeadStats,
       hasToken: !!c.accessToken,
       lastError: c.lastError,
@@ -169,6 +173,16 @@ export class MetaCapiService {
         : {}),
       ...(Array.isArray(dto.qualifiedLeadStageIds)
         ? { qualifiedLeadStageIds: toStringArray(dto.qualifiedLeadStageIds) as any }
+        : {}),
+      // URL padrão do site: só http(s) absoluta; vazio limpa.
+      ...(dto.websiteUrl !== undefined
+        ? {
+            websiteUrl:
+              typeof dto.websiteUrl === 'string' &&
+              /^https?:\/\/[^\s]+$/i.test(dto.websiteUrl.trim())
+                ? dto.websiteUrl.trim().slice(0, 500)
+                : null,
+          }
         : {}),
       // Corte do score: inteiro 0–101 (101 = desliga o critério de score).
       ...(typeof dto.qualifiedLeadMinScore === 'number' &&
@@ -232,7 +246,13 @@ export class MetaCapiService {
     if (existing?.status === 'sent') return;
 
     try {
-      const event = await this.buildEvent(organizationId, doc, eventName, cfg.currency);
+      const event = await this.buildEvent(
+        organizationId,
+        doc,
+        eventName,
+        cfg.currency,
+        cfg.websiteUrl,
+      );
       const result = await this.http.sendEvents({
         pixelId: cfg.pixelId,
         accessToken: cfg.accessToken,
@@ -356,6 +376,7 @@ export class MetaCapiService {
       qualifiedLeadEventName: c.qualifiedLeadEventName || 'QualifiedLead',
       qualifiedLeadStageIds: toStringArray(c.qualifiedLeadStageIds),
       qualifiedLeadMinScore: c.qualifiedLeadMinScore ?? 60,
+      websiteUrl: c.websiteUrl ?? null,
     };
   }
 
@@ -386,6 +407,7 @@ export class MetaCapiService {
     doc: DocForCapi,
     eventName: 'Purchase' | 'AddToCart',
     currency: string,
+    websiteUrl?: string | null,
   ): Promise<CapiEvent> {
     // Endereço do cliente (do detalhe do pedido, quando presente no raw).
     const cli = (doc.raw?.cliente ?? {}) as Record<string, any>;
@@ -473,11 +495,17 @@ export class MetaCapiService {
     const prefix = doc.kind === 'PEDIDO' ? 'PED' : 'ORC';
     const eventId = `KORTIA-${prefix}-${doc.numero ?? doc.id}`;
 
+    // Venda de lead que veio da LP (com dados de navegador) → "website", pra
+    // entrar nas colunas/otimização das campanhas de site. Senão, CRM.
+    const web = crm ? webContextFromTracking(tr, websiteUrl) : null;
+    if (web) user_data.client_user_agent = web.userAgent;
+
     return {
       event_name: eventName,
       event_time: Math.floor(tsMs / 1000),
       event_id: eventId,
-      action_source: 'system_generated',
+      action_source: web ? 'website' : 'system_generated',
+      ...(web ? { event_source_url: web.eventSourceUrl } : {}),
       user_data,
       custom_data,
     };

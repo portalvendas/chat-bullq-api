@@ -155,6 +155,15 @@ export class PublicLeadsService {
     if ((t.ip == null || String(t.ip).trim() === '') && t.client_ip != null) {
       t.ip = t.client_ip;
     }
+    // URL da página da LP: o n8n repassa como `pagina`/`url` (e não como
+    // page_url). A Meta exige essa URL (event_source_url) pra aceitar o evento
+    // como "website" — sem ela, conversões da LP só sobem como CRM.
+    if (!t.page_url) {
+      const pageUrl = [body?.page_url, body?.pagina, body?.url, body?.pageUrl, body?.urlPagina]
+        .map((v) => (typeof v === 'string' ? v.trim() : ''))
+        .find((v) => /^https?:\/\//i.test(v));
+      if (pageUrl) t.page_url = pageUrl.slice(0, 1000);
+    }
     return t;
   }
 

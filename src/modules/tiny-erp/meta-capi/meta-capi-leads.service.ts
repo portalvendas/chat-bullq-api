@@ -10,6 +10,7 @@ import {
   splitName,
   fbcFromFbclid,
 } from './meta-capi.hash';
+import { webContextFromTracking } from './meta-capi.web';
 
 /** Janela do clique CTWA aceita pela Meta para eventos de business messaging. */
 const CTWA_WINDOW_MS = 7 * 24 * 3600 * 1000;
@@ -180,9 +181,12 @@ export class MetaCapiLeadsService {
         }
       }
 
-      // 2) Padrão CRM (system_generated).
+      // 2) Lead com dados de navegador da LP → "website" (entra em conversão
+      //    personalizada e na otimização das campanhas de site). Sem esses
+      //    dados → padrão CRM (system_generated).
       if (!result) {
-        actionSource = 'system_generated';
+        const web = webContextFromTracking(tr, cfg.websiteUrl);
+        actionSource = web ? 'website' : 'system_generated';
         const { first, last } = splitName(contact.name);
         const leadTs = contact.createdAt ? contact.createdAt.getTime() : Date.now();
         const user_data: Record<string, any> = {
@@ -194,7 +198,7 @@ export class MetaCapiLeadsService {
           fbc: tr.fbc || fbcFromFbclid(tr.fbclid, leadTs) || undefined,
           fbp: tr.fbp || undefined,
           client_ip_address: tr.ip || tr.client_ip_address || tr.client_ip || undefined,
-          client_user_agent: tr.client_user_agent || tr.user_agent || undefined,
+          client_user_agent: web?.userAgent || tr.client_user_agent || tr.user_agent || undefined,
           // Lead Ads (formulário instantâneo): lead_id é a chave de match mais forte.
           lead_id: r.leadgenId && /^\d{10,20}$/.test(r.leadgenId) ? r.leadgenId : undefined,
         };
@@ -207,7 +211,8 @@ export class MetaCapiLeadsService {
           event_name: eventName,
           event_time: nowSec,
           event_id: eventId,
-          action_source: 'system_generated',
+          action_source: actionSource,
+          ...(web ? { event_source_url: web.eventSourceUrl } : {}),
           user_data,
           custom_data,
         });

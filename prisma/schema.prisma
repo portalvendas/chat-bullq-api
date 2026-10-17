@@ -2228,6 +2228,9 @@ model MetaCapiConfig {
   /// Lead score (vindo da LP) mínimo pra contar como qualificado. Dados reais:
   /// 40-59 converte igual a lead sem score (~15%); 60+ converte 23-30%.
   qualifiedLeadMinScore  Int     @default(60) @map("qualified_lead_min_score")
+  /// URL padrão do site/LP — usada como event_source_url quando o lead tem
+  /// dados de navegador (UA + IP/fbp) mas a LP não mandou a URL da página.
+  websiteUrl             String? @map("website_url")
   lastError      String?  @map("last_error") @db.Text
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")

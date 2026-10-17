@@ -1105,13 +1105,34 @@ export class PipelinesService {
     });
     if (!channel) throw new BadRequestException('Canal de WhatsApp inválido');
 
+    // Esse telefone JÁ existe nesse canal ligado a OUTRO contato (lead
+    // duplicado: entrou pelo formulário e também pelo WhatsApp)? Criar outro
+    // ContactChannel violaria o unique (canal + telefone) e a requisição
+    // quebrava com erro 500. Nesse caso, a conversa certa é a desse contato
+    // existente: vincula o card a ela.
+    const sub8 = phone.slice(-8);
+    const ddd = phone.slice(2, 4);
+    const phoneKeys = [
+      phone,
+      `${phone}@s.whatsapp.net`,
+      `55${ddd}${sub8}`, // sem o 9º dígito
+      `55${ddd}${sub8}@s.whatsapp.net`,
+    ];
+    const existingByPhone = await this.prisma.contactChannel.findFirst({
+      where: { channelId, externalId: { in: phoneKeys } },
+      select: { id: true, contactId: true },
+    });
+    const convContactId = existingByPhone?.contactId ?? card.contact.id;
+
     // ContactChannel: reusa qualquer canal do contato nessa conexão; senão cria
     // chaveado pelo telefone (o LID chega quando o cliente responder — o
     // resolvedor unifica por telefone).
-    let cc = await this.prisma.contactChannel.findFirst({
-      where: { contactId: card.contact.id, channelId },
-      select: { id: true },
-    });
+    let cc =
+      existingByPhone ??
+      (await this.prisma.contactChannel.findFirst({
+        where: { contactId: card.contact.id, channelId },
+        select: { id: true, contactId: true },
+      }));
     if (!cc) {
       cc = await this.prisma.contactChannel.create({
         data: {
@@ -1120,16 +1141,17 @@ export class PipelinesService {
           externalId: phone,
           profileName: card.contact.name,
         },
-        select: { id: true },
+        select: { id: true, contactId: true },
       });
     }
 
-    // Conversa: reusa a aberta; senão cria uma nova (PENDING).
+    // Conversa: reusa a aberta; senão cria uma nova (PENDING). Usa o contato
+    // dono do telefone nesse canal (o próprio lead ou o duplicado existente).
     let conv = await this.prisma.conversation.findFirst({
       where: {
         organizationId,
         channelId,
-        contactId: card.contact.id,
+        contactId: convContactId,
         status: {
           in: [
             ConversationStatus.PENDING,
@@ -1151,7 +1173,7 @@ export class PipelinesService {
         data: {
           organizationId,
           channelId,
-          contactId: card.contact.id,
+          contactId: convContactId,
           status: ConversationStatus.PENDING,
           protocol,
           isGroup: false,

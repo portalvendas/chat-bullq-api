@@ -168,7 +168,7 @@ export class MetaCapiService {
     >`
       SELECT d.kind,
         COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE d.contact_id IS NOT NULL AND (d.match_manual OR d.matched_by IN ('cpf_cnpj','phone','email','tiny_contato'))) AS forte,
+        COUNT(*) FILTER (WHERE d.contact_id IS NOT NULL AND (d.match_manual OR d.matched_by IN ('cpf_cnpj','phone','email','tiny_contato','conversa','nome_vendedor'))) AS forte,
         COUNT(*) FILTER (WHERE d.contact_id IS NOT NULL AND NOT d.match_manual AND d.matched_by IN ('name','name_partial')) AS nome,
         COUNT(*) FILTER (WHERE d.contact_id IS NULL) AS sem,
         COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM meta_capi_events e WHERE e.tiny_document_id = d.id AND e.status = 'sent')) AS enviados,

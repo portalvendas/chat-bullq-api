@@ -207,7 +207,7 @@ function ymd(d: Date | null | undefined): string {
   return d ? new Date(d).toISOString().slice(0, 10) : '';
 }
 
-/** cpf / telefone / email / nome / tiny_contato / manual / sem_ligacao. */
+/** cpf / telefone / email / conversa / tiny_contato / nome_vendedor / nome / manual / sem_ligacao. */
 function metodoLigacao(r: RawRow): string {
   if (!r.contactId) return 'sem_ligacao';
   if (r.matchManual) return 'manual';
@@ -218,6 +218,8 @@ function metodoLigacao(r: RawRow): string {
     case 'name':
     case 'name_partial': return 'nome';
     case 'tiny_contato': return 'tiny_contato';
+    case 'conversa': return 'conversa';
+    case 'nome_vendedor': return 'nome_vendedor';
     default: return r.matchedBy ?? 'desconhecido';
   }
 }

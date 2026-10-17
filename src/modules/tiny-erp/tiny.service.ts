@@ -24,6 +24,14 @@ const PEDIDO_SITUACOES: Record<string, string> = {
 /** Situações de pedido que NÃO contam como venda efetiva. */
 const PEDIDO_STATUS_EXCLUIDOS = ['Cancelada', 'Dados Incompletos', 'Removido'];
 
+/** Match direto por identificador do cliente (alta confiança). */
+const STRONG_MATCHES = ['cpf_cnpj', 'phone', 'email'];
+/** Vínculos por evidência, feitos depois do sync (ver relinkBy*). */
+const EVIDENCE_MATCHES = ['tiny_contato', 'conversa', 'nome_vendedor'];
+/** Throttle da varredura de conversas (cara): 1x/hora por org. */
+const EVIDENCE_THROTTLE_MS = 60 * 60 * 1000;
+const evidenceLastRunAt = new Map<string, number>();
+
 /** Canais de venda (marketplaces) cuja origem deve ser excluída da tela. */
 const MARKETPLACE_RE =
   /(mercado ?livre|shopee|magalu|magazine ?luiza|amazon|americanas|b2w|via ?varejo)/i;
@@ -192,8 +200,29 @@ export class TinyService {
       } catch (err: any) {
         this.logger.warn(`enrichLinkedContacts falhou (best-effort): ${err?.message ?? err}`);
       }
+      // Vínculo por EVIDÊNCIA (antes do envio à Meta), 1x/hora por org. A 1ª
+      // rodada após subir a API varre 150 dias (backfill); depois, 30 dias.
+      //  1) número do orçamento/pedido citado na conversa do lead;
+      //  2) nome + vendedor do card + janela de tempo.
+      const lastEv = evidenceLastRunAt.get(organizationId);
+      if (!lastEv || Date.now() - lastEv > EVIDENCE_THROTTLE_MS) {
+        evidenceLastRunAt.set(organizationId, Date.now());
+        const days = lastEv ? 30 : 150;
+        try {
+          const n = await this.relinkByConversationMention(organizationId, days);
+          if (n > 0) this.logger.log(`relinkByConversationMention: ${n} documento(s) ligados pela conversa`);
+        } catch (err: any) {
+          this.logger.warn(`relinkByConversationMention falhou (best-effort): ${err?.message ?? err}`);
+        }
+        try {
+          const n = await this.relinkByNameAndSeller(organizationId, days, lastEv ? 200 : 2000);
+          if (n > 0) this.logger.log(`relinkByNameAndSeller: ${n} documento(s) ligados por nome+vendedor`);
+        } catch (err: any) {
+          this.logger.warn(`relinkByNameAndSeller falhou (best-effort): ${err?.message ?? err}`);
+        }
+      }
       // Religa documentos do MESMO cliente do Tiny ao contato já ligado de forma
-      // forte (CPF/telefone/e-mail/manual) — antes do envio à Meta.
+      // forte (CPF/telefone/e-mail/conversa/manual) — antes do envio à Meta.
       try {
         const n = await this.relinkBySameTinyContact(organizationId);
         if (n > 0) this.logger.log(`relinkBySameTinyContact: ${n} documento(s) religados`);
@@ -367,7 +396,13 @@ export class TinyService {
     });
     // Match automático só é (re)aplicado quando o vínculo NÃO foi feito à mão.
     await this.prisma.tinyDocument.updateMany({
-      where: { organizationId, kind: 'PEDIDO', tinyId: String(p.id), matchManual: false },
+      where: {
+        organizationId,
+        kind: 'PEDIDO',
+        tinyId: String(p.id),
+        matchManual: false,
+        ...this.noDowngradeWhere(matchFields.matchedBy),
+      },
       data: matchFields,
     });
     // Atualiza o vendedor a partir do Tiny apenas quando veio um valor E o
@@ -494,9 +529,28 @@ export class TinyService {
     });
     // Match automático só (re)aplicado quando o vínculo NÃO foi feito à mão.
     await this.prisma.tinyDocument.updateMany({
-      where: { organizationId, kind: 'ORCAMENTO', tinyId: String(o.id), matchManual: false },
+      where: {
+        organizationId,
+        kind: 'ORCAMENTO',
+        tinyId: String(o.id),
+        matchManual: false,
+        ...this.noDowngradeWhere(matchFields.matchedBy),
+      },
       data: matchFields,
     });
+  }
+
+  /**
+   * Vínculos por EVIDÊNCIA (mesmo cliente no Tiny, número citado na conversa,
+   * nome + vendedor) são feitos depois do sync e valem mais que um match fraco
+   * (nome) ou nenhum. O re-sync só pode sobrescrevê-los com um match FORTE
+   * (CPF/telefone/e-mail); senão, mantém o que está.
+   */
+  private noDowngradeWhere(newMatchedBy: string | null | undefined) {
+    if (newMatchedBy && STRONG_MATCHES.includes(newMatchedBy)) return {};
+    return {
+      OR: [{ matchedBy: null }, { matchedBy: { notIn: EVIDENCE_MATCHES } }],
+    };
   }
 
   // ── Matching lead ──────────────────────────────────────────────────
@@ -632,7 +686,7 @@ export class TinyService {
         WHERE organization_id = ${organizationId}
           AND tiny_contato_id IS NOT NULL
           AND contact_id IS NOT NULL
-          AND (match_manual = true OR matched_by IN ('cpf_cnpj', 'phone', 'email'))
+          AND (match_manual = true OR matched_by IN ('cpf_cnpj', 'phone', 'email', 'conversa'))
         GROUP BY tiny_contato_id
         HAVING COUNT(DISTINCT contact_id) = 1
       )
@@ -642,7 +696,143 @@ export class TinyService {
       WHERE d.organization_id = ${organizationId}
         AND d.tiny_contato_id = s.tiny_contato_id
         AND d.match_manual = false
-        AND (d.contact_id IS NULL OR d.matched_by IN ('name', 'name_partial'))`;
+        AND (d.contact_id IS NULL OR d.matched_by IN ('name', 'name_partial', 'nome_vendedor'))`;
+  }
+
+  /**
+   * Liga orçamento/pedido ao lead pela CONVERSA: o vendedor costuma mandar no
+   * WhatsApp "segue o orçamento 1965" ou o PDF "Proposta_1965.pdf". Se o
+   * número do documento aparece (texto, legenda ou nome do arquivo, logo
+   * depois de "orçamento", "proposta" ou "pedido") na conversa de UM único
+   * contato, o documento é desse contato → `matched_by = 'conversa'`.
+   *
+   * Só mexe em documentos sem vínculo ou ligados por nome/nome+vendedor.
+   * Uma varredura em SQL das mensagens dos últimos `sinceDays` dias.
+   *
+   * Exemplo de mensagem que casa: "Oi Ana, segue o orçamento nº 1965 💛"
+   *   → número 1965 → TinyDocument(numero='1965') ganha o contato da conversa.
+   */
+  async relinkByConversationMention(organizationId: string, sinceDays: number): Promise<number> {
+    // "orçamento nº 1965", "Proposta_1965.pdf", "proposta comercial 1980", "pedido #11790".
+    const re =
+      '(?:or[cç]amento|proposta(?:[^0-9a-z]comercial)?|pedido)s?[^0-9a-z]{0,4}(?:n[º°o]?[^0-9a-z]{0,3})?([0-9]{3,7})';
+    return this.prisma.$executeRaw`
+      WITH txt AS (
+        SELECT cv.contact_id,
+               COALESCE(m.content->>'text', '') || ' ' || COALESCE(m.content->>'caption', '') || ' ' ||
+               COALESCE(m.content->>'fileName', '') AS t
+        FROM messages m
+        JOIN conversations cv ON cv.id = m.conversation_id
+        WHERE cv.organization_id = ${organizationId}
+          AND m.created_at >= now() - make_interval(days => ${sinceDays})
+      ),
+      ment AS (
+        SELECT DISTINCT contact_id, (regexp_matches(t, ${re}, 'gi'))[1] AS num
+        FROM txt
+        WHERE t ~* '(or[cç]amento|proposta|pedido)'
+      ),
+      uniq AS (
+        SELECT num, MIN(contact_id) AS contact_id
+        FROM ment
+        GROUP BY num
+        HAVING COUNT(DISTINCT contact_id) = 1
+      )
+      UPDATE tiny_documents d
+      SET contact_id = u.contact_id, matched_by = 'conversa', updated_at = now()
+      FROM uniq u
+      WHERE d.organization_id = ${organizationId}
+        AND d.numero = u.num
+        AND d.match_manual = false
+        AND (d.contact_id IS NULL OR d.matched_by IN ('name', 'name_partial', 'nome_vendedor'))`;
+  }
+
+  /**
+   * Liga por NOME + VENDEDOR + TEMPO: o orçamento é feito pelo vendedor que
+   * atendeu o lead, pouco depois do primeiro contato. Candidato = contato com
+   * card atribuído ao vendedor do documento, criado até 120 dias antes do
+   * documento, cujo nome casa com o cliente do Tiny (mesmo 1º nome e, se os
+   * dois nomes têm sobrenome, ao menos mais um nome em comum). Só liga se
+   * houver UM candidato → `matched_by = 'nome_vendedor'`.
+   *
+   * Muito mais seguro que o nome sozinho: o homônimo teria que ser lead do
+   * MESMO vendedor na MESMA janela.
+   */
+  async relinkByNameAndSeller(
+    organizationId: string,
+    sinceDays: number,
+    limit = 400,
+  ): Promise<number> {
+    const since = new Date(Date.now() - sinceDays * 24 * 3600 * 1000);
+    const docs = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        matchManual: false,
+        OR: [{ contactId: null }, { matchedBy: { in: ['name', 'name_partial'] } }],
+        vendedor: { not: null },
+        clienteNome: { not: null },
+        data: { gte: since },
+      },
+      select: { id: true, clienteNome: true, vendedor: true, data: true },
+      orderBy: { data: 'desc' },
+      take: limit,
+    });
+    if (!docs.length) return 0;
+
+    // Vendedor (texto do Tiny) → usuário(s) do CRM pelo 1º nome.
+    const members = await this.prisma.userOrganization.findMany({
+      where: { organizationId },
+      select: { user: { select: { id: true, name: true } } },
+    });
+    const usersByFirst = new Map<string, string[]>();
+    for (const m of members) {
+      const first = this.normNameTokens(m.user?.name)[0];
+      if (!first || !m.user) continue;
+      usersByFirst.set(first, [...(usersByFirst.get(first) ?? []), m.user.id]);
+    }
+
+    let linked = 0;
+    for (const d of docs) {
+      const seller = this.normNameTokens(d.vendedor)[0];
+      const userIds = seller ? usersByFirst.get(seller) : undefined;
+      // Vendedor sem usuário ou ambíguo (2 usuários com o mesmo 1º nome): pula.
+      if (!userIds || userIds.length !== 1) continue;
+      const cli = this.normNameTokens(d.clienteNome);
+      if (!cli.length || !d.data) continue;
+
+      const from = new Date(d.data.getTime() - 120 * 24 * 3600 * 1000);
+      const to = new Date(d.data.getTime() + 24 * 3600 * 1000);
+      const cands = await this.prisma.$queryRaw<Array<{ id: string; name: string | null }>>`
+        SELECT DISTINCT c.id, c.name
+        FROM contacts c
+        JOIN cards k ON k.contact_id = c.id
+        WHERE c.organization_id = ${organizationId}
+          AND c.deleted_at IS NULL
+          AND k.assigned_to_id = ${userIds[0]}
+          AND c.created_at BETWEEN ${from} AND ${to}
+          AND c.name IS NOT NULL
+        LIMIT 500`;
+
+      const hits = cands.filter((c) => {
+        const ct = this.normNameTokens(c.name);
+        if (!ct.length || ct[0] !== cli[0]) return false;
+        if (ct.length >= 2 && cli.length >= 2) {
+          return ct.slice(1).some((t) => cli.slice(1).includes(t));
+        }
+        return true; // um dos lados só tem o 1º nome (ex.: nome do perfil do WhatsApp)
+      });
+      if (hits.length !== 1) continue;
+
+      const r = await this.prisma.tinyDocument.updateMany({
+        where: {
+          id: d.id,
+          matchManual: false,
+          OR: [{ contactId: null }, { matchedBy: { in: ['name', 'name_partial'] } }],
+        },
+        data: { contactId: hits[0].id, matchedBy: 'nome_vendedor' },
+      });
+      linked += r.count;
+    }
+    return linked;
   }
 
   // ── Enriquecimento do lead a partir dos documentos (Tiny) ────────────

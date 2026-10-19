@@ -134,6 +134,8 @@ model User {
   conversationReads     ConversationRead[]
   assignedCards         Card[]             @relation("CardAssignee")
   routineDailyChecks    RoutineDailyCheck[]
+  activityMinutes       UserActivityMinute[]
+  cardEvents            CardEvent[]
   platformAuditLogs     PlatformAuditLog[]
   passwordResets        PasswordResetToken[]
   quickReplies          QuickReply[]        @relation("UserQuickReplies")
@@ -287,6 +289,8 @@ model Organization {
   leadDistributionConfig LeadDistributionConfig?
   commercialRoutineConfig CommercialRoutineConfig?
   routineDailyChecks     RoutineDailyCheck[]
+  userActivityMinutes    UserActivityMinute[]
+  cardEvents             CardEvent[]
   platformAuditLogs      PlatformAuditLog[]
   funnelAuditRuns        FunnelAuditRun[]
   funnelAuditSuggestions FunnelAuditSuggestion[]
@@ -362,6 +366,52 @@ model RoutineDailyCheck {
   @@unique([organizationId, userId, day, stepKey], name: "uq_routine_check")
   @@index([organizationId, userId, day])
   @@map("routine_daily_checks")
+}
+
+/// Produtividade: 1 linha por vendedor por MINUTO em que o CRM estava aberto.
+/// Gravada pelo heartbeat do navegador (upsert idempotente — várias abas no
+/// mesmo minuto ficam com o MAIOR estado). Base do tempo de tela, 1º/último
+/// sinal do dia e tempo com conversa aberta.
+model UserActivityMinute {
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  /// Minuto (truncado, UTC) — definido pelo relógio do SERVIDOR.
+  minuteAt       DateTime @map("minute_at")
+  /// Dia local (America/Sao_Paulo) YYYY-MM-DD — chave das consultas diárias.
+  day            String
+  /// 1 = aba em segundo plano, 2 = aberta sem interação, 3 = em uso.
+  state          Int      @db.SmallInt
+  /// Área do CRM (1º segmento da URL: inbox, pipelines, dashboard…).
+  area           String?
+  /// Conversa aberta na tela naquele minuto (quando houver).
+  conversationId String?  @map("conversation_id")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId, minuteAt])
+  @@index([organizationId, day])
+  @@map("user_activity_minutes")
+}
+
+/// Produtividade: ações no funil com AUTOR (o ConversationAuditLog não guarda
+/// quem moveu). type: MOVED | WON | LOST.
+model CardEvent {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  cardId         String   @map("card_id")
+  userId         String?  @map("user_id")
+  type           String
+  fromStageId    String?  @map("from_stage_id")
+  toStageId      String?  @map("to_stage_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([cardId])
+  @@map("card_events")
 }
 
 model UserOrganization {
@@ -807,6 +857,7 @@ model Message {
   @@unique([conversationId, externalId], name: "uq_msg_conv_external")
   @@index([conversationId, createdAt], name: "idx_msg_conv_time")
   @@index([externalId], name: "idx_msg_external_id")
+  @@index([createdAt])
   @@map("messages")
 }
 

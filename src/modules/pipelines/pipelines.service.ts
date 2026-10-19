@@ -548,6 +548,8 @@ export class PipelinesService {
     cardId: string,
     organizationId: string,
     dto: MoveCardDto,
+    /** Quem moveu (painel de produtividade). Ausente = sistema/automação. */
+    actorId?: string | null,
   ) {
     const card = await this.prisma.card.findUnique({ where: { id: cardId } });
     if (!card || card.organizationId !== organizationId) {
@@ -645,6 +647,31 @@ export class PipelinesService {
       toIndex: dto.toIndex,
       status: newStatus,
     });
+
+    // Produtividade: registra a ação no funil COM autor (best-effort — nunca
+    // quebra o move). Reordenar na mesma coluna não conta.
+    if (!sameStage) {
+      const type =
+        newStatus === CardStatus.WON && card.status !== CardStatus.WON
+          ? 'WON'
+          : newStatus === CardStatus.LOST && card.status !== CardStatus.LOST
+            ? 'LOST'
+            : 'MOVED';
+      void this.prisma.cardEvent
+        .create({
+          data: {
+            organizationId,
+            cardId,
+            userId: actorId ?? null,
+            type,
+            fromStageId,
+            toStageId: dto.toStageId,
+          },
+        })
+        .catch((err: any) =>
+          this.logger.warn(`cardEvent falhou (card=${cardId}): ${err?.message ?? err}`),
+        );
+    }
 
     // Auto-dispara Salesbots cujo gatilho é "ao entrar nesta etapa" (paridade
     // com o "executar robô ao mover para a etapa" do Kommo). Só quando o card

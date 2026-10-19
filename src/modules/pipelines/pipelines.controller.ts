@@ -21,7 +21,7 @@ import {
   UpsertStageDto,
 } from './dto/pipeline.dto';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
-import { CurrentOrg } from '../../common/decorators';
+import { CurrentOrg, CurrentUser } from '../../common/decorators';
 
 @ApiTags('Pipelines (Kanban)')
 @ApiBearerAuth()
@@ -198,8 +198,9 @@ export class PipelinesController {
   moveCard(
     @Param('cardId') cardId: string,
     @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
     @Body() dto: MoveCardDto,
   ) {
-    return this.service.moveCard(cardId, orgId, dto);
+    return this.service.moveCard(cardId, orgId, dto, userId);
   }
 }

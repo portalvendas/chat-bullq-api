@@ -173,6 +173,25 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
     return { id: sent?.key?.id || '' };
   }
 
+  /**
+   * JID real de um número neste canal, para gravar como
+   * `ContactChannel.externalId` já na ENTRADA do contato (antes da 1ª
+   * mensagem). Best-effort: sessão desconectada ou falha do WhatsApp → `null`
+   * e o caller segue com o telefone canônico (o envio resolve de novo).
+   * Lança apenas quando o WhatsApp confirma que o número não existe.
+   *
+   *   lookupJid('ch1', '5573988688598') → '557388688598@s.whatsapp.net'
+   */
+  async lookupJid(channelId: string, number: string): Promise<string | null> {
+    const s = this.sessions.get(channelId);
+    if (!s || s.status !== 'connected' || !s.sock) return null;
+    const jid = await this.resolveNumberJid(channelId, s.sock, number);
+    // resolveNumberJid devolve o JID canônico como fallback quando o WhatsApp
+    // não respondeu; só confiamos no que veio do cache (= confirmado).
+    const digits = this.mapper.numberToJid(number).replace(/@.*$/, '');
+    return this.jidCache.get(`${channelId}:${digits}`) === jid ? jid : null;
+  }
+
   /** Cache canal+número → JID real (o WhatsApp não muda o JID de um número). */
   private readonly jidCache = new Map<string, string>();
 

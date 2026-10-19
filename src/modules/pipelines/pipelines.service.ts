@@ -5,7 +5,14 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { CardStatus, ConversationStatus, PipelineStageType } from '@prisma/client';
+import { ModuleRef } from '@nestjs/core';
+import {
+  CardStatus,
+  ChannelType,
+  ConversationStatus,
+  PipelineStageType,
+} from '@prisma/client';
+import { BaileysSessionManager } from '../channel-hub/adapters/baileys/baileys-session.manager';
 import { SWITCHABLE_WHATSAPP_TYPES } from '../../common/constants/whatsapp.constants';
 import { canonicalPhone } from '../../common/phone.util';
 import { PrismaService } from '../../database/prisma.service';
@@ -90,6 +97,7 @@ export class PipelinesService {
     private readonly realtime: RealtimeGateway,
     private readonly cadences: CadencesService,
     private readonly leadDistribution: LeadDistributionService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /**
@@ -1101,9 +1109,18 @@ export class PipelinesService {
         organizationId,
         type: { in: SWITCHABLE_WHATSAPP_TYPES },
       },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!channel) throw new BadRequestException('Canal de WhatsApp inválido');
+
+    // Baileys: descobre AGORA o JID real (com ou sem o 9º dígito) e grava ele
+    // como externalId. Assim a resposta do cliente cai no MESMO ContactChannel
+    // (sem duplicar) e o envio já sai pro número que existe no WhatsApp.
+    const realJid =
+      channel.type === ChannelType.WHATSAPP_BAILEYS
+        ? await this.lookupBaileysJid(channelId, phone)
+        : null;
+    const externalId = realJid ?? phone;
 
     // Esse telefone JÁ existe nesse canal ligado a OUTRO contato (lead
     // duplicado: entrou pelo formulário e também pelo WhatsApp)? Criar outro
@@ -1138,10 +1155,18 @@ export class PipelinesService {
         data: {
           contactId: card.contact.id,
           channelId,
-          externalId: phone,
+          externalId,
           profileName: card.contact.name,
         },
         select: { id: true, contactId: true },
+      });
+    } else if (realJid && !existingByPhone) {
+      // ContactChannel legado chaveado por número cru (sem `@`): promove pro
+      // JID real. Seguro contra o unique — `existingByPhone` já provou que o
+      // JID não está em uso por outro contato neste canal.
+      await this.prisma.contactChannel.updateMany({
+        where: { id: cc.id, externalId: { not: { contains: '@' } } },
+        data: { externalId: realJid },
       });
     }
 
@@ -1191,6 +1216,31 @@ export class PipelinesService {
       conversationId: conv.id,
     });
     return { conversationId: conv.id };
+  }
+
+  /**
+   * JID real do número num canal Baileys. Resolve o BaileysSessionManager via
+   * ModuleRef (lazy) para não criar ciclo de módulos
+   * (Pipelines → Baileys → Messaging → Pipelines).
+   * - número sem WhatsApp → 400 com mensagem clara;
+   * - sessão offline / WhatsApp sem resposta → null (segue com o telefone; o
+   *   envio resolve o JID de novo).
+   */
+  private async lookupBaileysJid(channelId: string, phone: string): Promise<string | null> {
+    let manager: BaileysSessionManager | undefined;
+    try {
+      manager = this.moduleRef.get(BaileysSessionManager, { strict: false });
+    } catch {
+      return null; // provider indisponível neste processo
+    }
+    try {
+      return (await manager?.lookupJid(channelId, phone)) ?? null;
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      if (msg.includes('não tem WhatsApp')) throw new BadRequestException(msg);
+      this.logger.warn(`lookupBaileysJid falhou (canal=${channelId}, ${phone}): ${msg}`);
+      return null;
+    }
   }
 
   /** Canais de WhatsApp ativos da org — pro seletor de "Iniciar WhatsApp". */

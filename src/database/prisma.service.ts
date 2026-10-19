@@ -16,8 +16,10 @@ import {
   deepDecryptChannels,
   isEncryptionEnabled,
 } from '../common/crypto/secret-cipher';
+import { canonicalizePhoneField } from '../common/phone.util';
 
 const cryptoLogger = new Logger('secret-cipher');
+const phoneLogger = new Logger('phone-canonical');
 const guardLogger = new Logger('tenant-guard');
 
 // Ações de escrita cujo `data` pode conter segredos do canal.
@@ -126,6 +128,27 @@ export class PrismaService
                   `falha ao cifrar Channel.${operation}: ${err?.message}`,
                 );
                 throw err; // nunca gravar segredo achando que cifrou
+              }
+            }
+
+            // (2b) telefone canônico do Contact (55 + DDD + 9 dígitos) em TODA
+            // escrita — LP, Lead Ads, import, cadastro manual, WhatsApp inbound,
+            // histórico. Ponto único: nenhum call site precisa lembrar de
+            // normalizar. O JID real do WhatsApp (que pode ser sem o 9) continua
+            // em ContactChannel.externalId; aqui fica a identidade da pessoa.
+            if (model === 'Contact' && args) {
+              try {
+                if (operation === 'createMany' && Array.isArray(args.data)) {
+                  args.data = args.data.map((d: any) => canonicalizePhoneField(d));
+                } else if (args.data && WRITE_DATA.has(operation)) {
+                  args.data = canonicalizePhoneField(args.data);
+                } else if (operation === 'upsert') {
+                  if (args.create) args.create = canonicalizePhoneField(args.create);
+                  if (args.update) args.update = canonicalizePhoneField(args.update);
+                }
+              } catch (err: any) {
+                // Normalizar nunca pode impedir a gravação do contato.
+                phoneLogger.warn(`falha ao canonicalizar Contact.${operation}: ${err?.message}`);
               }
             }
 

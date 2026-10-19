@@ -81,6 +81,29 @@ export function canonicalPhone(raw: unknown): string | null {
     if (/^[6-9]/.test(sub)) nat = ddd + '9' + sub; // celular sem 9 → com 9
   }
 
-  if (nat.length === 11) return '55' + nat;
+  // Só é celular BR se: DDD válido (sem 0) + 9 na 3ª posição. Sem essa trava,
+  // um número estrangeiro de 11 dígitos (ex.: EUA 1 415 555 0123) ganhava um
+  // "55" falso na frente.
+  if (nat.length === 11 && /^[1-9]{2}9/.test(nat)) return '55' + nat;
   return original;
+}
+
+/**
+ * Canonicaliza o campo `phone` de um `data` de escrita do Prisma (Contact).
+ * Aceita as duas formas que o Prisma permite: valor direto ou `{ set: valor }`.
+ * Não mexe quando `phone` está ausente (undefined) — só normaliza o que veio.
+ *
+ *   { phone: '(73) 8868-8598' }      → { phone: '5573988688598' }
+ *   { phone: { set: '557388688598' } } → { phone: { set: '5573988688598' } }
+ *   { phone: '' }                    → { phone: null }
+ */
+export function canonicalizePhoneField<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== 'object' || !('phone' in data)) return data;
+  const v = (data as any).phone;
+  if (v === undefined || v === null) return data;
+  if (typeof v === 'object' && 'set' in v) {
+    const set = v.set == null ? v.set : canonicalPhone(v.set);
+    return { ...data, phone: { set } };
+  }
+  return { ...data, phone: canonicalPhone(v) };
 }

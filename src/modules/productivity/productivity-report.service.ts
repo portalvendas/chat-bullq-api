@@ -6,8 +6,11 @@ import {
   PRODUCTIVITY_TZ,
   dayBoundsUtc,
   firstNameToken,
+  addDays,
+  daysInRange,
   isValidDay,
   localDay,
+  localMinutesOf,
   sqlUtc,
 } from './productivity.time';
 
@@ -38,11 +41,29 @@ const PEDIDO_EXCLUIDOS = new Set(['Cancelada', 'Dados Incompletos', 'Removido'])
 
 type Num = number | null;
 
+export interface SellerDayRow {
+  day: string;
+  /** Início/fim do dia em minutos locais (1º/último uso no CRM ou mensagem). */
+  startMin: number | null;
+  endMin: number | null;
+  activeMinutes: number;
+  idleMinutes: number;
+  talkMinutes: number;
+  messagesCrm: number;
+  messagesPhone: number;
+  conversations: number;
+}
+
 export interface SellerDailyRow {
   userId: string;
   name: string;
   avatarUrl: string | null;
   role: string;
+  /** Dias do período com alguma atividade (CRM em uso ou mensagem). */
+  days: number;
+  /** Médias por dia trabalhado (minutos desde 00:00 local). */
+  avgStartMin: number | null;
+  avgEndMin: number | null;
   presence: {
     firstSeen: string | null;
     firstActive: string | null;
@@ -70,14 +91,23 @@ export interface SellerDailyRow {
   funnel: { cardsMoved: number; newLeads: number; won: number; lost: number };
   sales: { quotes: number; quotesValue: number; orders: number; ordersValue: number };
   routine: { active: boolean; checked: number; total: number };
-  /** Começou o dia (1º minuto em uso no CRM ou 1ª mensagem, o que vier antes). */
+  /** 1º início do período (ISO) — no filtro de 1 dia, o início do dia. */
   dayStart: string | null;
+  /** Último sinal do período (ISO): CRM em uso ou mensagem. */
+  dayEnd: string | null;
+  perDay: SellerDayRow[];
   hasActivity: boolean;
 }
+
+/** Maior período aceito (o detalhe minuto a minuto é retido por 180 dias). */
+const MAX_RANGE_DAYS = 366;
 
 const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : null);
 const minDate = (...ds: (Date | null | undefined)[]) =>
   ds.filter(Boolean).sort((a, b) => a!.getTime() - b!.getTime())[0] ?? null;
+const maxDate = (...ds: (Date | null | undefined)[]) =>
+  ds.filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0] ?? null;
+const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
 
 @Injectable()
 export class ProductivityReportService {
@@ -95,16 +125,47 @@ export class ProductivityReportService {
   }
 
   /**
-   * Resumo do dia por vendedor.
-   *
-   * GET /productivity/daily?day=2026-10-19 →
-   * { day, timezone, generatedAt, isToday, totals: {...}, users: SellerDailyRow[],
-   *   unmappedSellers: ['Fulano'] }
+   * Normaliza o período: aceita `from`/`to` (YYYY-MM-DD) ou `day` (1 dia).
+   * Futuro é cortado em hoje; mais de 366 dias é cortado pelo início.
    */
-  async daily(organizationId: string, dayParam?: string, onlyUserId?: string) {
-    const day = this.resolveDay(dayParam);
-    const { start, end } = dayBoundsUtc(day);
-    const isToday = day === localDay();
+  resolveRange(q: { day?: string; from?: string; to?: string }) {
+    const today = localDay();
+    let from = q.from ?? q.day;
+    let to = q.to ?? q.day;
+    from = from ? this.resolveDay(from) : today;
+    to = to ? this.resolveDay(to) : from;
+    if (to > today) to = today;
+    if (from > to) [from, to] = [to, from];
+    let clamped = false;
+    if (daysInRange(from, to) > MAX_RANGE_DAYS) {
+      from = addDays(to, -(MAX_RANGE_DAYS - 1));
+      clamped = true;
+    }
+    return { from, to, clamped };
+  }
+
+  /**
+   * Produtividade por vendedor num PERÍODO (1 dia = visão diária).
+   *
+   * GET /productivity/daily?from=2026-10-01&to=2026-10-19  (ou ?day=2026-10-19)
+   * → { from, to, calendarDays, singleDay, isToday, includesToday, clamped,
+   *     totals: {...}, users: SellerDailyRow[], unmappedSellers: [...] }
+   *
+   * Somas no período (tempo em uso, atendimento, mensagens, funil, vendas);
+   * início/fim viram MÉDIA por dia trabalhado; resposta = mediana do período;
+   * "esperando" só quando o período inclui hoje.
+   */
+  async daily(
+    organizationId: string,
+    q: { day?: string; from?: string; to?: string } = {},
+    onlyUserId?: string,
+  ) {
+    const { from, to, clamped } = this.resolveRange(q);
+    const start = dayBoundsUtc(from).start;
+    const end = dayBoundsUtc(to).end;
+    const today = localDay();
+    const singleDay = from === to;
+    const includesToday = to === today;
 
     const members = await this.prisma.userOrganization.findMany({
       where: {
@@ -120,51 +181,87 @@ export class ProductivityReportService {
 
     const [presence, breaks, areas, msgs, responses, pending, funnel, sales, routine] =
       await Promise.all([
-        this.presenceByUser(organizationId, day),
-        this.longestBreakByUser(organizationId, day),
-        this.areasByUser(organizationId, day),
-        this.messagesByUser(organizationId, start, end),
+        this.presenceByUserDay(organizationId, from, to),
+        this.longestBreakByUser(organizationId, from, to),
+        this.areasByUser(organizationId, from, to),
+        this.messagesByUserDay(organizationId, start, end),
         this.responseTimeByUser(organizationId, start, end),
-        isToday ? this.pendingNowByUser(organizationId) : Promise.resolve(null),
+        includesToday ? this.pendingNowByUser(organizationId) : Promise.resolve(null),
         this.funnelByUser(organizationId, start, end),
         this.salesByUser(organizationId, start, end, members.map((m) => m.user)),
-        this.routineByUser(organizationId, day),
+        this.routineByUser(organizationId, from, to),
       ]);
 
     const users: SellerDailyRow[] = members.map(({ role, user }) => {
-      const p = presence.get(user.id);
-      const m = msgs.get(user.id);
+      const pDays = presence.get(user.id) ?? new Map();
+      const mDays = msgs.byUserDay.get(user.id) ?? new Map();
       const r = responses.get(user.id);
       const f = funnel.get(user.id);
       const s = sales.byUser.get(user.id);
-      const firstSeen = p?.firstSeen ?? null;
-      // Início do dia = 1º minuto EM USO no CRM ou 1ª mensagem (inclui celular).
-      // Aba aberta em segundo plano não conta como começar a trabalhar.
-      const dayStart = minDate(p?.firstActive ?? null, m?.firstMessageAt ?? null);
+
+      // Linha por dia: une presença (CRM) e mensagens (CRM + celular).
+      const dayKeys = [...new Set([...pDays.keys(), ...mDays.keys()])].sort();
+      const perDay: SellerDayRow[] = [];
+      for (const d of dayKeys) {
+        const p = pDays.get(d);
+        const m = mDays.get(d);
+        // Início = 1º minuto EM USO ou 1ª mensagem (aba em 2º plano não conta).
+        const st = minDate(p?.firstActive ?? null, m?.firstMessageAt ?? null);
+        const en = maxDate(p?.lastActive ?? null, m?.lastMessageAt ?? null);
+        if (!st && !en) continue;
+        perDay.push({
+          day: d,
+          startMin: st ? localMinutesOf(st) : null,
+          endMin: en ? localMinutesOf(en) : null,
+          activeMinutes: p?.activeMin ?? 0,
+          idleMinutes: p?.idleMin ?? 0,
+          talkMinutes: m?.talkMin ?? 0,
+          messagesCrm: m?.messagesCrm ?? 0,
+          messagesPhone: m?.messagesPhone ?? 0,
+          conversations: m?.conversations ?? 0,
+        });
+      }
+
+      const pv = [...pDays.values()];
+      const mv = [...mDays.values()];
+      const sumP = (k: 'activeMin' | 'idleMin' | 'backgroundMin' | 'conversationMin') =>
+        pv.reduce((a, x) => a + (x[k] ?? 0), 0);
+      const sumM = (k: 'messagesCrm' | 'messagesPhone' | 'talkMin') => mv.reduce((a, x) => a + (x[k] ?? 0), 0);
+      const firstActive = minDate(...pv.map((x) => x.firstActive));
+      const lastActive = maxDate(...pv.map((x) => x.lastActive));
+      const firstMsg = minDate(...mv.map((x) => x.firstMessageAt));
+      const lastMsg = maxDate(...mv.map((x) => x.lastMessageAt));
+      const dayStart = minDate(firstActive, firstMsg);
+      const dayEnd = maxDate(lastActive, lastMsg);
+      const routineInfo = routine.byUser(user.id, perDay.length);
+
       const row: SellerDailyRow = {
         userId: user.id,
         name: user.name,
         avatarUrl: user.avatarUrl ?? null,
         role,
+        days: perDay.length,
+        avgStartMin: avg(perDay.map((x) => x.startMin).filter((x): x is number => x != null)),
+        avgEndMin: avg(perDay.map((x) => x.endMin).filter((x): x is number => x != null)),
         presence: {
-          firstSeen: iso(firstSeen),
-          firstActive: iso(p?.firstActive),
-          lastActive: iso(p?.lastActive),
-          lastSeen: iso(p?.lastSeen),
-          activeMinutes: p?.activeMin ?? 0,
-          idleMinutes: p?.idleMin ?? 0,
-          backgroundMinutes: p?.backgroundMin ?? 0,
-          conversationMinutes: p?.conversationMin ?? 0,
+          firstSeen: iso(minDate(...pv.map((x) => x.firstSeen))),
+          firstActive: iso(firstActive),
+          lastActive: iso(lastActive),
+          lastSeen: iso(maxDate(...pv.map((x) => x.lastSeen))),
+          activeMinutes: sumP('activeMin'),
+          idleMinutes: sumP('idleMin'),
+          backgroundMinutes: sumP('backgroundMin'),
+          conversationMinutes: sumP('conversationMin'),
           longestBreakMinutes: breaks.get(user.id) ?? 0,
           areas: (areas.get(user.id) ?? []).sort((a, b) => b.minutes - a.minutes),
         },
         service: {
-          messagesCrm: m?.messagesCrm ?? 0,
-          messagesPhone: m?.messagesPhone ?? 0,
-          conversations: m?.conversations ?? 0,
-          talkMinutes: m?.talkMin ?? 0,
-          firstMessageAt: iso(m?.firstMessageAt),
-          lastMessageAt: iso(m?.lastMessageAt),
+          messagesCrm: sumM('messagesCrm'),
+          messagesPhone: sumM('messagesPhone'),
+          conversations: msgs.convsInRange.get(user.id) ?? 0,
+          talkMinutes: sumM('talkMin'),
+          firstMessageAt: iso(firstMsg),
+          lastMessageAt: iso(lastMsg),
           responses: r?.responses ?? 0,
           responseMedianSec: r?.medianSec != null ? Math.round(r.medianSec) : null,
           respondedWithin15: r?.within15 ?? 0,
@@ -177,8 +274,10 @@ export class ProductivityReportService {
           lost: f?.lost ?? 0,
         },
         sales: s ?? { quotes: 0, quotesValue: 0, orders: 0, ordersValue: 0 },
-        routine: routine.byUser(user.id),
+        routine: routineInfo,
         dayStart: iso(dayStart),
+        dayEnd: iso(dayEnd),
+        perDay,
         hasActivity: false,
       };
       row.hasActivity =
@@ -187,19 +286,33 @@ export class ProductivityReportService {
       return row;
     });
 
-    // Quem trabalhou primeiro (sem atividade vai pro fim, por nome).
+    // 1 dia: quem começou primeiro. Período: mais dias trabalhados, depois mais
+    // tempo (atendimento + uso). Sem atividade vai pro fim, por nome.
     users.sort((a, b) => {
-      if (a.dayStart && b.dayStart) return a.dayStart.localeCompare(b.dayStart);
-      if (a.dayStart) return -1;
-      if (b.dayStart) return 1;
-      return a.name.localeCompare(b.name);
+      if (a.hasActivity !== b.hasActivity) return a.hasActivity ? -1 : 1;
+      if (!a.hasActivity) return a.name.localeCompare(b.name);
+      if (singleDay) {
+        if (a.dayStart && b.dayStart) return a.dayStart.localeCompare(b.dayStart);
+        return a.dayStart ? -1 : b.dayStart ? 1 : a.name.localeCompare(b.name);
+      }
+      if (b.days !== a.days) return b.days - a.days;
+      return (
+        b.service.talkMinutes + b.presence.activeMinutes - (a.service.talkMinutes + a.presence.activeMinutes)
+      );
     });
 
-    const sum = (f: (u: SellerDailyRow) => number) => users.reduce((acc, u) => acc + f(u), 0);
+    const sum = (fn: (u: SellerDailyRow) => number) => users.reduce((acc, u) => acc + fn(u), 0);
     return {
-      day,
+      from,
+      to,
+      /** Compatibilidade: dia único = `to`. */
+      day: to,
+      calendarDays: daysInRange(from, to),
+      singleDay,
+      isToday: singleDay && to === today,
+      includesToday,
+      clamped,
       timezone: PRODUCTIVITY_TZ,
-      isToday,
       generatedAt: new Date().toISOString(),
       totals: {
         activeSellers: users.filter((u) => u.hasActivity).length,
@@ -218,6 +331,7 @@ export class ProductivityReportService {
     };
   }
 
+
   /**
    * Indicador INDIVIDUAL do próprio vendedor (dashboard dele). Só devolve os
    * números de quem pediu — nunca os da equipe nem totais.
@@ -227,7 +341,7 @@ export class ProductivityReportService {
    */
   async me(organizationId: string, userId: string, dayParam?: string) {
     const [d, timeline] = await Promise.all([
-      this.daily(organizationId, dayParam, userId),
+      this.daily(organizationId, { day: dayParam }, userId),
       this.timeline(organizationId, userId, dayParam),
     ]);
     const me = d.users[0];
@@ -340,10 +454,11 @@ export class ProductivityReportService {
 
   // ── Fontes ─────────────────────────────────────────────────────────
 
-  private async presenceByUser(organizationId: string, day: string) {
+  private async presenceByUserDay(organizationId: string, from: string, to: string) {
     const rows = await this.prisma.$queryRaw<
       {
         userId: string;
+        day: string;
         firstSeen: Date;
         firstActive: Date | null;
         lastActive: Date | null;
@@ -354,7 +469,7 @@ export class ProductivityReportService {
         conversationMin: number;
       }[]
     >`
-      SELECT user_id AS "userId",
+      SELECT user_id AS "userId", day,
              MIN(minute_at) AS "firstSeen",
              MIN(minute_at) FILTER (WHERE state = 3) AS "firstActive",
              MAX(minute_at) FILTER (WHERE state = 3) AS "lastActive",
@@ -364,31 +479,36 @@ export class ProductivityReportService {
              COUNT(*) FILTER (WHERE state = 1)::int AS "backgroundMin",
              COUNT(*) FILTER (WHERE state = 3 AND conversation_id IS NOT NULL)::int AS "conversationMin"
       FROM user_activity_minutes
-      WHERE organization_id = ${organizationId} AND day = ${day}
-      GROUP BY user_id`;
-    return new Map(rows.map((r) => [r.userId, r]));
+      WHERE organization_id = ${organizationId} AND day >= ${from} AND day <= ${to}
+      GROUP BY user_id, day`;
+    const out = new Map<string, Map<string, (typeof rows)[number]>>();
+    for (const r of rows) {
+      if (!out.has(r.userId)) out.set(r.userId, new Map());
+      out.get(r.userId)!.set(r.day, r);
+    }
+    return out;
   }
 
-  /** Maior intervalo entre dois minutos "em uso" (pausa mais longa do dia). */
-  private async longestBreakByUser(organizationId: string, day: string) {
+  /** Maior intervalo entre dois minutos "em uso" num mesmo dia (pausa mais longa do período). */
+  private async longestBreakByUser(organizationId: string, from: string, to: string) {
     const rows = await this.prisma.$queryRaw<{ userId: string; minutes: number }[]>`
       SELECT user_id AS "userId",
              COALESCE(MAX(EXTRACT(EPOCH FROM (minute_at - prev)) / 60 - 1), 0)::int AS minutes
       FROM (
         SELECT user_id, minute_at,
-               LAG(minute_at) OVER (PARTITION BY user_id ORDER BY minute_at) AS prev
+               LAG(minute_at) OVER (PARTITION BY user_id, day ORDER BY minute_at) AS prev
         FROM user_activity_minutes
-        WHERE organization_id = ${organizationId} AND day = ${day} AND state = 3
+        WHERE organization_id = ${organizationId} AND day >= ${from} AND day <= ${to} AND state = 3
       ) t
       GROUP BY user_id`;
     return new Map(rows.map((r) => [r.userId, Math.max(0, r.minutes)]));
   }
 
-  private async areasByUser(organizationId: string, day: string) {
+  private async areasByUser(organizationId: string, from: string, to: string) {
     const rows = await this.prisma.$queryRaw<{ userId: string; area: string; minutes: number }[]>`
       SELECT user_id AS "userId", COALESCE(NULLIF(area, ''), 'outros') AS area, COUNT(*)::int AS minutes
       FROM user_activity_minutes
-      WHERE organization_id = ${organizationId} AND day = ${day} AND state = 3
+      WHERE organization_id = ${organizationId} AND day >= ${from} AND day <= ${to} AND state = 3
       GROUP BY 1, 2`;
     const out = new Map<string, { area: string; minutes: number }[]>();
     for (const r of rows) out.set(r.userId, [...(out.get(r.userId) ?? []), { area: r.area, minutes: r.minutes }]);
@@ -402,22 +522,29 @@ export class ProductivityReportService {
     );
   }
 
-  private async messagesByUser(organizationId: string, start: Date, end: Date) {
+  /**
+   * Mensagens atribuídas por vendedor e DIA local + conversas distintas no
+   * período (linhas com day = NULL). Sessões de atendimento contam no dia em
+   * que começaram.
+   */
+  private async messagesByUserDay(organizationId: string, start: Date, end: Date) {
     const rows = await this.prisma.$queryRaw<
       {
         userId: string;
+        day: string | null;
         messagesCrm: number;
         messagesPhone: number;
         conversations: number;
-        firstMessageAt: Date;
-        lastMessageAt: Date;
+        firstMessageAt: Date | null;
+        lastMessageAt: Date | null;
         talkMin: number;
       }[]
     >`
       WITH att AS (
         SELECT COALESCE(m.sender_id, ch.owner_user_id) AS uid,
                (m.sender_id IS NULL) AS via_phone,
-               m.conversation_id, m.created_at
+               m.conversation_id, m.created_at,
+               to_char((m.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${PRODUCTIVITY_TZ}, 'YYYY-MM-DD') AS d
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         JOIN channels ch ON ch.id = c.channel_id
@@ -427,33 +554,49 @@ export class ProductivityReportService {
           AND ${this.attributable('m', 'ch')}
       ),
       s AS (
-        SELECT uid, created_at,
+        SELECT uid, d, created_at,
                CASE WHEN created_at - LAG(created_at) OVER (PARTITION BY uid ORDER BY created_at)
                          <= ${SESSION_GAP} THEN 0 ELSE 1 END AS new_s
         FROM att
       ),
       g AS (
-        SELECT uid, created_at,
+        SELECT uid, d, created_at,
                SUM(new_s) OVER (PARTITION BY uid ORDER BY created_at ROWS UNBOUNDED PRECEDING) AS sid
         FROM s
       ),
       sess AS (
-        SELECT uid, SUM(EXTRACT(EPOCH FROM (mx - mn)) / 60 + 1) AS minutes
-        FROM (SELECT uid, sid, MIN(created_at) AS mn, MAX(created_at) AS mx FROM g GROUP BY uid, sid) x
-        GROUP BY uid
+        SELECT uid, MIN(d) AS d, EXTRACT(EPOCH FROM (MAX(created_at) - MIN(created_at))) / 60 + 1 AS minutes
+        FROM g GROUP BY uid, sid
+      ),
+      talk AS (SELECT uid, d, SUM(minutes) AS minutes FROM sess GROUP BY uid, d),
+      per_day AS (
+        SELECT uid, d,
+               COUNT(*) FILTER (WHERE NOT via_phone)::int AS crm,
+               COUNT(*) FILTER (WHERE via_phone)::int AS phone,
+               COUNT(DISTINCT conversation_id)::int AS convs,
+               MIN(created_at) AS first_at, MAX(created_at) AS last_at
+        FROM att GROUP BY uid, d
       )
-      SELECT a.uid AS "userId",
-             COUNT(*) FILTER (WHERE NOT a.via_phone)::int AS "messagesCrm",
-             COUNT(*) FILTER (WHERE a.via_phone)::int AS "messagesPhone",
-             COUNT(DISTINCT a.conversation_id)::int AS "conversations",
-             MIN(a.created_at) AS "firstMessageAt",
-             MAX(a.created_at) AS "lastMessageAt",
-             COALESCE(MAX(sess.minutes), 0)::int AS "talkMin"
-      FROM att a
-      LEFT JOIN sess ON sess.uid = a.uid
-      GROUP BY a.uid`;
-    return new Map(rows.map((r) => [r.userId, r]));
+      SELECT p.uid AS "userId", p.d AS "day", p.crm AS "messagesCrm", p.phone AS "messagesPhone",
+             p.convs AS "conversations", p.first_at AS "firstMessageAt", p.last_at AS "lastMessageAt",
+             COALESCE(ROUND(t.minutes), 0)::int AS "talkMin"
+      FROM per_day p LEFT JOIN talk t ON t.uid = p.uid AND t.d = p.d
+      UNION ALL
+      SELECT uid, NULL, 0, 0, COUNT(DISTINCT conversation_id)::int, NULL, NULL, 0
+      FROM att GROUP BY uid`;
+    const byUserDay = new Map<string, Map<string, (typeof rows)[number]>>();
+    const convsInRange = new Map<string, number>();
+    for (const r of rows) {
+      if (r.day == null) {
+        convsInRange.set(r.userId, r.conversations);
+        continue;
+      }
+      if (!byUserDay.has(r.userId)) byUserDay.set(r.userId, new Map());
+      byUserDay.get(r.userId)!.set(r.day, r);
+    }
+    return { byUserDay, convsInRange };
   }
+
 
   /** Mediana do tempo até a 1ª resposta humana, por início de turno do cliente. */
   private async responseTimeByUser(organizationId: string, start: Date, end: Date) {
@@ -606,7 +749,7 @@ export class ProductivityReportService {
     return { byUser, unmapped: [...unmapped].sort() };
   }
 
-  private async routineByUser(organizationId: string, day: string) {
+  private async routineByUser(organizationId: string, from: string, to: string) {
     const [cfg, checks] = await Promise.all([
       this.routine.getConfig(organizationId).catch((err: any) => {
         this.logger.warn(`config da rotina indisponível: ${err?.message ?? err}`);
@@ -614,17 +757,19 @@ export class ProductivityReportService {
       }),
       this.prisma.routineDailyCheck.groupBy({
         by: ['userId'],
-        where: { organizationId, day },
+        where: { organizationId, day: { gte: from, lte: to } },
         _count: { _all: true },
       }),
     ]);
     const byId = new Map(checks.map((c) => [c.userId, c._count._all]));
-    const total = cfg?.steps?.length ?? 0;
+    const steps = cfg?.steps?.length ?? 0;
+    const singleDay = from === to;
     return {
-      byUser: (userId: string) => ({
+      /** total = passos × dias trabalhados (no filtro de 1 dia, os passos do dia). */
+      byUser: (userId: string, daysWorked: number) => ({
         active: !!cfg && cfg.enabled && (cfg.userMode === 'ALL' || cfg.userIds.includes(userId)),
         checked: byId.get(userId) ?? 0,
-        total,
+        total: singleDay ? steps : steps * Math.max(1, daysWorked),
       }),
     };
   }

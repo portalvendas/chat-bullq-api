@@ -42,9 +42,14 @@ export class ProductivityController {
 
   @Get('daily')
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
-  @ApiOperation({ summary: 'Produtividade do dia por vendedor (gestor)' })
-  daily(@CurrentOrg('id') orgId: string, @Query('day') day?: string) {
-    return this.report.daily(orgId, day);
+  @ApiOperation({ summary: 'Produtividade por vendedor no período (gestor). ?from&to ou ?day' })
+  daily(
+    @CurrentOrg('id') orgId: string,
+    @Query('day') day?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.report.daily(orgId, { day, from, to });
   }
 
   @Get('timeline')

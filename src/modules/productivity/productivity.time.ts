@@ -61,6 +61,31 @@ export function dayBoundsUtc(day: string, tz = PRODUCTIVITY_TZ): { start: Date; 
   return { start, end };
 }
 
+/** Minutos desde 00:00 no fuso local. 11:30Z (SP) → 510 (08:30). */
+export function localMinutesOf(at: Date, tz = PRODUCTIVITY_TZ): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(at);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return get('hour') * 60 + get('minute');
+}
+
+/** Soma dias a um dia-calendário. addDays('2026-10-31', 1) → '2026-11-01'. */
+export function addDays(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n, 12)).toISOString().slice(0, 10);
+}
+
+/** Nº de dias-calendário no intervalo fechado [from, to]. */
+export function daysInRange(from: string, to: string): number {
+  const a = Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10));
+  const b = Date.UTC(+to.slice(0, 4), +to.slice(5, 7) - 1, +to.slice(8, 10));
+  return Math.round((b - a) / 86400000) + 1;
+}
+
 /** Trunca no minuto (UTC). */
 export function truncMinute(at: Date = new Date()): Date {
   return new Date(Math.floor(at.getTime() / 60000) * 60000);

@@ -29,6 +29,17 @@ export class ProductivityController {
     await this.tracking.heartbeat(orgId, userId, dto);
   }
 
+  /** Qualquer membro: o PRÓPRIO indicador do dia (dashboard do vendedor). */
+  @Get('me')
+  @ApiOperation({ summary: 'Indicador individual do usuário logado' })
+  me(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Query('day') day?: string,
+  ) {
+    return this.report.me(orgId, userId, day);
+  }
+
   @Get('daily')
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: 'Produtividade do dia por vendedor (gestor)' })

@@ -101,13 +101,17 @@ export class ProductivityReportService {
    * { day, timezone, generatedAt, isToday, totals: {...}, users: SellerDailyRow[],
    *   unmappedSellers: ['Fulano'] }
    */
-  async daily(organizationId: string, dayParam?: string) {
+  async daily(organizationId: string, dayParam?: string, onlyUserId?: string) {
     const day = this.resolveDay(dayParam);
     const { start, end } = dayBoundsUtc(day);
     const isToday = day === localDay();
 
     const members = await this.prisma.userOrganization.findMany({
-      where: { organizationId, user: { isActive: true, deletedAt: null } },
+      where: {
+        organizationId,
+        ...(onlyUserId ? { userId: onlyUserId } : {}),
+        user: { isActive: true, deletedAt: null },
+      },
       select: {
         role: true,
         user: { select: { id: true, name: true, avatarUrl: true } },
@@ -211,6 +215,30 @@ export class ProductivityReportService {
       },
       users,
       unmappedSellers: sales.unmapped,
+    };
+  }
+
+  /**
+   * Indicador INDIVIDUAL do próprio vendedor (dashboard dele). Só devolve os
+   * números de quem pediu — nunca os da equipe nem totais.
+   *
+   * GET /productivity/me?day=2026-10-19 →
+   * { day, isToday, generatedAt, me: SellerDailyRow, timeline: {...} }
+   */
+  async me(organizationId: string, userId: string, dayParam?: string) {
+    const [d, timeline] = await Promise.all([
+      this.daily(organizationId, dayParam, userId),
+      this.timeline(organizationId, userId, dayParam),
+    ]);
+    const me = d.users[0];
+    if (!me) throw new NotFoundException('Usuário não encontrado nesta empresa');
+    return {
+      day: d.day,
+      timezone: d.timezone,
+      isToday: d.isToday,
+      generatedAt: d.generatedAt,
+      me,
+      timeline: { segments: timeline.segments, hourly: timeline.hourly, cardEvents: timeline.cardEvents },
     };
   }
 

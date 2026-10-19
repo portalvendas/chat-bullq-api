@@ -168,9 +168,51 @@ export class BaileysSessionManager implements OnModuleInit, OnModuleDestroy {
     }
     const jid = toJidOrNumber.includes('@')
       ? toJidOrNumber
-      : this.mapper.numberToJid(toJidOrNumber);
+      : await this.resolveNumberJid(channelId, s.sock, toJidOrNumber);
     const sent = await s.sock.sendMessage(jid, content);
     return { id: sent?.key?.id || '' };
+  }
+
+  /** Cache canal+número → JID real (o WhatsApp não muda o JID de um número). */
+  private readonly jidCache = new Map<string, string>();
+
+  /**
+   * Número solto (sem `@`) → JID REAL no WhatsApp.
+   *
+   * No Brasil, muitos celulares antigos estão registrados no WhatsApp SEM o
+   * 9º dígito (`557388688598@s.whatsapp.net`). Montar o JID "canônico" com o 9
+   * (`5573988688598@…`) aponta para um número que não existe no WhatsApp: o
+   * envio é aceito (1 tique) e nunca chega — nem aparece no celular do
+   * vendedor. Por isso perguntamos ao WhatsApp (`onWhatsApp`) qual das duas
+   * formas existe e usamos essa. Nenhuma existe → erro claro (sem WhatsApp).
+   */
+  private async resolveNumberJid(channelId: string, sock: any, raw: string): Promise<string> {
+    const canonicalJid = this.mapper.numberToJid(raw); // com o 9 quando aplicável
+    const digits = canonicalJid.replace(/@.*$/, '');
+    const key = `${channelId}:${digits}`;
+    const cached = this.jidCache.get(key);
+    if (cached) return cached;
+
+    const candidates = [digits];
+    // 55 + DDD + 9 + 8 dígitos → também testa sem o 9 (registro antigo).
+    if (/^55\d{2}9\d{8}$/.test(digits)) candidates.push(digits.slice(0, 4) + digits.slice(5));
+
+    try {
+      const res: Array<{ jid: string; exists: boolean }> =
+        (await sock.onWhatsApp(...candidates.map((d) => `${d}@s.whatsapp.net`))) ?? [];
+      const hit = res.find((r) => r?.exists && r.jid);
+      if (hit) {
+        this.jidCache.set(key, hit.jid);
+        return hit.jid;
+      }
+      if (res.length) {
+        throw new Error(`O número ${digits} não tem WhatsApp (testado com e sem o 9º dígito).`);
+      }
+    } catch (err: any) {
+      if (String(err?.message ?? '').includes('não tem WhatsApp')) throw err;
+      this.logger.warn(`onWhatsApp falhou (canal=${channelId}, ${digits}): ${err?.message ?? err}`);
+    }
+    return canonicalJid; // sem resposta do WhatsApp: segue o comportamento anterior
   }
 
   /** Atalho pra texto (mantido por compatibilidade). */

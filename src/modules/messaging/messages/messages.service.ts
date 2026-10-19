@@ -25,6 +25,21 @@ import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { ChannelAdapterRegistry } from '../../channel-hub/channel-adapter.registry';
 import { CadencesService } from '../../cadences/cadences.service';
 
+/**
+ * Escolhe o ContactChannel do destino. Um contato pode ter DOIS no mesmo canal:
+ * o criado por "Iniciar conversa" (telefone solto, ex.: 5573988688598) e o que
+ * nasceu quando o cliente respondeu (JID real do WhatsApp, ex.:
+ * 557388688598@s.whatsapp.net ou um @lid). Prefere o JID real — é por ele que
+ * a mensagem chega; o telefone solto pode ter o 9º dígito que o WhatsApp não usa.
+ */
+function pickContactChannel<T extends { channelId: string; externalId: string }>(
+  channels: T[],
+  channelId: string,
+): T | undefined {
+  const same = channels.filter((cc) => cc.channelId === channelId);
+  return same.find((cc) => cc.externalId.includes('@')) ?? same[0];
+}
+
 @Injectable()
 export class MessagesService {
   private readonly logger = new Logger(MessagesService.name);
@@ -102,9 +117,7 @@ export class MessagesService {
     }
     this.channelAccess.assertChannelAccess(access, conversation.channelId);
 
-    const contactChannel = conversation.contact.channels.find(
-      (cc) => cc.channelId === conversation.channelId,
-    );
+    const contactChannel = pickContactChannel(conversation.contact.channels, conversation.channelId);
     if (!contactChannel) {
       throw new NotFoundException('Contact channel not found');
     }
@@ -500,9 +513,7 @@ export class MessagesService {
       );
     }
 
-    const contactChannel = message.conversation.contact.channels.find(
-      (cc) => cc.channelId === message.conversation.channelId,
-    );
+    const contactChannel = pickContactChannel(message.conversation.contact.channels, message.conversation.channelId);
     if (!contactChannel) {
       throw new NotFoundException('Contact channel not found');
     }
@@ -606,9 +617,7 @@ export class MessagesService {
 
     let requeued = 0;
     for (const m of candidates) {
-      const contactChannel = m.conversation.contact.channels.find(
-        (cc) => cc.channelId === m.conversation.channelId,
-      );
+      const contactChannel = pickContactChannel(m.conversation.contact.channels, m.conversation.channelId);
       if (!contactChannel) {
         // Sem canal do contato não dá pra remontar o destino — pula, mas loga
         // pra não sumir silenciosamente.

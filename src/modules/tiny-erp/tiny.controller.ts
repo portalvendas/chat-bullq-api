@@ -24,6 +24,7 @@ import {
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
 import { Public, CurrentOrg, CurrentUser } from '../../common/decorators';
 import { TinyService } from './tiny.service';
+import { UnassignedLeadsService } from './unassigned-leads.service';
 import { TinyReceiptsService } from './tiny-receipts.service';
 import { UploadsService } from '../messaging/messages/uploads.service';
 import { MetaCapiService, MetaCapiConfigInput } from './meta-capi/meta-capi.service';
@@ -48,6 +49,7 @@ export class TinyController {
     private readonly service: TinyService,
     private readonly capi: MetaCapiService,
     private readonly receipts: TinyReceiptsService,
+    private readonly unassigned: UnassignedLeadsService,
   ) {}
 
   // ── Comprovantes de pagamento do pedido ──────────────────────────────
@@ -216,6 +218,26 @@ export class TinyController {
       orgId,
       from,
       to,
+      Number(page) || 1,
+      Number(limit) || 50,
+    );
+  }
+
+  @Get('leads-unassigned')
+  @ApiOperation({
+    summary:
+      'Lista paginada dos leads SEM VENDEDOR do período, com motivo (distribuição/origem) e link pro inbox',
+  })
+  leadsUnassigned(
+    @CurrentOrg('id') orgId: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.unassigned.list(
+      orgId,
+      this.service.rangeFrom(from, to),
       Number(page) || 1,
       Number(limit) || 50,
     );

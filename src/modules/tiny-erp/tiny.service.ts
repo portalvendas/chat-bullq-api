@@ -44,7 +44,7 @@ const RECONCILE_THROTTLE_MS = 6 * 3600 * 1000;
 const SEM_VENDEDOR = '__sem__';
 const reconcileLastRunAt = new Map<string, number>();
 
-interface DateRange {
+export interface DateRange {
   gte?: Date;
   lte?: Date;
 }
@@ -1069,6 +1069,11 @@ export class TinyService {
   // ── Leitura pro painel ─────────────────────────────────────────────
 
   /** Converte from/to (ISO/date) num filtro de data pro Prisma. */
+  /** Mesmo período dos cards da tela (from/to ISO) — usado por outros serviços. */
+  rangeFrom(from?: string, to?: string): DateRange | undefined {
+    return this.buildRange(from, to);
+  }
+
   private buildRange(from?: string, to?: string): DateRange | undefined {
     const gte = from ? new Date(from) : undefined;
     const lte = to ? new Date(to) : undefined;

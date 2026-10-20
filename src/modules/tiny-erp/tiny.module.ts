@@ -12,9 +12,11 @@ import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
 import { TinySyncMonitorService } from './tiny-sync-monitor.service';
 import { LlmModule } from '../ai-agents/llm/llm.module';
 import { UploadsService } from '../messaging/messages/uploads.service';
+import { LeadDistributionModule } from '../lead-distribution/lead-distribution.module';
+import { UnassignedLeadsService } from './unassigned-leads.service';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: TINY_QUEUE }), LlmModule],
+  imports: [BullModule.registerQueue({ name: TINY_QUEUE }), LlmModule, LeadDistributionModule],
   controllers: [TinyController, TinyOAuthCallbackController],
   providers: [
     TinyService,
@@ -26,6 +28,7 @@ import { UploadsService } from '../messaging/messages/uploads.service';
     MetaCapiHttpClient,
     MetaCapiLeadsService,
     TinySyncMonitorService,
+    UnassignedLeadsService,
     // UploadsService é standalone (só depende de ConfigService global) — provê
     // uma instância local pra salvar os arquivos de comprovante.
     UploadsService,

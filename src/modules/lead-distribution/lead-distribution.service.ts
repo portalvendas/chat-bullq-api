@@ -169,6 +169,63 @@ export class LeadDistributionService {
     return this.pickWeighted(eligible);
   }
 
+  /**
+   * Reaplica a distribuição nos cards ABERTOS sem vendedor do período (exceto
+   * funis de marketplace). Mesmas regras da entrada: stickiness → dono do
+   * número → sorteio do funil. Idempotente (só grava em card sem dono) e
+   * sequencial (não estoura o pool do banco).
+   *
+   * POST /lead-distribution/redistribute { from?, to? }
+   * → { checked: 130, assigned: 126, stillUnassigned: 4 }
+   */
+  async redistributeUnassigned(
+    organizationId: string,
+    range?: { gte?: Date; lte?: Date },
+    limit = 500,
+  ): Promise<{ checked: number; assigned: number; stillUnassigned: number }> {
+    const cards = await this.prisma.card.findMany({
+      where: {
+        organizationId,
+        assignedToId: null,
+        status: 'OPEN',
+        ...(range?.gte || range?.lte ? { createdAt: range } : {}),
+      },
+      select: { id: true, contactId: true, conversationId: true, pipelineId: true, metadata: true },
+      orderBy: { createdAt: 'asc' },
+      take: Math.min(Math.max(limit, 1), 2000),
+    });
+    const eligible = cards.filter(
+      (c) => (c.metadata as { source?: string } | null)?.source !== 'marketplace-sync',
+    );
+    const convIds = eligible.map((c) => c.conversationId).filter((x): x is string => !!x);
+    const convChannel = new Map(
+      (convIds.length
+        ? await this.prisma.conversation.findMany({
+            where: { organizationId, id: { in: convIds } },
+            select: { id: true, channelId: true },
+          })
+        : []
+      ).map((c) => [c.id, c.channelId]),
+    );
+
+    let assigned = 0;
+    for (const c of eligible) {
+      const userId = await this.assignEntry({
+        organizationId,
+        contactId: c.contactId,
+        conversationId: c.conversationId,
+        cardId: c.id,
+        pipelineId: c.pipelineId,
+        channelId: c.conversationId ? (convChannel.get(c.conversationId) ?? null) : null,
+      });
+      if (userId) assigned++;
+    }
+    this.logger.log(
+      `redistribute org=${organizationId} checked=${eligible.length} assigned=${assigned}`,
+    );
+    return { checked: eligible.length, assigned, stillUnassigned: eligible.length - assigned };
+  }
+
   /** Compat: distribuição sem contexto de funil usa a regra padrão "*". */
   async pickForOrg(organizationId: string): Promise<string | null> {
     return this.pickForPipeline(organizationId, null);
@@ -258,26 +315,38 @@ export class LeadDistributionService {
     const { organizationId, contactId, conversationId, cardId, pipelineId, channelId } =
       params;
 
-    // 1) Stickiness tem prioridade sobre tudo (lead que já tem dono gruda).
-    let userId = await this.existingOwnerForContact(organizationId, contactId);
+    let userId: string | null = null;
     let source: 'sticky' | 'weighted' | 'channel' = 'sticky';
+    try {
+      // 1) Stickiness tem prioridade sobre tudo (lead que já tem dono gruda).
+      userId = await this.existingOwnerForContact(organizationId, contactId);
 
-    // 2) Dono do número (canal) — o cliente fala com aquele número, então o
-    //    dono dele recebe o lead. Vem antes do sorteio ponderado.
-    if (!userId && channelId) {
-      userId = await this.ownerForChannel(organizationId, channelId);
-      if (userId) source = 'channel';
+      // 2) Dono do número (canal) — o cliente fala com aquele número, então o
+      //    dono dele recebe o lead. Vem antes do sorteio ponderado.
+      if (!userId && channelId) {
+        userId = await this.ownerForChannel(organizationId, channelId);
+        if (userId) source = 'channel';
+      }
+
+      // 3) Sem dono ainda → sorteia pela regra do funil (fallback).
+      if (!userId) {
+        userId = await this.pickForPipeline(organizationId, pipelineId ?? null);
+        source = 'weighted';
+      }
+    } catch (err: any) {
+      // Antes este trecho ficava FORA do try e os callers usam
+      // `.catch(() => undefined)`: uma falha de banco (ex.: pool esgotado)
+      // deixava o lead sem vendedor sem nenhum log. Agora registra.
+      this.logger.warn(
+        `assignEntry falhou ao escolher vendedor (org=${organizationId} card=${cardId ?? '-'} conv=${conversationId ?? '-'}): ${err?.message ?? err}`,
+      );
+      return null;
     }
 
-    // 3) Sem dono ainda → sorteia pela regra do funil (fallback).
     if (!userId) {
-      userId = await this.pickForPipeline(organizationId, pipelineId ?? null);
-      source = 'weighted';
-    }
-
-    if (!userId) {
-      this.logger.debug(
-        `assignEntry sem vendedor (org=${organizationId} funil=${pipelineId ?? '-'} contato=${contactId ?? '-'}): distribuição off, funil sem regra ou sem membro elegível`,
+      // warn (não debug): é o sinal de que um lead entrou sem vendedor.
+      this.logger.warn(
+        `assignEntry sem vendedor (org=${organizationId} funil=${pipelineId ?? '-'} card=${cardId ?? '-'} contato=${contactId ?? '-'}): distribuição off, funil sem regra ou sem membro elegível`,
       );
       return null;
     }
@@ -315,7 +384,9 @@ export class LeadDistributionService {
             where: { id: cardId, organizationId, assignedToId: null },
             data: { assignedToId: userId },
           })
-          .catch(() => undefined);
+          .catch((err: any) =>
+            this.logger.warn(`assignEntry: falha ao gravar vendedor no card=${cardId}: ${err?.message ?? err}`),
+          );
       } else if (contactId) {
         await this.prisma.card
           .updateMany({

@@ -3,6 +3,7 @@ import { AutomationTrigger, ConversationStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { RatingsService } from '../../ratings/ratings.service';
 import { OutboxService } from '../../automations/outbox/outbox.service';
+import { inheritCardOwner } from '../../../common/card-owner.util';
 
 type Transition = {
   from: ConversationStatus;
@@ -193,5 +194,8 @@ export class ConversationFsmService {
         );
       }
     });
+
+    // Card do lead sem vendedor herda o responsável da conversa.
+    void inheritCardOwner(this.prisma, conversation.organizationId, conversation.contactId, agentId);
   }
 }

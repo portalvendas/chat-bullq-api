@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrgRole } from '@prisma/client';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
@@ -29,6 +29,23 @@ export class LeadDistributionController {
   })
   listSellers(@CurrentOrg('id') orgId: string) {
     return this.service.listSellers(orgId);
+  }
+
+  @Post('redistribute')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Distribui agora os cards abertos sem vendedor do período' })
+  redistribute(
+    @CurrentOrg('id') orgId: string,
+    @Body() body: { from?: string; to?: string },
+  ) {
+    const parse = (v?: string) => {
+      const d = v ? new Date(v) : undefined;
+      return d && !isNaN(d.getTime()) ? d : undefined;
+    };
+    return this.service.redistributeUnassigned(orgId, {
+      gte: parse(body?.from),
+      lte: parse(body?.to),
+    });
   }
 
   @Put('config')

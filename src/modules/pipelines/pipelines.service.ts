@@ -455,6 +455,21 @@ export class PipelinesService {
     });
     const nextOrder = (max?.order ?? -1) + 1;
 
+    // Card criado à mão (ex.: "adicionar ao funil" pela conversa) sem
+    // responsável explícito herda o dono atual do contato (conversa/card).
+    // Antes nascia sem vendedor e sumia das métricas por vendedor.
+    if (!dto.assignedToId && dto.contactId) {
+      try {
+        const owner = await this.leadDistribution.existingOwnerForContact(
+          organizationId,
+          dto.contactId,
+        );
+        if (owner) dto.assignedToId = owner;
+      } catch (err: any) {
+        this.logger.warn(`createCard: herdar vendedor falhou: ${err?.message ?? err}`);
+      }
+    }
+
     if (!dto.title?.trim()) {
       throw new BadRequestException(
         'title é obrigatório (ou vincule uma conversationId pra derivar)',
@@ -863,7 +878,7 @@ export class PipelinesService {
     if (contactCard) {
       // Já existe card aberto: não duplica, mas garante o sorteio/stickiness
       // no card existente caso ainda esteja sem vendedor (cura leads antigos).
-      void this.leadDistribution
+      await this.leadDistribution
         .assignEntry({
           organizationId,
           contactId,
@@ -896,7 +911,7 @@ export class PipelinesService {
     await this.applySourceTag(organizationId, contactId, ctx);
     // Sorteio ponderado (ou stickiness) JÁ NA ENTRADA DO CARD — LP/Lead Ads
     // entram sem conversa, então o vendedor é definido aqui no card.
-    void this.leadDistribution
+    await this.leadDistribution
       .assignEntry({
         organizationId,
         contactId,
@@ -928,7 +943,7 @@ export class PipelinesService {
     if (existing) {
       // Já há card pra esta conversa: garante o vendedor na conversa E no card
       // (stickiness/sorteio), sem duplicar.
-      void this.leadDistribution
+      await this.leadDistribution
         .assignEntry({
           organizationId,
           contactId,
@@ -951,7 +966,7 @@ export class PipelinesService {
       if (contactCard) {
         // Lead recorrente: a CONVERSA nova gruda no vendedor que já é dono do
         // lead (stickiness). Se o card antigo estava sem dono, cura junto.
-        void this.leadDistribution
+        await this.leadDistribution
           .assignEntry({
             organizationId,
             contactId,
@@ -986,7 +1001,7 @@ export class PipelinesService {
     await this.applySourceTag(organizationId, contactId, ctx);
     // Sorteio ponderado (ou stickiness) na ENTRADA: define o vendedor na
     // conversa (já criada pelo WhatsApp) e no card recém-criado — mesmo dono.
-    void this.leadDistribution
+    await this.leadDistribution
       .assignEntry({
         organizationId,
         contactId,

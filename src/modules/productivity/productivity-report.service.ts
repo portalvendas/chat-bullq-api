@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { CardStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CommercialRoutineService } from '../commercial-routine/commercial-routine.service';
+import { waitingConversationsSql } from '../../common/waiting-reply.sql';
 import {
   PRODUCTIVITY_TZ,
   dayBoundsUtc,
@@ -639,23 +640,21 @@ export class ProductivityReportService {
     return new Map(rows.map((r) => [r.userId, r]));
   }
 
-  /** Conversas do vendedor com o cliente esperando (> 15 min) — só "agora". */
+  /**
+   * Conversas do vendedor com o cliente ESPERANDO resposta humana há mais de
+   * 15 min — só "agora". Mesma regra do "Sem resposta" e do alerta
+   * (common/waiting-reply.sql.ts).
+   */
   private async pendingNowByUser(organizationId: string) {
     const rows = await this.prisma.$queryRaw<{ userId: string; pending: number }[]>`
-      SELECT c.assigned_to_id AS "userId", COUNT(*)::int AS pending
-      FROM conversations c
-      JOIN LATERAL (
-        SELECT m.direction::text AS dir, m.created_at
-        FROM messages m WHERE m.conversation_id = c.id
-        ORDER BY m.created_at DESC LIMIT 1
-      ) lm ON true
-      WHERE c.organization_id = ${organizationId}
+      SELECT "assignedToId" AS "userId", COUNT(*)::int AS pending
+      FROM (${waitingConversationsSql(Prisma.sql`
+        c.organization_id = ${organizationId}
         AND c.assigned_to_id IS NOT NULL
-        AND c.deleted_at IS NULL AND c.is_archived = false AND c.is_group = false
+        AND c.is_archived = false
         AND c.status <> 'CLOSED'
-        AND c.last_message_at >= (now() AT TIME ZONE 'UTC') - interval '7 days'
-        AND lm.dir = 'INBOUND'
-        AND lm.created_at < (now() AT TIME ZONE 'UTC') - ${PENDING_AFTER}
+        AND c.last_message_at >= (now() AT TIME ZONE 'UTC') - interval '7 days'`)}) w
+      WHERE w."waitingSince" < (now() AT TIME ZONE 'UTC') - ${PENDING_AFTER}
       GROUP BY 1`;
     return new Map(rows.map((r) => [r.userId, r.pending]));
   }

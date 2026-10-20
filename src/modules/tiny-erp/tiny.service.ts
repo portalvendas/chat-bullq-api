@@ -6,6 +6,7 @@ import { TinyHttpClient } from './tiny.http-client';
 import { MetaCapiService } from './meta-capi/meta-capi.service';
 import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
 import { ConversationStatus, Prisma } from '@prisma/client';
+import { waitingConversationsSql } from '../../common/waiting-reply.sql';
 
 /** Situações de pedido do Tiny v3 (código → rótulo). */
 const PEDIDO_SITUACOES: Record<string, string> = {
@@ -1330,21 +1331,11 @@ export class TinyService {
       organizationId,
       ...(range ? { createdAt: range } : {}),
     };
-    // Leads "sem resposta" = o time nunca enviou NENHUMA mensagem OUTBOUND pro
-    // contato daquele card (ninguém respondeu o lead). Cards sem contato
-    // vinculado também contam como sem resposta (não têm conversa → não têm
-    // OUTBOUND). Calculado por subtração (total - respondidos) pra ficar só em
-    // COUNTs, sem puxar linhas.
-    const leadsRespondedWhere = {
-      ...leadWhere,
-      contact: {
-        conversations: {
-          some: { messages: { some: { direction: 'OUTBOUND' as const } } },
-        },
-      },
-    };
+    // Leads "sem resposta": regra única em common/waiting-reply.sql.ts (robô na
+    // abertura conta como resposta; depois que o cliente responde, só resposta
+    // HUMANA conta) + leads que nunca receberam nada (ex.: LP sem conversa).
 
-    const [pedidos, orcamentos, vendPed, vendOrc, leadsCount, leadsResponded] =
+    const [pedidos, orcamentos, vendPed, vendOrc, leadsCount, leadsNoResponseCount] =
       await Promise.all([
         this.prisma.tinyDocument.aggregate({
           where: pw,
@@ -1369,10 +1360,10 @@ export class TinyService {
           _sum: { valor: true },
         }),
         this.prisma.card.count({ where: leadWhere }),
-        this.prisma.card.count({ where: leadsRespondedWhere }),
+        this.countLeadsNoResponse(organizationId, range),
       ]);
 
-    const leadsNoResponse = Math.max(0, leadsCount - leadsResponded);
+    const leadsNoResponse = leadsNoResponseCount;
 
     // Comparativo com o PERÍODO ANTERIOR de mesmo tamanho (mesma base dos
     // cards e do leads/dia). Só dá pra comparar quando há janela fechada
@@ -1546,10 +1537,60 @@ export class TinyService {
     }
   }
 
+
+  // ── Leads sem resposta (regra única) ─────────────────────────────────
+
+  /** Filtro de período em SQL (colunas timestamp em UTC). */
+  private rangeSql(col: string, range?: DateRange): Prisma.Sql {
+    const c = Prisma.raw(col);
+    const parts: Prisma.Sql[] = [];
+    if (range?.gte) parts.push(Prisma.sql`${c} >= (${range.gte.toISOString()}::timestamptz AT TIME ZONE 'UTC')`);
+    if (range?.lte) parts.push(Prisma.sql`${c} <= (${range.lte.toISOString()}::timestamptz AT TIME ZONE 'UTC')`);
+    return parts.length ? Prisma.join(parts, ' AND ') : Prisma.sql`true`;
+  }
+
+  /**
+   * Cards (leads) do período SEM RESPOSTA, com o motivo:
+   *  - 'sem_contato' = ninguém nunca enviou nada pro contato (inclui lead de LP
+   *    sem conversa);
+   *  - ou o `kind` da conversa esperando resposta humana (waiting-reply.sql).
+   */
+  private leadsNoResponseSql(organizationId: string, range?: DateRange): Prisma.Sql {
+    return Prisma.sql`
+      WITH k AS (
+        SELECT id, contact_id, created_at FROM cards
+        WHERE organization_id = ${organizationId} AND ${this.rangeSql('created_at', range)}
+      ),
+      w AS (
+        ${waitingConversationsSql(Prisma.sql`c.organization_id = ${organizationId} AND c.contact_id IN (SELECT contact_id FROM k WHERE contact_id IS NOT NULL)`)}
+      ),
+      wk AS (
+        SELECT DISTINCT ON ("contactId") "contactId", kind, "waitingSince"
+        FROM w ORDER BY "contactId", "waitingSince" DESC
+      )
+      SELECT k.id AS "cardId", k.created_at AS "createdAt",
+             COALESCE(wk.kind, 'sem_contato') AS motivo,
+             wk."waitingSince" AS "waitingSince"
+      FROM k
+      LEFT JOIN wk ON wk."contactId" = k.contact_id
+      WHERE wk."contactId" IS NOT NULL
+         OR NOT EXISTS (
+           SELECT 1 FROM conversations cv JOIN messages m ON m.conversation_id = cv.id
+           WHERE cv.contact_id = k.contact_id AND m.direction = 'OUTBOUND'
+         )`;
+  }
+
+  private async countLeadsNoResponse(organizationId: string, range?: DateRange): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM (${this.leadsNoResponseSql(organizationId, range)}) x`;
+    return rows[0]?.n ?? 0;
+  }
+
   /**
    * LISTA dos leads SEM RESPOSTA do período (o drill-down do card "Sem
-   * resposta"). Mesma definição do contador: cards criados na janela cujo
-   * contato nunca recebeu OUTBOUND (o time não respondeu). NÃO filtra por
+   * resposta"). Mesma definição do contador (leadsNoResponseSql): nunca
+   * contatado OU esperando resposta humana (robô na abertura conta como
+   * resposta; cliente que respondeu ao robô e ficou sem humano, não). NÃO filtra por
    * vendedor — igual ao contador — pra bater com o número mostrado.
    *
    * Para cada lead resolve:
@@ -1575,23 +1616,20 @@ export class TinyService {
     const take = Math.min(Math.max(limit, 1), 200);
     const skip = (Math.max(page, 1) - 1) * take;
 
-    const where = {
-      organizationId,
-      ...(range ? { createdAt: range } : {}),
-      // sem NENHUM OUTBOUND no contato → o time nunca respondeu
-      NOT: {
-        contact: {
-          conversations: {
-            some: { messages: { some: { direction: 'OUTBOUND' as const } } },
-          },
-        },
-      },
-    };
+    // Mesma regra do contador (summary) — total e página saem do mesmo SQL.
+    const base = this.leadsNoResponseSql(organizationId, range);
+    const [countRows, pageRows] = await Promise.all([
+      this.prisma.$queryRaw<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM (${base}) x`,
+      this.prisma.$queryRaw<{ cardId: string; motivo: string; waitingSince: Date | null }[]>`
+        SELECT "cardId", motivo, "waitingSince" FROM (${base}) x
+        ORDER BY "createdAt" DESC OFFSET ${skip} LIMIT ${take}`,
+    ]);
+    const total = countRows[0]?.n ?? 0;
+    const motivoByCard = new Map(pageRows.map((r) => [r.cardId, r]));
 
-    const [total, cards] = await Promise.all([
-      this.prisma.card.count({ where }),
+    const [cards] = await Promise.all([
       this.prisma.card.findMany({
-        where,
+        where: { organizationId, id: { in: pageRows.map((r) => r.cardId) } },
         select: {
           id: true,
           title: true,
@@ -1600,8 +1638,6 @@ export class TinyService {
           contact: { select: { id: true, name: true, phone: true } },
         },
         orderBy: { createdAt: 'desc' },
-        skip,
-        take,
       }),
     ]);
 
@@ -1676,8 +1712,13 @@ export class TinyService {
         phone: c.contact?.phone ?? null,
         conversationId,
         origem,
+        /** sem_contato | nunca_respondido | apos_robo | aguardando_vendedor */
+        motivo: motivoByCard.get(c.id)?.motivo ?? 'sem_contato',
         createdAt: c.createdAt.toISOString(),
-        lastContactAt,
+        // Esperando: desde a última mensagem do cliente sem resposta humana.
+        lastContactAt: motivoByCard.get(c.id)?.waitingSince
+          ? new Date(motivoByCard.get(c.id)!.waitingSince!).toISOString()
+          : lastContactAt,
       };
     });
 

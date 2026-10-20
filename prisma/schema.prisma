@@ -100,6 +100,7 @@ enum NotificationType {
   SYSTEM
   AI_TOOL_FAILURE
   CARD_INACTIVE
+  LEAD_WAITING
 }
 
 // ─── Core: Auth + Multi-tenancy ──────────────────

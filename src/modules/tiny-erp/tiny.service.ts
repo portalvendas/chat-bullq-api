@@ -5,7 +5,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { TinyHttpClient } from './tiny.http-client';
 import { MetaCapiService } from './meta-capi/meta-capi.service';
 import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
-import { ConversationStatus } from '@prisma/client';
+import { ConversationStatus, Prisma } from '@prisma/client';
 
 /** Situações de pedido do Tiny v3 (código → rótulo). */
 const PEDIDO_SITUACOES: Record<string, string> = {
@@ -1420,26 +1420,44 @@ export class TinyService {
     }
 
     // Une pedidos e propostas por nome de vendedor.
-    const byVend = new Map<
-      string,
-      { vendedor: string; pedidosCount: number; pedidosTotal: number; propostasCount: number; propostasTotal: number }
-    >();
+    type VendRow = {
+      vendedor: string;
+      leadsCount: number;
+      pedidosCount: number;
+      pedidosTotal: number;
+      propostasCount: number;
+      propostasTotal: number;
+    };
+    const byVend = new Map<string, VendRow>();
     const key = (v: string | null) => v?.trim() || 'Sem vendedor';
+    const row = (k: string): VendRow =>
+      byVend.get(k) ?? { vendedor: k, leadsCount: 0, pedidosCount: 0, pedidosTotal: 0, propostasCount: 0, propostasTotal: 0 };
     for (const r of vendPed) {
       const k = key(r.vendedor);
-      const e = byVend.get(k) ?? { vendedor: k, pedidosCount: 0, pedidosTotal: 0, propostasCount: 0, propostasTotal: 0 };
+      const e = row(k);
       e.pedidosCount += r._count._all;
       e.pedidosTotal += Number(r._sum.valor ?? 0);
       byVend.set(k, e);
     }
     for (const r of vendOrc) {
       const k = key(r.vendedor);
-      const e = byVend.get(k) ?? { vendedor: k, pedidosCount: 0, pedidosTotal: 0, propostasCount: 0, propostasTotal: 0 };
+      const e = row(k);
       e.propostasCount += r._count._all;
       e.propostasTotal += Number(r._sum.valor ?? 0);
       byVend.set(k, e);
     }
-    const porVendedor = [...byVend.values()].sort((a, b) => b.pedidosTotal - a.pedidosTotal);
+
+    // Leads do período por vendedor (responsável do card) — best-effort: se
+    // falhar, a tabela segue sem a coluna preenchida.
+    try {
+      await this.attachLeadsPerVendor(organizationId, leadWhere, byVend, row, vendedor);
+    } catch (err: any) {
+      this.logger.warn(`leads por vendedor falhou (org=${organizationId}): ${err?.message ?? err}`);
+    }
+
+    const porVendedor = [...byVend.values()].sort(
+      (a, b) => b.pedidosTotal - a.pedidosTotal || b.leadsCount - a.leadsCount,
+    );
 
     return {
       pedidos: { count: pedidos._count._all, total: Number(pedidos._sum.valor ?? 0) },
@@ -1457,6 +1475,70 @@ export class TinyService {
       previous,
       porVendedor,
     };
+  }
+
+  /**
+   * Soma em `leadsCount` os cards criados no período, pelo RESPONSÁVEL do card.
+   *
+   * O Tiny só tem o NOME do vendedor ("GABRIELLA APPEL GURKIEVCZ") e o CRM tem
+   * o usuário ("Gabriella Appel"): casamos pelo 1º nome, só quando é único dos
+   * dois lados. Sem casamento, o vendedor aparece com o nome do usuário do CRM
+   * (linha só com leads). Cards sem responsável vão para "Sem vendedor".
+   * Com filtro de vendedor, só conta os leads de quem casa com esse filtro.
+   *
+   * @example Gabriella com 42 cards no período →
+   *   { vendedor: 'GABRIELLA APPEL GURKIEVCZ', leadsCount: 42, pedidosCount: 4, ... }
+   */
+  private async attachLeadsPerVendor<R extends { leadsCount: number }>(
+    organizationId: string,
+    leadWhere: Prisma.CardWhereInput,
+    byVend: Map<string, R>,
+    row: (k: string) => R,
+    vendedorFilter?: string,
+  ): Promise<void> {
+    const [leadsByUser, members] = await Promise.all([
+      this.prisma.card.groupBy({
+        by: ['assignedToId'],
+        where: leadWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.userOrganization.findMany({
+        where: { organizationId },
+        select: { user: { select: { id: true, name: true } } },
+      }),
+    ]);
+    if (!leadsByUser.length) return;
+
+    // 1º nome → chaves de vendedor do Tiny presentes na tabela.
+    const vendByFirst = new Map<string, string[]>();
+    for (const k of byVend.keys()) {
+      if (k === 'Sem vendedor') continue;
+      const f = this.normNameTokens(k)[0];
+      if (f) vendByFirst.set(f, [...(vendByFirst.get(f) ?? []), k]);
+    }
+    const usersByFirst = new Map<string, number>();
+    for (const m of members) {
+      const f = this.normNameTokens(m.user?.name)[0];
+      if (f) usersByFirst.set(f, (usersByFirst.get(f) ?? 0) + 1);
+    }
+    const userName = new Map(members.filter((m) => m.user).map((m) => [m.user!.id, m.user!.name]));
+    const filterKey = vendedorFilter?.trim() || null;
+
+    for (const g of leadsByUser) {
+      let k: string;
+      if (!g.assignedToId) {
+        k = 'Sem vendedor';
+      } else {
+        const name = userName.get(g.assignedToId) ?? 'Usuário removido';
+        const f = this.normNameTokens(name)[0];
+        const vendKeys = f ? vendByFirst.get(f) : undefined;
+        k = vendKeys?.length === 1 && usersByFirst.get(f!) === 1 ? vendKeys[0] : name;
+      }
+      if (filterKey && k !== filterKey) continue;
+      const e = row(k);
+      e.leadsCount += g._count._all;
+      byVend.set(k, e);
+    }
   }
 
   /**

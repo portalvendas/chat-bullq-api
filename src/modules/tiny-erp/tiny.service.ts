@@ -1446,7 +1446,7 @@ export class TinyService {
     // Leads do período por vendedor (responsável do card) — best-effort: se
     // falhar, a tabela segue sem a coluna preenchida.
     try {
-      await this.attachLeadsPerVendor(organizationId, leadWhere, byVend, row, vendedor);
+      await this.attachLeadsPerVendor(organizationId, range, byVend, row, vendedor);
     } catch (err: any) {
       this.logger.warn(`leads por vendedor falhou (org=${organizationId}): ${err?.message ?? err}`);
     }
@@ -1487,22 +1487,32 @@ export class TinyService {
    */
   private async attachLeadsPerVendor<R extends { leadsCount: number }>(
     organizationId: string,
-    leadWhere: Prisma.CardWhereInput,
+    range: DateRange | undefined,
     byVend: Map<string, R>,
     row: (k: string) => R,
     vendedorFilter?: string,
   ): Promise<void> {
-    const [leadsByUser, members] = await Promise.all([
-      this.prisma.card.groupBy({
-        by: ['assignedToId'],
-        where: leadWhere,
-        _count: { _all: true },
-      }),
+    // Vendedor EFETIVO do lead: o do card; se o card estiver sem, o da
+    // conversa do contato (a vinculada ao card primeiro). Lead que já tem
+    // vendedor na conversa NÃO conta como "Sem vendedor".
+    const [leadsByUserRaw, members] = await Promise.all([
+      this.prisma.$queryRaw<{ assignedToId: string | null; n: number }[]>`
+        SELECT COALESCE(k.assigned_to_id, (
+                 SELECT cv.assigned_to_id FROM conversations cv
+                 WHERE cv.contact_id = k.contact_id AND cv.organization_id = k.organization_id
+                   AND cv.assigned_to_id IS NOT NULL
+                 ORDER BY (cv.id = k.conversation_id) DESC, cv.last_message_at DESC NULLS LAST
+                 LIMIT 1)) AS "assignedToId",
+               COUNT(*)::int AS n
+        FROM cards k
+        WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+        GROUP BY 1`,
       this.prisma.userOrganization.findMany({
         where: { organizationId },
         select: { user: { select: { id: true, name: true } } },
       }),
     ]);
+    const leadsByUser = leadsByUserRaw.map((r) => ({ assignedToId: r.assignedToId, _count: { _all: r.n } }));
     if (!leadsByUser.length) return;
 
     // 1º nome → chaves de vendedor do Tiny presentes na tabela.
@@ -1558,11 +1568,13 @@ export class TinyService {
   private leadsNoResponseSql(organizationId: string, range?: DateRange): Prisma.Sql {
     return Prisma.sql`
       WITH k AS (
-        SELECT id, contact_id, created_at FROM cards
+        SELECT id, contact_id, created_at, status FROM cards
         WHERE organization_id = ${organizationId} AND ${this.rangeSql('created_at', range)}
       ),
       w AS (
-        ${waitingConversationsSql(Prisma.sql`c.organization_id = ${organizationId} AND c.contact_id IN (SELECT contact_id FROM k WHERE contact_id IS NOT NULL)`)}
+        ${waitingConversationsSql(Prisma.sql`c.organization_id = ${organizationId}
+          AND c.contact_id IN (SELECT contact_id FROM k WHERE contact_id IS NOT NULL)
+          AND c.status <> 'CLOSED'`)}
       ),
       wk AS (
         SELECT DISTINCT ON ("contactId") "contactId", kind, "waitingSince"
@@ -1573,6 +1585,11 @@ export class TinyService {
              wk."waitingSince" AS "waitingSince"
       FROM k
       LEFT JOIN wk ON wk."contactId" = k.contact_id
+        -- "esperando" só vale pra lead EM ANDAMENTO (card aberto) e depois de
+        -- 15 min (mesmo limite do alerta) — lead ganho/perdido ou conversa
+        -- encerrada não é pendência.
+        AND k.status = 'OPEN'
+        AND wk."waitingSince" < (now() AT TIME ZONE 'UTC') - interval '15 minutes'
       WHERE wk."contactId" IS NOT NULL
          OR NOT EXISTS (
            SELECT 1 FROM conversations cv JOIN messages m ON m.conversation_id = cv.id

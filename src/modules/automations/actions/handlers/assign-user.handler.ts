@@ -84,9 +84,7 @@ export class AssignUserHandler implements ActionHandler {
         const updates: Record<string, unknown> = { assignedToId: p.userId };
         if (willAlsoChangeStatus) {
           updates.status = ConversationStatus.OPEN;
-          if (!conversation.firstResponseAt) {
-            updates.firstResponseAt = new Date();
-          }
+          // firstResponseAt: gravado pelo trigger na 1ª mensagem enviada.
         }
         await tx.conversation.update({
           where: { id: conversation.id },

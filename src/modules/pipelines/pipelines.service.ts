@@ -15,6 +15,7 @@ import {
 import { BaileysSessionManager } from '../channel-hub/adapters/baileys/baileys-session.manager';
 import { SWITCHABLE_WHATSAPP_TYPES } from '../../common/constants/whatsapp.constants';
 import { canonicalPhone } from '../../common/phone.util';
+import { syncConversationsWithCard } from '../../common/card-owner.util';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
@@ -538,6 +539,22 @@ export class PipelinesService {
       },
     });
     this.realtime.emitToOrg(organizationId, 'card:updated', { card: updated });
+
+    // Trocou o vendedor do card no kanban → a conversa do lead segue junto
+    // (conversa e card sempre com o mesmo vendedor). Só em card aberto.
+    if (
+      dto.assignedToId &&
+      dto.assignedToId !== card.assignedToId &&
+      updated.status === CardStatus.OPEN
+    ) {
+      const n = await syncConversationsWithCard(
+        this.prisma,
+        organizationId,
+        { conversationId: updated.conversationId, contactId: updated.contactId },
+        dto.assignedToId,
+      );
+      if (n > 0) this.realtime.emitToOrg(organizationId, 'conversation:updated', { cardId });
+    }
     return updated;
   }
 

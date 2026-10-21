@@ -24,7 +24,7 @@ import {
 import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { ChannelAdapterRegistry } from '../../channel-hub/channel-adapter.registry';
 import { CadencesService } from '../../cadences/cadences.service';
-import { inheritCardOwner } from '../../../common/card-owner.util';
+import { syncCardsWithConversation } from '../../../common/card-owner.util';
 
 /**
  * Escolhe o ContactChannel do destino. Um contato pode ter DOIS no mesmo canal:
@@ -248,8 +248,10 @@ export class MessagesService {
       },
     });
 
-    // Card do lead sem vendedor herda quem respondeu (mesmo dono da conversa).
-    void inheritCardOwner(this.prisma, organizationId, conversation.contactId, senderId);
+    // Conversa e card com o MESMO vendedor: quem respondeu passa a ser o dono
+    // da conversa (auto-assign acima) e o card do lead acompanha.
+    // (idempotente: só grava card que estiver diferente).
+    void syncCardsWithConversation(this.prisma, organizationId, conversation.id, conversation.contactId, senderId);
 
     // Humano respondeu — cancela qualquer timer de watchdog pendente e
     // zera o contador de tentativas. Se a IA estava paralisada e quem

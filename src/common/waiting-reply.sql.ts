@@ -8,7 +8,8 @@ import { Prisma } from '@prisma/client';
  * celular do vendedor (eco: metadata.isEcho). Robô/IA/cadência/disparo = OUTBOUND
  * sem sender e sem eco.
  *
- * Olhando a ÚLTIMA mensagem do cliente (INBOUND) da conversa:
+ * Olhando a ÚLTIMA mensagem do cliente (INBOUND) que pede resposta — ignora
+ * reação, figurinha e agradecimento curto ("ok", "obrigado", "👍"):
  *  - houve resposta HUMANA depois dela                         → respondido;
  *  - é a ABERTURA (nada foi enviado antes) e o robô respondeu  → respondido
  *    ("cliente entrou e foi atendido pelo robô");
@@ -47,6 +48,23 @@ export function humanOutboundSql(alias: string): Prisma.Sql {
 }
 
 /**
+ * Mensagem do cliente que PEDE resposta. Não contam: reação, figurinha,
+ * mensagem de sistema e agradecimento/confirmação curto que encerra a conversa
+ * ("ok", "obrigado", "valeu", "👍"...). Assim "cliente agradeceu e não teve
+ * resposta" não vira lead esperando nem dispara alerta.
+ */
+const COURTESY_RE =
+  '^[[:space:]]*(ok+|okay|oki|okk|obrigad[oa]s?|muito obrigad[oa]|ok,? obrigad[oa]|brigad[oa]|obg|valeu|vlw|blz|beleza|certo|perfeito|show|top|joia|j[oó]ia|t[aá] bom|t[aá] certo|combinado|de nada|am[eé]m|fechado|👍+|🙏+|❤️+|😊+|👏+|🙂+)[[:space:][:punct:]]*$';
+const MEANINGFUL_INBOUND = Prisma.raw(`(
+  m.type::text NOT IN ('REACTION','STICKER','SYSTEM')
+  AND NOT (
+    m.type::text = 'TEXT'
+    AND length(COALESCE(m.content->>'text', m.content->>'body', '')) <= 40
+    AND lower(COALESCE(m.content->>'text', m.content->>'body', '')) ~ '${COURTESY_RE}'
+  )
+)`);
+
+/**
  * SELECT das conversas ESPERANDO resposta humana, filtradas por `where`
  * (aplicado em `conversations c`). Use como subconsulta/CTE.
  *
@@ -67,6 +85,7 @@ export function waitingConversationsSql(where: Prisma.Sql): Prisma.Sql {
     JOIN LATERAL (
       SELECT m.id, m.created_at FROM messages m
       WHERE m.conversation_id = c.id AND m.direction = 'INBOUND'
+        AND ${MEANINGFUL_INBOUND}
       ORDER BY m.created_at DESC LIMIT 1
     ) li ON true
     LEFT JOIN LATERAL (

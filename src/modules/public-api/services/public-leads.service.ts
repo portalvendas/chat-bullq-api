@@ -371,6 +371,9 @@ export class PublicLeadsService {
           source: meta.source ?? source,
           tracking: { ...(meta.tracking ?? {}), ...tracking },
           raw: body,
+          // Card criado antes pelo WhatsApp (o cliente clicou no botão da LP e
+          // chamou antes do n8n postar): guarda também o número da LP.
+          ...(numeroWhatsapp && !meta.numeroWhatsapp ? { numeroWhatsapp } : {}),
           ...(leadScore != null ? { leadScore } : {}),
           ...(temperature ? { leadTemperature: temperature } : {}),
         };

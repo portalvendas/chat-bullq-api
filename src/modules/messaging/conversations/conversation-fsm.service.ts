@@ -3,7 +3,7 @@ import { AutomationTrigger, ConversationStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { RatingsService } from '../../ratings/ratings.service';
 import { OutboxService } from '../../automations/outbox/outbox.service';
-import { inheritCardOwner } from '../../../common/card-owner.util';
+import { syncCardsWithConversation } from '../../../common/card-owner.util';
 
 type Transition = {
   from: ConversationStatus;
@@ -126,9 +126,9 @@ export class ConversationFsmService {
       updates.status = ConversationStatus.OPEN;
     }
 
-    if (!conversation.firstResponseAt && willAlsoChangeStatus) {
-      updates.firstResponseAt = new Date();
-    }
+    // firstResponseAt NÃO é gravado na atribuição: atribuir não é responder.
+    // Quem grava é o trigger trg_messages_first_response (1ª mensagem enviada
+    // depois do cliente escrever).
 
     // Same-assignee no-op short-circuits the outbox emit. Without this,
     // every UI re-save would cycle the automation engine.
@@ -195,7 +195,8 @@ export class ConversationFsmService {
       }
     });
 
-    // Card do lead sem vendedor herda o responsável da conversa.
-    void inheritCardOwner(this.prisma, conversation.organizationId, conversation.contactId, agentId);
+    // Conversa e card com o MESMO vendedor: o card do lead acompanha a
+    // atribuição/transferência da conversa.
+    void syncCardsWithConversation(this.prisma, conversation.organizationId, conversationId, conversation.contactId, agentId);
   }
 }

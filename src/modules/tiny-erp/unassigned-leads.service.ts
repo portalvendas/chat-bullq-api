@@ -88,10 +88,13 @@ export class UnassignedLeadsService {
   ) {
     const take = Math.min(Math.max(limit, 1), 200);
     const skip = (Math.max(page, 1) - 1) * take;
+    // Sem vendedor EFETIVO: nem o card nem nenhuma conversa do contato têm
+    // vendedor (mesma regra da linha "Sem vendedor" da tabela Por vendedor).
     const where: Prisma.CardWhereInput = {
       organizationId,
       assignedToId: null,
       ...(range ? { createdAt: range } : {}),
+      NOT: { contact: { conversations: { some: { assignedToId: { not: null } } } } },
     };
 
     const [cfg, pipelines] = await Promise.all([
@@ -147,6 +150,11 @@ export class UnassignedLeadsService {
         FROM cards k
         WHERE k.organization_id = ${organizationId}
           AND k.assigned_to_id IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM conversations cv2
+            WHERE cv2.contact_id = k.contact_id AND cv2.organization_id = k.organization_id
+              AND cv2.assigned_to_id IS NOT NULL
+          )
           ${range?.gte ? Prisma.sql`AND k.created_at >= (${range.gte.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
           ${range?.lte ? Prisma.sql`AND k.created_at <= (${range.lte.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
         GROUP BY 1, 2, 3, 4`,

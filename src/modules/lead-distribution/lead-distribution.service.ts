@@ -401,6 +401,38 @@ export class LeadDistributionService {
           .catch(() => undefined);
       }
 
+      // Card criado SEM conversa (LP/Lead Ads), mas o contato já tem conversa
+      // aberta sem vendedor (ex.: chamou no WhatsApp antes): a conversa recebe
+      // o MESMO vendedor do card. Nunca rouba conversa que já tem dono.
+      if (!conversationId && contactId) {
+        const orphanConvs = await this.prisma.conversation
+          .findMany({
+            where: { organizationId, contactId, assignedToId: null, status: { not: 'CLOSED' }, isGroup: false },
+            select: { id: true },
+          })
+          .catch(() => [] as { id: string }[]);
+        for (const cv of orphanConvs) {
+          const res = await this.prisma.conversation.updateMany({
+            where: { id: cv.id, organizationId, assignedToId: null },
+            data: { assignedToId: userId },
+          });
+          if (res.count > 0) {
+            await this.prisma.conversationAuditLog
+              .create({
+                data: {
+                  conversationId: cv.id,
+                  actorId: null,
+                  action: 'ASSIGNED',
+                  fromValue: null,
+                  toValue: userId,
+                  metadata: { source: `lead_distribution:${source}`, pipelineId: pipelineId ?? null, via: 'card' },
+                },
+              })
+              .catch(() => undefined);
+          }
+        }
+      }
+
       this.logger.log(
         `lead_distribuido(${source}) conv=${conversationId ?? '-'} card=${cardId ?? '-'} funil=${pipelineId ?? '-'} -> user=${userId}`,
       );

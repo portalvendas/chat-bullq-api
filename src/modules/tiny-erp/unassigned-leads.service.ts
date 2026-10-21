@@ -15,6 +15,7 @@ export type LeadEntrada =
 
 /** Por que ficou sem vendedor (diagnóstico acionável). */
 export type MotivoSemVendedor =
+  | 'conversa_com_vendedor'
   | 'marketplace'
   | 'automacao'
   | 'importacao'
@@ -24,6 +25,8 @@ export type MotivoSemVendedor =
   | 'nao_distribuido';
 
 export const MOTIVO_LABEL: Record<MotivoSemVendedor, string> = {
+  conversa_com_vendedor:
+    'A conversa já tem vendedor, mas o card não herdou — use "Distribuir agora" para corrigir',
   marketplace: 'Funil de marketplace (ML/Shopee) — não passa pela distribuição',
   automacao: 'Criado por automação — não passa pela distribuição',
   importacao: 'Importado (Kommo) sem responsável',
@@ -131,21 +134,29 @@ export class UnassignedLeadsService {
         take,
       }),
       // Breakdown do período INTEIRO (não só da página): funil × origem.
-      this.prisma.$queryRaw<{ pipelineId: string; source: string | null; createdBy: string | null; n: number }[]>`
-        SELECT pipeline_id AS "pipelineId",
-               metadata->>'source' AS source,
-               metadata->>'createdBy' AS "createdBy",
+      this.prisma.$queryRaw<{ pipelineId: string; source: string | null; createdBy: string | null; convOwner: boolean; n: number }[]>`
+        SELECT k.pipeline_id AS "pipelineId",
+               k.metadata->>'source' AS source,
+               k.metadata->>'createdBy' AS "createdBy",
+               EXISTS (
+                 SELECT 1 FROM conversations cv
+                 WHERE cv.contact_id = k.contact_id AND cv.organization_id = k.organization_id
+                   AND cv.assigned_to_id IS NOT NULL
+               ) AS "convOwner",
                COUNT(*)::int AS n
-        FROM cards
-        WHERE organization_id = ${organizationId}
-          AND assigned_to_id IS NULL
-          ${range?.gte ? Prisma.sql`AND created_at >= (${range.gte.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
-          ${range?.lte ? Prisma.sql`AND created_at <= (${range.lte.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
-        GROUP BY 1, 2, 3`,
+        FROM cards k
+        WHERE k.organization_id = ${organizationId}
+          AND k.assigned_to_id IS NULL
+          ${range?.gte ? Prisma.sql`AND k.created_at >= (${range.gte.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
+          ${range?.lte ? Prisma.sql`AND k.created_at <= (${range.lte.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
+        GROUP BY 1, 2, 3, 4`,
     ]);
 
     // Motivo a partir de origem + config (mesma regra para página e breakdown).
-    const motivoOf = (pipelineId: string, meta: CardMeta): MotivoSemVendedor => {
+    // 1º: se a CONVERSA do contato já tem vendedor, o problema é só o card
+    // não ter herdado (não é a distribuição).
+    const motivoOf = (pipelineId: string, meta: CardMeta, convOwner = false): MotivoSemVendedor => {
+      if (convOwner) return 'conversa_com_vendedor';
       if (meta.source === 'marketplace-sync') return 'marketplace';
       if (meta.createdBy === 'automation') return 'automacao';
       if (meta.source === 'import_kommo') return 'importacao';
@@ -155,7 +166,7 @@ export class UnassignedLeadsService {
     const porMotivoMap = new Map<MotivoSemVendedor, number>();
     const porFunilMap = new Map<string, number>();
     for (const g of groups) {
-      const m = motivoOf(g.pipelineId, { source: g.source ?? undefined, createdBy: g.createdBy ?? undefined });
+      const m = motivoOf(g.pipelineId, { source: g.source ?? undefined, createdBy: g.createdBy ?? undefined }, g.convOwner);
       porMotivoMap.set(m, (porMotivoMap.get(m) ?? 0) + g.n);
       const pn = pipelineName.get(g.pipelineId) ?? 'Funil removido';
       porFunilMap.set(pn, (porFunilMap.get(pn) ?? 0) + g.n);
@@ -179,13 +190,17 @@ export class UnassignedLeadsService {
       }
     }
     const latestConv = new Map<string, string>();
+    const convSeller = new Map<string, string>(); // contato → vendedor da conversa
     if (contactIds.length) {
       const convs = await this.prisma.conversation.findMany({
         where: { organizationId, contactId: { in: contactIds } },
-        select: { id: true, contactId: true },
+        select: { id: true, contactId: true, assignedTo: { select: { name: true } } },
         orderBy: { lastMessageAt: 'desc' },
       });
-      for (const cv of convs) if (!latestConv.has(cv.contactId)) latestConv.set(cv.contactId, cv.id);
+      for (const cv of convs) {
+        if (!latestConv.has(cv.contactId)) latestConv.set(cv.contactId, cv.id);
+        if (cv.assignedTo?.name && !convSeller.has(cv.contactId)) convSeller.set(cv.contactId, cv.assignedTo.name);
+      }
     }
 
     const EPS_MS = 2 * 60 * 1000;
@@ -193,7 +208,8 @@ export class UnassignedLeadsService {
       const meta = (c.metadata ?? {}) as CardMeta;
       const cid = c.contact?.id ?? null;
       const fi = cid ? firstInbound.get(cid) : undefined;
-      const motivo = motivoOf(c.pipelineId, meta);
+      const vendedorConversa = cid ? convSeller.get(cid) ?? null : null;
+      const motivo = motivoOf(c.pipelineId, meta, !!vendedorConversa);
       return {
         cardId: c.id,
         name: c.contact?.name ?? c.title ?? null,
@@ -204,7 +220,11 @@ export class UnassignedLeadsService {
         status: c.status,
         entrada: this.entrada(meta, !!fi && fi.getTime() <= c.createdAt.getTime() + EPS_MS),
         motivo,
-        motivoLabel: MOTIVO_LABEL[motivo],
+        motivoLabel:
+          motivo === 'conversa_com_vendedor'
+            ? `Na conversa está com ${vendedorConversa}, mas o card ficou sem vendedor`
+            : MOTIVO_LABEL[motivo],
+        vendedorConversa,
         conversationId: c.conversationId ?? (cid ? latestConv.get(cid) ?? null : null),
         createdAt: c.createdAt.toISOString(),
       };

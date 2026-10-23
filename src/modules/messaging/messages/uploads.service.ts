@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'child_process';
@@ -31,7 +32,7 @@ export interface UploadResult {
  * public URL contract stays the same.
  */
 @Injectable()
-export class UploadsService {
+export class UploadsService implements OnModuleInit {
   private readonly logger = new Logger(UploadsService.name);
 
   // 25MB matches OpenAI Whisper's upload cap, so audios we accept are also
@@ -87,6 +88,22 @@ export class UploadsService {
   private readonly publicBaseUrl: string;
   /** Dias de retenção de mídia no disco (0 = nunca poda). Env UPLOADS_RETENTION_DAYS. */
   private readonly retentionDays: number;
+
+  /**
+   * Checagem no boot: sem ffmpeg o envio de áudio quebra (gravação do CRM e
+   * conversão pro WhatsApp). Loga ERRO bem visível em vez de só falhar no
+   * primeiro áudio do vendedor.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const { stdout } = await execFileAsync('ffmpeg', ['-hide_banner', '-version'], { timeout: 10_000 });
+      this.logger.log(`ffmpeg OK: ${String(stdout).split('\n')[0]}`);
+    } catch (err: any) {
+      this.logger.error(
+        `ffmpeg INDISPONÍVEL (${err?.code ?? err?.message}) — envio de áudio vai falhar. Instale ffmpeg na imagem (Dockerfile).`,
+      );
+    }
+  }
 
   constructor(private readonly config: ConfigService) {
     this.rootDir = path.resolve(
@@ -315,6 +332,12 @@ export class UploadsService {
         finalMime = 'audio/ogg';
       } catch (err: any) {
         this.logger.error(`ffmpeg transcode failed: ${err.message}`);
+        if (err?.code === 'ENOENT') {
+          // Problema do servidor (não do arquivo): mensagem clara pro operador.
+          throw new ServiceUnavailableException(
+            'Servidor sem ffmpeg: não foi possível converter o áudio. Avise o suporte.',
+          );
+        }
         throw new BadRequestException('Failed to process audio');
       }
     }

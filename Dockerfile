@@ -17,7 +17,10 @@ RUN npx prisma generate
 RUN yarn build
 
 FROM node:20-alpine AS runner
-RUN apk add --no-cache openssl curl tini
+# ffmpeg: OBRIGATÓRIO — converte o áudio gravado no CRM (webm→ogg/opus) e o
+# áudio de saída pro WhatsApp (ogg→mp3, libopus/libmp3lame). Sem ele o envio de
+# áudio falha com "Failed to process audio".
+RUN apk add --no-cache openssl curl tini ffmpeg
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3001

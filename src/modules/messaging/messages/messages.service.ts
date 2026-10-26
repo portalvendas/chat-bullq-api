@@ -25,6 +25,7 @@ import { WatchdogService } from '../../routing/watchdog/watchdog.service';
 import { ChannelAdapterRegistry } from '../../channel-hub/channel-adapter.registry';
 import { CadencesService } from '../../cadences/cadences.service';
 import { syncCardsWithConversation } from '../../../common/card-owner.util';
+import { LeadScopeService } from '../../lead-distribution/lead-scope.service';
 
 /**
  * Escolhe o ContactChannel do destino. Um contato pode ter DOIS no mesmo canal:
@@ -54,6 +55,7 @@ export class MessagesService {
     private readonly adapterRegistry: ChannelAdapterRegistry,
     @InjectQueue('outbound-messages') private readonly outboundQueue: Queue,
     private readonly cadences: CadencesService,
+    private readonly leadScope: LeadScopeService,
   ) {}
 
   /**
@@ -117,6 +119,8 @@ export class MessagesService {
       throw new ForbiddenException();
     }
     this.channelAccess.assertChannelAccess(access, conversation.channelId);
+    // Vendedora não responde lead de outra vendedora (403 com o nome da dona).
+    await this.leadScope.assertCanActOn(organizationId, conversation.assignedToId);
 
     const contactChannel = pickContactChannel(conversation.contact.channels, conversation.channelId);
     if (!contactChannel) {
@@ -813,6 +817,11 @@ export class MessagesService {
       throw new ForbiddenException();
     }
     this.channelAccess.assertChannelAccess(access, conversation.channelId);
+    // Vendedora não lê conversa de outra vendedora (404 — nem revela).
+    const me = await this.leadScope.restrictedUserId(organizationId);
+    if (me && conversation.assignedToId && conversation.assignedToId !== me) {
+      throw new NotFoundException('Conversation not found');
+    }
 
     const skip = (page - 1) * limit;
     const { messages, total } = await this.repository.findByConversation(

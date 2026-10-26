@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { LeadDistributionService } from '../lead-distribution/lead-distribution.service';
+import { LeadScopeService } from '../lead-distribution/lead-scope.service';
 
 /** Como o card nasceu (derivado do metadata/conversa). */
 export type LeadEntrada =
@@ -60,6 +61,7 @@ export class UnassignedLeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly distribution: LeadDistributionService,
+    private readonly leadScope: LeadScopeService,
   ) {}
 
   private entrada(meta: CardMeta, hasInboundBefore: boolean): LeadEntrada {
@@ -88,6 +90,15 @@ export class UnassignedLeadsService {
   ) {
     const take = Math.min(Math.max(limit, 1), 200);
     const skip = (Math.max(page, 1) - 1) * take;
+    // Vendedora não vê leads que não são dela (sem dono = assunto do gestor).
+    if (await this.leadScope.restrictedUserId(organizationId)) {
+      return {
+        items: [],
+        breakdown: { porMotivo: [], porFunil: [] },
+        distribution: { enabled: true, funisSemRegra: [] as string[] },
+        pagination: { page: 1, limit: take, total: 0, totalPages: 0 },
+      };
+    }
     // Sem vendedor EFETIVO: nem o card nem nenhuma conversa do contato têm
     // vendedor (mesma regra da linha "Sem vendedor" da tabela Por vendedor).
     const where: Prisma.CardWhereInput = {

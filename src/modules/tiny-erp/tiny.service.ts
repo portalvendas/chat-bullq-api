@@ -7,6 +7,13 @@ import { MetaCapiService } from './meta-capi/meta-capi.service';
 import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
 import { ConversationStatus, Prisma } from '@prisma/client';
 import { waitingConversationsSql } from '../../common/waiting-reply.sql';
+import { LeadScopeService } from '../lead-distribution/lead-scope.service';
+
+/**
+ * Chave de PESSOA do lead (cards `k` + contacts `ct`): telefone canônico; sem
+ * telefone (Instagram, LID), o contato; sem contato, o próprio card.
+ */
+const LEAD_PERSON_KEY = Prisma.raw(`COALESCE(ct.phone, k.contact_id, k.id)`);
 
 /** Situações de pedido do Tiny v3 (código → rótulo). */
 const PEDIDO_SITUACOES: Record<string, string> = {
@@ -71,6 +78,7 @@ export class TinyService {
     private readonly config: ConfigService,
     private readonly metaCapi: MetaCapiService,
     private readonly metaCapiLeads: MetaCapiLeadsService,
+    private readonly leadScope: LeadScopeService,
   ) {}
 
   // ── OAuth ──────────────────────────────────────────────────────────
@@ -1325,12 +1333,8 @@ export class TinyService {
     const pw = this.pedidoWhere(organizationId, range, vendedor);
     const ow = this.orcamentoWhere(organizationId, range, vendedor);
 
-    // Leads (cards do CRM) do período — NÃO filtra por vendedor (lead não tem
-    // vendedor no CRM); serve de base pras taxas de conversão do funil.
-    const leadWhere = {
-      organizationId,
-      ...(range ? { createdAt: range } : {}),
-    };
+    // Leads do período = PESSOAS únicas (countUniqueLeads), não cards — base
+    // das taxas de conversão do funil. Não filtra por vendedor.
     // Leads "sem resposta": regra única em common/waiting-reply.sql.ts (robô na
     // abertura conta como resposta; depois que o cliente responde, só resposta
     // HUMANA conta) + leads que nunca receberam nada (ex.: LP sem conversa).
@@ -1359,7 +1363,7 @@ export class TinyService {
           _count: { _all: true },
           _sum: { valor: true },
         }),
-        this.prisma.card.count({ where: leadWhere }),
+        this.countUniqueLeads(organizationId, range),
         this.countLeadsNoResponse(organizationId, range),
       ]);
 
@@ -1395,9 +1399,7 @@ export class TinyService {
           _count: { _all: true },
           _sum: { valor: true },
         }),
-        this.prisma.card.count({
-          where: { organizationId, createdAt: prevRange },
-        }),
+        this.countUniqueLeads(organizationId, prevRange),
       ]);
       previous = {
         pedidos: {
@@ -1497,16 +1499,26 @@ export class TinyService {
     // vendedor na conversa NÃO conta como "Sem vendedor".
     const [leadsByUserRaw, members] = await Promise.all([
       this.prisma.$queryRaw<{ assignedToId: string | null; n: number }[]>`
-        SELECT COALESCE(k.assigned_to_id, (
-                 SELECT cv.assigned_to_id FROM conversations cv
-                 WHERE cv.contact_id = k.contact_id AND cv.organization_id = k.organization_id
-                   AND cv.assigned_to_id IS NOT NULL
-                 ORDER BY (cv.id = k.conversation_id) DESC, cv.last_message_at DESC NULLS LAST
-                 LIMIT 1)) AS "assignedToId",
-               COUNT(*)::int AS n
-        FROM cards k
-        WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
-        GROUP BY 1`,
+        WITH k AS (
+          SELECT k.id, k.created_at,
+                 ${LEAD_PERSON_KEY} AS person,
+                 COALESCE(k.assigned_to_id, (
+                   SELECT cv.assigned_to_id FROM conversations cv
+                   WHERE cv.contact_id = k.contact_id AND cv.organization_id = k.organization_id
+                     AND cv.assigned_to_id IS NOT NULL
+                   ORDER BY (cv.id = k.conversation_id) DESC, cv.last_message_at DESC NULLS LAST
+                   LIMIT 1)) AS owner
+          FROM cards k
+          LEFT JOIN contacts ct ON ct.id = k.contact_id
+          WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+        ),
+        -- 1 lead = 1 pessoa: se a mesma pessoa tem mais de um card no período,
+        -- conta uma vez, pro vendedor do card mais recente que tem vendedor.
+        p AS (
+          SELECT DISTINCT ON (person) person, owner FROM k
+          ORDER BY person, (owner IS NULL), created_at DESC
+        )
+        SELECT owner AS "assignedToId", COUNT(*)::int AS n FROM p GROUP BY 1`,
       this.prisma.userOrganization.findMany({
         where: { organizationId },
         select: { user: { select: { id: true, name: true } } },
@@ -1565,11 +1577,26 @@ export class TinyService {
    *    sem conversa);
    *  - ou o `kind` da conversa esperando resposta humana (waiting-reply.sql).
    */
-  private leadsNoResponseSql(organizationId: string, range?: DateRange): Prisma.Sql {
+  private leadsNoResponseSql(
+    organizationId: string,
+    range?: DateRange,
+    scopeUserId?: string | null,
+  ): Prisma.Sql {
+    // Vendedora: só os leads DELA (vendedor do card; sem, o da conversa).
+    const scope = scopeUserId
+      ? Prisma.sql`AND COALESCE(k.assigned_to_id, (
+          SELECT cv.assigned_to_id FROM conversations cv
+          WHERE cv.contact_id = k.contact_id AND cv.organization_id = k.organization_id
+            AND cv.assigned_to_id IS NOT NULL
+          ORDER BY (cv.id = k.conversation_id) DESC, cv.last_message_at DESC NULLS LAST
+          LIMIT 1)) = ${scopeUserId}`
+      : Prisma.empty;
     return Prisma.sql`
       WITH k AS (
-        SELECT id, contact_id, created_at, status FROM cards
-        WHERE organization_id = ${organizationId} AND ${this.rangeSql('created_at', range)}
+        SELECT k.id, k.contact_id, k.created_at, k.status, ${LEAD_PERSON_KEY} AS person
+        FROM cards k LEFT JOIN contacts ct ON ct.id = k.contact_id
+        WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+          ${scope}
       ),
       w AS (
         ${waitingConversationsSql(Prisma.sql`c.organization_id = ${organizationId}
@@ -1580,7 +1607,8 @@ export class TinyService {
         SELECT DISTINCT ON ("contactId") "contactId", kind, "waitingSince"
         FROM w ORDER BY "contactId", "waitingSince" DESC
       )
-      SELECT k.id AS "cardId", k.created_at AS "createdAt",
+      SELECT DISTINCT ON (k.person)
+             k.id AS "cardId", k.created_at AS "createdAt",
              COALESCE(wk.kind, 'sem_contato') AS motivo,
              wk."waitingSince" AS "waitingSince"
       FROM k
@@ -1594,12 +1622,27 @@ export class TinyService {
          OR NOT EXISTS (
            SELECT 1 FROM conversations cv JOIN messages m ON m.conversation_id = cv.id
            WHERE cv.contact_id = k.contact_id AND m.direction = 'OUTBOUND'
-         )`;
+         )
+      -- 1 por pessoa (card mais recente)
+      ORDER BY k.person, k.created_at DESC`;
+  }
+
+  /**
+   * Leads ÚNICOS do período: pessoas distintas, não cards. A mesma pessoa com
+   * card da LP + card do WhatsApp (ou 2 contatos com o mesmo telefone) conta 1.
+   */
+  private async countUniqueLeads(organizationId: string, range?: DateRange): Promise<number> {
+    const rows = await this.prisma.$queryRaw<{ n: number }[]>`
+      SELECT COUNT(DISTINCT ${LEAD_PERSON_KEY})::int AS n
+      FROM cards k LEFT JOIN contacts ct ON ct.id = k.contact_id
+      WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}`;
+    return rows[0]?.n ?? 0;
   }
 
   private async countLeadsNoResponse(organizationId: string, range?: DateRange): Promise<number> {
+    const me = await this.leadScope.restrictedUserId(organizationId);
     const rows = await this.prisma.$queryRaw<{ n: number }[]>`
-      SELECT COUNT(*)::int AS n FROM (${this.leadsNoResponseSql(organizationId, range)}) x`;
+      SELECT COUNT(*)::int AS n FROM (${this.leadsNoResponseSql(organizationId, range, me)}) x`;
     return rows[0]?.n ?? 0;
   }
 
@@ -1634,7 +1677,11 @@ export class TinyService {
     const skip = (Math.max(page, 1) - 1) * take;
 
     // Mesma regra do contador (summary) — total e página saem do mesmo SQL.
-    const base = this.leadsNoResponseSql(organizationId, range);
+    const base = this.leadsNoResponseSql(
+      organizationId,
+      range,
+      await this.leadScope.restrictedUserId(organizationId),
+    );
     const [countRows, pageRows] = await Promise.all([
       this.prisma.$queryRaw<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM (${base}) x`,
       this.prisma.$queryRaw<{ cardId: string; motivo: string; waitingSince: Date | null }[]>`

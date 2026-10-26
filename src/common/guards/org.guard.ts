@@ -76,7 +76,7 @@ export class OrgGuard implements CanActivate {
 
     // Publica a org validada no contexto de tenant do request (AsyncLocalStorage)
     // pro tenant-guard do Prisma conseguir detectar queries sem filtro de org.
-    setTenantOrg(membership.organizationId, userId);
+    setTenantOrg(membership.organizationId, userId, membership.role);
 
     request.accessibleChannelIds = await this.channelAccess.getAccessibleChannelIds(
       membership.id,

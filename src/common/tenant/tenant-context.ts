@@ -15,6 +15,8 @@ import { AsyncLocalStorage } from 'async_hooks';
 export interface TenantStore {
   organizationId?: string;
   userId?: string;
+  /** Papel do usuário na org do request (OWNER/ADMIN/AGENT). */
+  role?: string;
   /** Origem do contexto, pra log/debug (ex.: 'http'). */
   source?: string;
 }
@@ -32,10 +34,11 @@ export function getTenantContext(): TenantStore | undefined {
 }
 
 /** Grava a org no store do request atual (chamado pelo OrgGuard). */
-export function setTenantOrg(organizationId: string, userId?: string): void {
+export function setTenantOrg(organizationId: string, userId?: string, role?: string): void {
   const s = storage.getStore();
   if (s) {
     s.organizationId = organizationId;
     if (userId) s.userId = userId;
+    if (role) s.role = role;
   }
 }

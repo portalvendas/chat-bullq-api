@@ -7,6 +7,7 @@ import {
   LeadDistributionService,
   LeadDistributionConfigInput,
 } from './lead-distribution.service';
+import { LeadScopeService } from './lead-scope.service';
 
 /** Orquestrador de leads — config de distribuição ponderada (admin/owner). */
 @ApiTags('Lead Distribution')
@@ -14,7 +15,10 @@ import {
 @UseGuards(JwtAuthGuard, OrgGuard, RolesGuard)
 @Controller('lead-distribution')
 export class LeadDistributionController {
-  constructor(private readonly service: LeadDistributionService) {}
+  constructor(
+    private readonly service: LeadDistributionService,
+    private readonly scope: LeadScopeService,
+  ) {}
 
   @Get('config')
   @ApiOperation({ summary: 'Config do orquestrador de leads' })
@@ -51,10 +55,12 @@ export class LeadDistributionController {
   @Put('config')
   @Roles(OrgRole.OWNER, OrgRole.ADMIN)
   @ApiOperation({ summary: 'Atualiza pesos e ativação da distribuição' })
-  updateConfig(
+  async updateConfig(
     @CurrentOrg('id') orgId: string,
     @Body() dto: LeadDistributionConfigInput,
   ) {
-    return this.service.updateConfig(orgId, dto);
+    const res = await this.service.updateConfig(orgId, dto);
+    this.scope.invalidate(orgId); // quem é vendedora pode ter mudado
+    return res;
   }
 }

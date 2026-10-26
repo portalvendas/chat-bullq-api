@@ -20,6 +20,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
 import { LeadDistributionService } from '../lead-distribution/lead-distribution.service';
+import { LeadScopeService } from '../lead-distribution/lead-scope.service';
 import {
   CreateCardDto,
   CreatePipelineDto,
@@ -99,6 +100,7 @@ export class PipelinesService {
     private readonly cadences: CadencesService,
     private readonly leadDistribution: LeadDistributionService,
     private readonly moduleRef: ModuleRef,
+    private readonly leadScope: LeadScopeService,
   ) {}
 
   /**
@@ -1149,6 +1151,8 @@ export class PipelinesService {
       include: { contact: { select: { id: true, name: true, phone: true } } },
     });
     if (!card?.contact) throw new NotFoundException('Card/contato não encontrado');
+    // Vendedora só inicia conversa com lead DELA (ou sem dona).
+    await this.leadScope.assertCanActOn(organizationId, card.assignedToId);
     // Normaliza pro padrão BR (DDI 55 + DDD + 9 dígitos) e VALIDA antes de
     // iniciar. Sem isso, um telefone incompleto/sem o 9º dígito era gravado cru
     // como externalId e o provider "aceitava" o envio (1 check) mas NUNCA

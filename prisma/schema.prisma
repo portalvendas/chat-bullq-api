@@ -289,6 +289,7 @@ model Organization {
   metaCapiLeadEvents MetaCapiLeadEvent[]
   leadDistributionConfig LeadDistributionConfig?
   commercialRoutineConfig CommercialRoutineConfig?
+  leadRotationCounters   LeadRotationCounter[]
   routineDailyChecks     RoutineDailyCheck[]
   userActivityMinutes    UserActivityMinute[]
   cardEvents             CardEvent[]
@@ -329,6 +330,21 @@ model LeadDistributionConfig {
 /// Rotina Comercial: checklist diário do vendedor. `steps` mapeia cada passo
 /// (chave fixa) para etapas de funil (stageIds — podem ser de funis diferentes)
 /// e um limiar de horas para "lead parado".
+/// Vez do RODÍZIO de distribuição por funil (pipeline_key = id do funil ou
+/// "*"). Incrementado atomicamente a cada lead distribuído pelo rodízio — a
+/// vendedora da vez = sequência ponderada [counter mod ciclo].
+model LeadRotationCounter {
+  organizationId String   @map("organization_id")
+  pipelineKey    String   @map("pipeline_key")
+  counter        BigInt   @default(0)
+  updatedAt      DateTime @default(now()) @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, pipelineKey])
+  @@map("lead_rotation_counters")
+}
+
 model CommercialRoutineConfig {
   id             String   @id @default(cuid())
   organizationId String   @unique @map("organization_id")

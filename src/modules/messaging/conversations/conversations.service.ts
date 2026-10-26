@@ -1,3 +1,4 @@
+import { LeadScopeService } from '../../lead-distribution/lead-scope.service';
 import {
   Injectable,
   Logger,
@@ -40,6 +41,7 @@ export class ConversationsService {
     private readonly agentRouter: AgentRouterService,
     private readonly agentRunner: AiAgentRunnerService,
     private readonly knowledge: KnowledgeService,
+    private readonly leadScope: LeadScopeService,
   ) {}
 
   /**
@@ -184,6 +186,8 @@ export class ConversationsService {
       includeUnassigned: filters.includeUnassigned,
       search: filters.search,
       accessibleChannelIds: access === 'ALL' ? undefined : [...access],
+      // Vendedora só vê as conversas dela (ou sem dono) — fora do Kanban.
+      scopeUserId: (await this.leadScope.restrictedUserId(organizationId)) ?? undefined,
       archived: filters.archived,
       unreadOnly: filters.unreadOnly,
       stuckOnly: filters.stuckOnly,
@@ -210,6 +214,11 @@ export class ConversationsService {
       throw new ForbiddenException();
     }
     this.channelAccess.assertChannelAccess(access, conversation.channelId);
+    // Vendedora não abre/age em conversa de OUTRA vendedora (404 — nem revela).
+    const me = await this.leadScope.restrictedUserId(organizationId);
+    if (me && conversation.assignedToId && conversation.assignedToId !== me) {
+      throw new NotFoundException('Conversation not found');
+    }
     return conversation;
   }
 
@@ -654,7 +663,8 @@ export class ConversationsService {
 
   async getStatusCounts(organizationId: string, access: ChannelAccess = 'ALL') {
     const accessibleIds = access === 'ALL' ? undefined : [...access];
-    return this.repository.countByStatus(organizationId, accessibleIds);
+    const me = await this.leadScope.restrictedUserId(organizationId);
+    return this.repository.countByStatus(organizationId, accessibleIds, me ?? undefined);
   }
 
   /**

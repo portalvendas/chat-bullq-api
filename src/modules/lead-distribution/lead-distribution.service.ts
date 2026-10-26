@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { rotationPick } from './lead-rotation.util';
 
 export interface LeadWeight {
   userId: string;
@@ -166,13 +167,48 @@ export class LeadDistributionService {
     const eligible = weights.filter((w) => memberSet.has(w.userId));
     if (!eligible.length) return null;
 
-    return this.pickWeighted(eligible);
+    return this.pickRotation(organizationId, pipelineId ?? null, eligible);
+  }
+
+  /**
+   * RODÍZIO ESTRITO: a vez de cada vendedora segue uma sequência fixa
+   * (lead-rotation.util), sem aleatoriedade. Com 50/50 é 1 para cada a cada
+   * 2 leads (A, B, A, B...). Só os leads distribuídos pelo RODÍZIO avançam a
+   * vez — cliente que volta pra quem já atendia ou lead que chega pelo número
+   * de uma vendedora não "gasta" a vez de ninguém.
+   *
+   * A vez é um contador ATÔMICO por funil no banco (INSERT … ON CONFLICT …
+   * RETURNING): dois leads chegando no mesmo instante recebem números
+   * diferentes, então nunca caem os dois na mesma vendedora por corrida.
+   */
+  private async pickRotation(
+    organizationId: string,
+    pipelineId: string | null,
+    weights: LeadWeight[],
+  ): Promise<string | null> {
+    const valid = weights.filter((w) => w.userId && (w.weight ?? 0) > 0);
+    if (valid.length <= 1) return valid[0]?.userId ?? null;
+    try {
+      const key = pipelineId ?? DEFAULT_RULE;
+      const rows = await this.prisma.$queryRaw<{ counter: bigint | number }[]>`
+        INSERT INTO lead_rotation_counters (organization_id, pipeline_key, counter, updated_at)
+        VALUES (${organizationId}, ${key}, 1, now())
+        ON CONFLICT (organization_id, pipeline_key)
+        DO UPDATE SET counter = lead_rotation_counters.counter + 1, updated_at = now()
+        RETURNING counter`;
+      const n = Number(rows[0]?.counter ?? 1) - 1; // 0-based
+      return rotationPick(valid, n);
+    } catch (err: any) {
+      // Sem a tabela/banco indisponível: não deixa o lead sem vendedora.
+      this.logger.warn(`pickRotation falhou, usando sorteio: ${err?.message ?? err}`);
+      return this.pickWeighted(valid);
+    }
   }
 
   /**
    * Reaplica a distribuição nos cards ABERTOS sem vendedor do período (exceto
    * funis de marketplace). Mesmas regras da entrada: stickiness → dono do
-   * número → sorteio do funil. Idempotente (só grava em card sem dono) e
+   * número → rodízio do funil. Idempotente (só grava em card sem dono) e
    * sequencial (não estoura o pool do banco).
    *
    * POST /lead-distribution/redistribute { from?, to? }

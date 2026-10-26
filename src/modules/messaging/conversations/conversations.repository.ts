@@ -25,6 +25,9 @@ export interface InboxFilters {
   /** "Sem vendedor": inclui conversas com assignedToId null. Combinável com
    *  assignedToIds/assignedToId (OR — ids selecionados OU sem responsável). */
   includeUnassigned?: boolean;
+  /** ESCOPO DA VENDEDORA (LeadScopeService): só conversas dela ou sem dono.
+   *  Aplicado sempre que presente — independe dos filtros da tela. */
+  scopeUserId?: string;
   search?: string;
   accessibleChannelIds?: string[];
   /**
@@ -151,6 +154,12 @@ export class ConversationsRepository {
       Object.assign(where, assignConds[0]);
     } else if (assignConds.length > 1) {
       where.AND = [...((where.AND as any[]) ?? []), { OR: assignConds }];
+    }
+    if (filters.scopeUserId) {
+      where.AND = [
+        ...((where.AND as any[]) ?? []),
+        { OR: [{ assignedToId: filters.scopeUserId }, { assignedToId: null }] },
+      ];
     }
     if (filters.stuckOnly) where.isStuck = true;
     if (filters.search) {
@@ -401,7 +410,11 @@ export class ConversationsRepository {
     return this.prisma.conversation.update({ where: { id }, data });
   }
 
-  async countByStatus(organizationId: string, accessibleChannelIds?: string[]) {
+  async countByStatus(
+    organizationId: string,
+    accessibleChannelIds?: string[],
+    scopeUserId?: string,
+  ) {
     if (accessibleChannelIds !== undefined && accessibleChannelIds.length === 0) {
       return {} as Record<string, number>;
     }
@@ -412,6 +425,9 @@ export class ConversationsRepository {
         deletedAt: null,
         ...(accessibleChannelIds !== undefined
           ? { channelId: { in: accessibleChannelIds } }
+          : {}),
+        ...(scopeUserId
+          ? { OR: [{ assignedToId: scopeUserId }, { assignedToId: null }] }
           : {}),
       },
       _count: true,

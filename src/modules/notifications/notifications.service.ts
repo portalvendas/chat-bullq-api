@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { NotificationType } from '@prisma/client';
 import { NotificationsRepository } from './notifications.repository';
 import { PrismaService } from '../../database/prisma.service';
+import { LeadScopeService } from '../lead-distribution/lead-scope.service';
 
 @Injectable()
 export class NotificationsService {
@@ -13,7 +14,35 @@ export class NotificationsService {
     private readonly repository: NotificationsRepository,
     private readonly prisma: PrismaService,
     @InjectQueue('notifications') private readonly notifQueue: Queue,
+    private readonly leadScope: LeadScopeService,
   ) {}
+
+  /**
+   * Notificação sobre um LEAD/conversa que já tem vendedora: as OUTRAS
+   * vendedoras não recebem (cada uma só vê os próprios leads). Gestores e a
+   * dona continuam recebendo. Sem conversa/dono → não filtra.
+   */
+  private async dropOtherSellers(
+    organizationId: string,
+    recipients: string[],
+    data?: Record<string, any>,
+  ): Promise<string[]> {
+    const conversationId = data?.conversationId as string | undefined;
+    if (!conversationId) return recipients;
+    try {
+      const conv = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, organizationId },
+        select: { assignedToId: true },
+      });
+      const owner = conv?.assignedToId;
+      if (!owner) return recipients;
+      const sellers = await this.leadScope.sellerIds(organizationId);
+      return recipients.filter((id) => id === owner || !sellers.has(id));
+    } catch (err: any) {
+      this.logger.warn(`dropOtherSellers falhou: ${err?.message ?? err}`);
+      return recipients;
+    }
+  }
 
   async notify(params: {
     recipientId: string;
@@ -58,9 +87,11 @@ export class NotificationsService {
       select: { userId: true },
     });
 
-    const recipients = members
-      .map((m) => m.userId)
-      .filter((id) => id !== params.excludeUserId);
+    const recipients = await this.dropOtherSellers(
+      params.organizationId,
+      members.map((m) => m.userId).filter((id) => id !== params.excludeUserId),
+      params.data,
+    );
 
     for (const recipientId of recipients) {
       await this.notify({
@@ -99,8 +130,9 @@ export class NotificationsService {
     const recipients = new Set<string>(managers.map((m) => m.userId));
     if (params.responsibleUserId) recipients.add(params.responsibleUserId);
     if (params.excludeUserId) recipients.delete(params.excludeUserId);
+    const allowed = await this.dropOtherSellers(params.organizationId, [...recipients], params.data);
 
-    for (const recipientId of recipients) {
+    for (const recipientId of allowed) {
       await this.notify({
         recipientId,
         organizationId: params.organizationId,
@@ -110,7 +142,7 @@ export class NotificationsService {
         data: params.data,
       });
     }
-    return { delivered: recipients.size };
+    return { delivered: allowed.length };
   }
 
   async findByUser(userId: string, orgId: string, page: number, limit: number) {

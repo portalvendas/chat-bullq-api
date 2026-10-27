@@ -1700,6 +1700,7 @@ export class TinyService {
           createdAt: true,
           conversationId: true,
           contact: { select: { id: true, name: true, phone: true } },
+          assignedTo: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -1712,7 +1713,12 @@ export class TinyService {
     const convs = contactIds.length
       ? await this.prisma.conversation.findMany({
           where: { contactId: { in: contactIds } },
-          select: { id: true, contactId: true, lastMessageAt: true },
+          select: {
+            id: true,
+            contactId: true,
+            lastMessageAt: true,
+            assignedTo: { select: { id: true, name: true } },
+          },
           orderBy: { lastMessageAt: 'desc' },
         })
       : [];
@@ -1748,9 +1754,14 @@ export class TinyService {
     }
     // Conversa mais recente por contato (convs já ordenadas desc) — p/ abrir inbox.
     const latestConvByContact = new Map<string, string>();
+    // Vendedora da conversa do contato (fallback quando o card está sem).
+    const convSellerByContact = new Map<string, { id: string; name: string }>();
     for (const cv of convs) {
       if (cv.contactId && !latestConvByContact.has(cv.contactId)) {
         latestConvByContact.set(cv.contactId, cv.id);
+      }
+      if (cv.contactId && cv.assignedTo && !convSellerByContact.has(cv.contactId)) {
+        convSellerByContact.set(cv.contactId, cv.assignedTo);
       }
     }
 
@@ -1779,6 +1790,9 @@ export class TinyService {
         /** sem_contato | nunca_respondido | apos_robo | aguardando_vendedor */
         motivo: motivoByCard.get(c.id)?.motivo ?? 'sem_contato',
         createdAt: c.createdAt.toISOString(),
+        // Vendedora atribuída: a do card; sem, a da conversa do contato.
+        vendedor: (c.assignedTo ?? (cid ? convSellerByContact.get(cid) : undefined))?.name ?? null,
+        vendedorId: (c.assignedTo ?? (cid ? convSellerByContact.get(cid) : undefined))?.id ?? null,
         // Esperando: desde a última mensagem do cliente sem resposta humana.
         lastContactAt: motivoByCard.get(c.id)?.waitingSince
           ? new Date(motivoByCard.get(c.id)!.waitingSince!).toISOString()

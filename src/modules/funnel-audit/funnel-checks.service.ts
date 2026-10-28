@@ -153,22 +153,36 @@ export class FunnelChecksService {
   // ── Checagens ──────────────────────────────────────────────────────
 
   private waitingReply(org: string) {
+    // PÓS-VENDA (sem card aberto e já comprou: card GANHO ou pedido Tiny em
+    // 120d) continua aparecendo — cliente esperando é cliente esperando —, mas
+    // como ATENÇÃO e marcado, pra não se misturar com lead em risco.
     return this.prisma.$queryRaw<Row[]>`
       SELECT
-        (SELECT k.id FROM cards k WHERE k.contact_id = w."contactId" AND k.organization_id = ${org}
-           AND k.status = 'OPEN' ORDER BY k.created_at DESC LIMIT 1) AS "cardId",
+        COALESCE(
+          (SELECT k.id FROM cards k WHERE k.contact_id = w."contactId" AND k.organization_id = ${org}
+             AND k.status = 'OPEN' ORDER BY k.created_at DESC LIMIT 1),
+          (SELECT k.id FROM cards k WHERE k.contact_id = w."contactId" AND k.organization_id = ${org}
+             ORDER BY k.created_at DESC LIMIT 1)) AS "cardId",
+        CASE WHEN pv.pos_venda THEN 'MEDIUM' ELSE 'HIGH' END AS sev,
         w."conversationId", w."contactId",
         COALESCE(w."assignedToId", (SELECT k.assigned_to_id FROM cards k
            WHERE k.contact_id = w."contactId" AND k.organization_id = ${org}
              AND k.status = 'OPEN' AND k.assigned_to_id IS NOT NULL
            ORDER BY k.created_at DESC LIMIT 1)) AS "ownerUserId",
         EXTRACT(EPOCH FROM (${NOW} - w."waitingSince")) / 60 AS minutes,
-        jsonb_build_object('kind', w.kind) AS details
+        jsonb_build_object('kind', w.kind, 'posVenda', pv.pos_venda) AS details
       FROM (${waitingConversationsSql(Prisma.sql`
         c.organization_id = ${org}
         AND c.status <> 'CLOSED' AND c.is_archived = false
         AND c.last_message_at >= ${NOW} - interval '7 days'
         AND c.channel_id NOT IN (SELECT id FROM channels WHERE type::text IN ${MARKETPLACE_CHANNELS})`)}) w
+      CROSS JOIN LATERAL (
+        SELECT NOT EXISTS (SELECT 1 FROM cards k WHERE k.contact_id = w."contactId" AND k.status = 'OPEN')
+           AND (EXISTS (SELECT 1 FROM cards k WHERE k.contact_id = w."contactId" AND k.status = 'WON'
+                          AND k.closed_at >= ${NOW} - interval '120 days')
+                OR EXISTS (SELECT 1 FROM tiny_documents d WHERE d.contact_id = w."contactId" AND d.kind = 'PEDIDO'
+                          AND d.data >= ${NOW} - interval '120 days')) AS pos_venda
+      ) pv
       WHERE w."waitingSince" < ${NOW} - interval '15 minutes'`;
   }
 

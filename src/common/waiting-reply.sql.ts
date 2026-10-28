@@ -4,9 +4,9 @@ import { Prisma } from '@prisma/client';
  * REGRA ÚNICA de "lead esperando resposta HUMANA" (usada no "Sem resposta" do
  * Pedidos & Propostas, no "Esperando" da Produtividade e no alerta ao vendedor).
  *
- * Mensagem humana = OUTBOUND enviada por um usuário no CRM (sender_id) OU pelo
- * celular do vendedor (eco: metadata.isEcho). Robô/IA/cadência/disparo = OUTBOUND
- * sem sender e sem eco.
+ * Mensagem humana = OUTBOUND enviada por um usuário no CRM (sender_id), pelo
+ * celular do vendedor (eco: metadata.isEcho) ou Salesbot MANUAL disparado pela
+ * vendedora (mensagem imediata). Robô/cadência automática/disparo = não humana.
  *
  * Olhando a ÚLTIMA mensagem do cliente (INBOUND) que pede resposta — ignora
  * reação, figurinha e agradecimento curto ("ok", "obrigado", "👍"):
@@ -18,8 +18,10 @@ import { Prisma } from '@prisma/client';
  *      'apos_robo'           = cliente respondeu ao robô (só robô falou antes);
  *      'aguardando_vendedor' = já houve humano antes, o cliente voltou a falar
  *                              e ninguém respondeu.
- *    Mensagens automáticas DEPOIS da resposta do cliente (follow-up do robô)
- *    não contam como resposta.
+ *    Mensagens automáticas DEPOIS da resposta do cliente (follow-up/cadência,
+ *    automação, chatbot) não contam como resposta. EXCEÇÃO: a resposta do
+ *    AGENTE DE IA (metadata.aiAgentId) conta — é conversa de verdade, não
+ *    lembrete (ex.: cliente "pode sim" → IA "já encaminho pra produção").
  *
  * Exemplo (linha do tempo → resultado):
  *   cliente "oi" → robô "olá!"                        → respondido
@@ -40,10 +42,24 @@ export interface WaitingRow {
   kind: WaitingKind;
 }
 
-/** Condição SQL: a mensagem `alias` é humana (CRM ou celular). */
+/**
+ * Condição SQL: a mensagem `alias` é humana — enviada pela vendedora no CRM
+ * (sender_id), pelo celular dela (eco) ou por um SALESBOT QUE ELA DISPAROU
+ * (cadência de gatilho MANUAL: só a vendedora inicia). Do Salesbot manual
+ * conta só o que saiu logo no clique (até 2 min do início) — passos com
+ * espera depois disso são lembrete automático, não resposta.
+ */
 export function humanOutboundSql(alias: string): Prisma.Sql {
   return Prisma.raw(
-    `(${alias}.direction = 'OUTBOUND' AND (${alias}.sender_id IS NOT NULL OR ${alias}.metadata->>'isEcho' = 'true'))`,
+    `(${alias}.direction = 'OUTBOUND' AND (
+       ${alias}.sender_id IS NOT NULL
+       OR ${alias}.metadata->>'isEcho' = 'true'
+       OR (${alias}.sender_id IS NULL AND EXISTS (
+             SELECT 1 FROM cadence_runs cr JOIN cadences cd ON cd.id = cr.cadence_id
+             WHERE cr.conversation_id = ${alias}.conversation_id
+               AND cd.trigger_type = 'MANUAL'
+               AND ${alias}.created_at >= cr.started_at
+               AND ${alias}.created_at <= cr.started_at + interval '2 minutes'))))`,
   );
 }
 
@@ -71,8 +87,27 @@ const MEANINGFUL_INBOUND = Prisma.raw(`(
  * Colunas: "conversationId", "organizationId", "contactId", "assignedToId",
  * "channelId", "lastInboundId", "waitingSince", kind.
  */
+/**
+ * Condição SQL: resposta do AGENTE DE IA (conversacional, não lembrete).
+ * Marca direta: metadata.aiAgentId. Mensagens antigas perderam o metadata no
+ * envio (bug corrigido em 2026-10) → reconhece também pela execução da IA
+ * (ai_agent_runs REPLIED na mesma conversa, no mesmo minuto da mensagem).
+ */
+export function aiReplyOutboundSql(alias: string): Prisma.Sql {
+  return Prisma.raw(
+    `(${alias}.direction = 'OUTBOUND' AND ${alias}.sender_id IS NULL AND (
+       (${alias}.metadata ? 'aiAgentId')
+       OR EXISTS (SELECT 1 FROM ai_agent_runs r
+                  WHERE r.conversation_id = ${alias}.conversation_id
+                    AND r.final_action = 'REPLIED'
+                    AND ${alias}.created_at >= r.started_at
+                    AND ${alias}.created_at <= COALESCE(r.finished_at, r.started_at) + interval '2 minutes')))`,
+  );
+}
+
 export function waitingConversationsSql(where: Prisma.Sql): Prisma.Sql {
   const human = humanOutboundSql('o');
+  const ai = aiReplyOutboundSql('o');
   return Prisma.sql`
     SELECT c.id AS "conversationId", c.organization_id AS "organizationId",
            c.contact_id AS "contactId", c.assigned_to_id AS "assignedToId",
@@ -89,12 +124,18 @@ export function waitingConversationsSql(where: Prisma.Sql): Prisma.Sql {
       ORDER BY m.created_at DESC LIMIT 1
     ) li ON true
     LEFT JOIN LATERAL (
-      SELECT bool_or(o.created_at > li.created_at AND ${human}) AS human_after,
+      SELECT bool_or(o.created_at > li.created_at AND (${human} OR ${ai})) AS human_after,
              bool_or(o.created_at > li.created_at) AS any_after,
              bool_or(o.created_at < li.created_at) AS any_before,
              bool_or(o.created_at < li.created_at AND ${human}) AS human_before
       FROM messages o
-      WHERE o.conversation_id = c.id AND o.direction = 'OUTBOUND'
+      -- Resposta em QUALQUER conversa do mesmo cliente conta (ex.: cliente
+      -- escreveu no 1925 e a vendedora respondeu pelo número dela).
+      WHERE o.conversation_id IN (
+              SELECT c2.id FROM conversations c2
+              WHERE c2.contact_id = c.contact_id AND c2.organization_id = c.organization_id
+                AND c2.deleted_at IS NULL)
+        AND o.direction = 'OUTBOUND'
     ) ob ON true
     WHERE (${where})
       AND c.is_group = false

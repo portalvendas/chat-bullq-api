@@ -406,6 +406,8 @@ export class CadencesService implements OnModuleInit {
     id: string,
     organizationId: string,
     conversationId: string,
+    /** Quem clicou para disparar (Salesbot manual); null = gatilho automático. */
+    startedById?: string | null,
   ): Promise<{ started: boolean; reason?: string }> {
     const cadence = await this.get(id, organizationId);
     if (!cadence.active) return { started: false, reason: 'inactive' };
@@ -482,6 +484,7 @@ export class CadencesService implements OnModuleInit {
       .create({
         data: {
           conversationId,
+          actorId: startedById ?? null,
           action: 'CADENCE_STARTED',
           toValue: cadence.name,
           metadata: {

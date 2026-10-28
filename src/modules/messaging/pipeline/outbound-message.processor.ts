@@ -70,6 +70,17 @@ export class OutboundMessageProcessor extends WorkerHost {
       // instead of creating a phantom row.
       let updated;
       try {
+        // MESCLA com o metadata original: sobrescrever apagava a origem da
+        // mensagem (aiAgentId da IA, source:'cadence', template, automação…),
+        // e aí resposta da IA e lembrete automático ficavam indistinguíveis.
+        const prev = await this.prisma.message.findUnique({
+          where: { id: messageId },
+          select: { metadata: true },
+        });
+        const prevMeta =
+          prev?.metadata && typeof prev.metadata === 'object' && !Array.isArray(prev.metadata)
+            ? (prev.metadata as Record<string, any>)
+            : {};
         updated = await this.prisma.message.update({
           where: { id: messageId },
           data: {
@@ -77,6 +88,7 @@ export class OutboundMessageProcessor extends WorkerHost {
             externalId: result.externalId || null,
             sentAt: new Date(),
             metadata: {
+              ...prevMeta,
               providerResponse: safeJson(result.providerResponse),
             },
           },

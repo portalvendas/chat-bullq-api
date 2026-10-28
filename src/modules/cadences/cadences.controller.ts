@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { CurrentOrg } from '../../common/decorators';
+import { CurrentOrg, CurrentUser } from '../../common/decorators';
 import { JwtAuthGuard, OrgGuard } from '../../common/guards';
 import { CadencesService, CadenceInput } from './cadences.service';
 
@@ -82,8 +82,9 @@ export class CadencesController {
     @Param('id') id: string,
     @CurrentOrg('id') orgId: string,
     @Body() body: { conversationId: string },
+    @CurrentUser('id') userId?: string,
   ) {
-    return this.service.start(id, orgId, body?.conversationId);
+    return this.service.start(id, orgId, body?.conversationId, userId);
   }
 
   @Post('import-kommo')

@@ -5,6 +5,7 @@ import { FunnelAuditService } from './funnel-audit.service';
 import { LlmContext } from '../ai-agents/llm/llm-context';
 import {
   FUNNEL_AUDIT_QUEUE,
+  FUNNEL_AUDIT_SCHEDULE_JOB,
   FunnelAuditJobData,
 } from './funnel-audit.constants';
 
@@ -22,6 +23,12 @@ export class FunnelAuditProcessor extends WorkerHost {
   }
 
   async process(job: Job<FunnelAuditJobData>): Promise<{ ok: boolean }> {
+    // Agenda (3x/dia): cria um run por empresa ativa; cada run vira um job.
+    if (job.name === FUNNEL_AUDIT_SCHEDULE_JOB) {
+      const n = await this.service.scheduleAll();
+      this.logger.log(`[funnel-audit] agenda: ${n} empresa(s) enfileirada(s)`);
+      return { ok: true };
+    }
     const { runId, organizationId, pipelineIds } = job.data;
     this.logger.log(`[funnel-audit] run=${runId} org=${organizationId} iniciado`);
     await LlmContext.run(organizationId, () =>

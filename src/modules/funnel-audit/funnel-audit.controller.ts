@@ -57,10 +57,33 @@ export class FunnelAuditController {
     });
   }
 
+  @Get('findings')
+  @ApiOperation({ summary: 'Achados das checagens do processo comercial (último run), com resumo' })
+  findings(
+    @CurrentOrg('id') orgId: string,
+    @Query('runId') runId?: string,
+    @Query('type') type?: string,
+    @Query('ownerUserId') ownerUserId?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+  ) {
+    return this.service.listFindings(orgId, {
+      runId,
+      type,
+      ownerUserId,
+      page: Number(page) || 1,
+      limit: Number(limit) || 50,
+    });
+  }
+
   @Post('suggestions/:id/apply')
   @ApiOperation({ summary: 'Aplica a sugestão (move o card para a etapa sugerida)' })
-  apply(@CurrentOrg('id') orgId: string, @Param('id') id: string) {
-    return this.service.applySuggestion(orgId, id);
+  apply(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.applySuggestion(orgId, id, userId);
   }
 
   @Post('suggestions/:id/dismiss')

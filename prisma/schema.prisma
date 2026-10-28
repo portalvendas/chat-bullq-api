@@ -302,6 +302,7 @@ model Organization {
   contactImports         ContactImport[]
 
   @@map("organizations")
+  funnelAuditFindings FunnelAuditFinding[]
 }
 
 /// Orquestrador de leads: distribui cada lead novo (conversa sem responsável)
@@ -2412,6 +2413,8 @@ model FunnelAuditRun {
   cardsScanned   Int               @default(0) @map("cards_scanned")
   cardsFlagged   Int               @default(0) @map("cards_flagged")
   suggestions    Int               @default(0)
+  /// Achados das checagens do processo comercial (FunnelAuditFinding).
+  findings       Int               @default(0)
   aiUsed         Boolean           @default(false) @map("ai_used")
   error          String?
   startedAt      DateTime          @default(now()) @map("started_at")
@@ -2419,12 +2422,40 @@ model FunnelAuditRun {
 
   organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   suggestionsList FunnelAuditSuggestion[]
+  findingsList    FunnelAuditFinding[]
 
   @@index([organizationId, startedAt])
   @@map("funnel_audit_runs")
 }
 
 /// Sugestão de mudança de etapa para UM card (revisão manual).
+/// Achado das CHECAGENS DO PROCESSO COMERCIAL (lead novo sem contato, cliente
+/// esperando resposta, card sem conversa, parado, sem vendedor, conversa fora
+/// do funil, vendedor divergente, orçamento sem follow-up, duplicado). Um run
+/// novo substitui o anterior (a tela mostra o último).
+model FunnelAuditFinding {
+  id             String   @id @default(cuid())
+  runId          String   @map("run_id")
+  organizationId String   @map("organization_id")
+  type           String
+  severity       String   @default("MEDIUM")
+  cardId         String?  @map("card_id")
+  conversationId String?  @map("conversation_id")
+  contactId      String?  @map("contact_id")
+  ownerUserId    String?  @map("owner_user_id")
+  /// Minutos do problema (esperando, parado, sem follow-up...).
+  minutes        Int?
+  details        Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  run          FunnelAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([runId, type])
+  @@index([organizationId, createdAt])
+  @@map("funnel_audit_findings")
+}
+
 model FunnelAuditSuggestion {
   id               String                 @id @default(cuid())
   runId            String                 @map("run_id")

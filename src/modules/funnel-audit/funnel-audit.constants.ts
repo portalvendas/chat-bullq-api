@@ -2,6 +2,8 @@
  *  import circular entre o processor e o service. */
 export const FUNNEL_AUDIT_QUEUE = 'funnel-audit';
 export const FUNNEL_AUDIT_JOB = 'run-audit';
+/** Disparo agendado: enfileira um run por empresa. */
+export const FUNNEL_AUDIT_SCHEDULE_JOB = 'schedule-audits';
 
 export interface FunnelAuditJobData {
   runId: string;

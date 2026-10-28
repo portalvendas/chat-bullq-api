@@ -650,12 +650,34 @@ export class FunnelAuditService {
               title: true,
               value: true,
               conversationId: true,
+              contactId: true,
               contact: { select: { name: true, phone: true } },
             },
           },
         },
       }),
     ]);
+
+    // Card sem conversa vinculada (ex.: criado pelo formulário/Tiny e o
+    // cliente falou depois) → usa a conversa mais recente do CONTATO, pra
+    // sempre dar pra abrir o inbox do cliente a partir da sugestão.
+    const orphanContacts = [
+      ...new Set(
+        rows
+          .filter((r) => !r.card?.conversationId && r.card?.contactId)
+          .map((r) => r.card!.contactId as string),
+      ),
+    ];
+    const contactConvs = orphanContacts.length
+      ? await this.prisma.conversation.findMany({
+          where: { organizationId, contactId: { in: orphanContacts }, deletedAt: null },
+          orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }],
+          select: { id: true, contactId: true },
+        })
+      : [];
+    const convByContact = new Map<string, string>();
+    for (const c of contactConvs)
+      if (!convByContact.has(c.contactId)) convByContact.set(c.contactId, c.id);
 
     // nomes de etapas + funil
     const stageIds = [
@@ -703,7 +725,9 @@ export class FunnelAuditService {
           name: r.card?.contact?.name ?? null,
           phone: r.card?.contact?.phone ?? null,
           value: r.card?.value != null ? Number(r.card.value) : null,
-          conversationId: r.card?.conversationId ?? null,
+          conversationId:
+            r.card?.conversationId ??
+            (r.card?.contactId ? (convByContact.get(r.card.contactId) ?? null) : null),
         },
       })),
       pagination: {

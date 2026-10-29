@@ -44,6 +44,9 @@ export class ChatbotProcessor extends WorkerHost {
           type: msg.type as any,
           content: msg.content,
           status: 'QUEUED',
+          // Origem explícita: sem isso a msg do chatbot ficava sem marca e
+          // não dava pra separar de IA/cadência/automação nos indicadores.
+          metadata: { source: 'chatbot' },
         },
       });
 

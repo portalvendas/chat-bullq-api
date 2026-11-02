@@ -1,16 +1,25 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { OrgRole } from '@prisma/client';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
-import { CurrentOrg } from '../../common/decorators';
+import { CurrentOrg, Roles } from '../../common/decorators';
+import {
+  GoogleAudiencesService,
+  GOOGLE_AUDIENCES,
+  type GoogleAudience,
+} from './google-audiences.service';
 
 @ApiTags('Dashboard')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgGuard, RolesGuard)
 @Controller('dashboard')
 export class DashboardController {
-  constructor(private readonly service: DashboardService) {}
+  constructor(
+    private readonly service: DashboardService,
+    private readonly audiences: GoogleAudiencesService,
+  ) {}
 
   private parseRange(from?: string, to?: string) {
     const now = new Date();
@@ -79,6 +88,34 @@ export class DashboardController {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Length': String(buf.length),
+    });
+    res.end(buf);
+  }
+
+  @Get('google-audiences/export')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Lista de público (Customer Match) para o Google Ads em CSV hasheado: compradores | qualificados | frios',
+  })
+  @ApiQuery({ name: 'lista', required: true, enum: GOOGLE_AUDIENCES })
+  async exportGoogleAudience(
+    @CurrentOrg('id') orgId: string,
+    @Res() res: Response,
+    @Query('lista') lista?: string,
+  ) {
+    if (!GOOGLE_AUDIENCES.includes(lista as GoogleAudience)) {
+      throw new BadRequestException(`lista deve ser: ${GOOGLE_AUDIENCES.join(', ')}`);
+    }
+    const { csv, rows } = await this.audiences.buildCsv(orgId, lista as GoogleAudience);
+    const buf = Buffer.from(csv, 'utf8');
+    const ymd = new Date().toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="google_publico_${lista}_${ymd}.csv"`,
+      'Content-Length': String(buf.length),
+      'X-Rows': String(rows),
+      'Access-Control-Expose-Headers': 'X-Rows, Content-Disposition',
     });
     res.end(buf);
   }

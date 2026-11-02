@@ -189,8 +189,19 @@ export class MetaCapiLeadsService {
         actionSource = web ? 'website' : 'system_generated';
         const { first, last } = splitName(contact.name);
         const leadTs = contact.createdAt ? contact.createdAt.getTime() : Date.now();
+        // E-mail: o do contato; sem ele, o do cliente no Tiny (orçamento/pedido
+        // traz e-mail com frequência mesmo quando o lead veio só por WhatsApp).
+        let email = contact.email;
+        if (!email) {
+          const doc = await this.prisma.tinyDocument.findFirst({
+            where: { organizationId, contactId: contact.id, clienteEmail: { contains: '@' } },
+            orderBy: { data: 'desc' },
+            select: { clienteEmail: true },
+          });
+          email = doc?.clienteEmail ?? null;
+        }
         const user_data: Record<string, any> = {
-          em: arr(hashEmail(contact.email)),
+          em: arr(hashEmail(email)),
           ph: arr(hashPhone(contact.phone)),
           fn: arr(hashName(first)),
           ln: arr(hashName(last)),

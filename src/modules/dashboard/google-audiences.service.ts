@@ -52,12 +52,26 @@ export class GoogleAudiencesService {
 
   async buildCsv(organizationId: string, lista: GoogleAudience): Promise<{ csv: string; rows: number }> {
     const rows = await this.query(organizationId, lista);
+    // A mesma PESSOA pode estar em 2 contatos (ex.: mesmo e-mail com outro
+    // telefone). Exclui das listas de menor prioridade quem já tem e-mail ou
+    // telefone numa lista acima (compradores > qualificados > frios).
+    const above = GOOGLE_AUDIENCES.slice(0, GOOGLE_AUDIENCES.indexOf(lista));
+    const taken = new Set<string>();
+    for (const l of above) {
+      for (const r of await this.query(organizationId, l)) {
+        const e = normEmail(r.email ?? r.docEmail);
+        const p = normPhone(r.phone);
+        if (e) taken.add(`e:${e}`);
+        if (p) taken.add(`p:${p}`);
+      }
+    }
     const seen = new Set<string>();
     const lines = ['Email,Phone,First Name,Last Name,Country,Zip'];
     for (const r of rows) {
       const email = normEmail(r.email ?? r.docEmail);
       const phone = normPhone(r.phone);
       if (!email && !phone) continue;
+      if ((email && taken.has(`e:${email}`)) || (phone && taken.has(`p:${phone}`))) continue;
       const key = `${email}|${phone}`;
       if (seen.has(key)) continue;
       seen.add(key);

@@ -3,9 +3,12 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { canonicalPhone } from '../../common/phone.util';
 
-export type GoogleAudience = 'compradores' | 'qualificados' | 'frios';
+export type GoogleAudience = 'compradores' | 'qualificados' | 'frios' | 'base';
 
-export const GOOGLE_AUDIENCES: GoogleAudience[] = ['compradores', 'qualificados', 'frios'];
+export const GOOGLE_AUDIENCES: GoogleAudience[] = ['compradores', 'qualificados', 'frios', 'base'];
+
+/** Listas EXCLUSIVAS entre si (prioridade nesta ordem). 'base' é a soma de tudo. */
+const EXCLUSIVE: GoogleAudience[] = ['compradores', 'qualificados', 'frios'];
 
 /** Situações do Tiny que NÃO são venda efetiva. */
 const NAO_VENDA = ['Cancelada', 'Dados Incompletos', 'Removido'];
@@ -34,6 +37,11 @@ interface Row {
  *  - qualificados: sem compra; orçamento no Tiny ou lead score ≥ 60 nos
  *                  últimos 180 dias.
  *  - frios:        sem compra e não qualificado; card PERDIDO nos últimos 180 dias.
+ *  - base:         BASE COMPLETA — todo contato do CRM (leads de todos os canais,
+ *                  clientes, conversas do WhatsApp/Instagram). Não exclusiva: é
+ *                  a lista grande, para passar do mínimo de 1.000 reconhecidos
+ *                  do Google (veicular, excluir quem já é da base, sinal da PMax).
+ *                  Fica de fora: grupo de WhatsApp e número inválido.
  *
  * Fora sempre: contato excluído e quem pediu para não receber disparos
  * (opt-out). Sem e-mail e sem telefone → não entra (nada para casar).
@@ -55,7 +63,7 @@ export class GoogleAudiencesService {
     // A mesma PESSOA pode estar em 2 contatos (ex.: mesmo e-mail com outro
     // telefone). Exclui das listas de menor prioridade quem já tem e-mail ou
     // telefone numa lista acima (compradores > qualificados > frios).
-    const above = GOOGLE_AUDIENCES.slice(0, GOOGLE_AUDIENCES.indexOf(lista));
+    const above = lista === 'base' ? [] : EXCLUSIVE.slice(0, EXCLUSIVE.indexOf(lista));
     const taken = new Set<string>();
     for (const l of above) {
       for (const r of await this.query(organizationId, l)) {
@@ -126,7 +134,14 @@ export class GoogleAudiencesService {
             ? `SELECT contact_id FROM buyers`
             : lista === 'qualificados'
               ? `SELECT contact_id FROM qualified EXCEPT SELECT contact_id FROM buyers`
-              : `SELECT contact_id FROM cold EXCEPT SELECT contact_id FROM buyers EXCEPT SELECT contact_id FROM qualified`
+              : lista === 'frios'
+                ? `SELECT contact_id FROM cold EXCEPT SELECT contact_id FROM buyers EXCEPT SELECT contact_id FROM qualified`
+                : `SELECT c.id AS contact_id FROM contacts c
+                   WHERE c.organization_id = $1
+                     AND (c.phone IS NOT NULL OR c.email IS NOT NULL)
+                     -- contato que só existe como GRUPO de WhatsApp não é pessoa
+                     AND NOT EXISTS (SELECT 1 FROM conversations g
+                                     WHERE g.contact_id = c.id AND g.is_group = true)`
         }
       )
       SELECT ct.id AS "contactId", ct.name, ct.phone, ct.email, ct.metadata,
@@ -164,7 +179,8 @@ function normPhone(v?: string | null): string {
   if (!c) return '';
   let d = c.replace(/\D/g, '');
   if (d.length === 10 || d.length === 11) d = '55' + d;
-  return d.length >= 12 ? '+' + d : '';
+  // E.164 tem no máximo 15 dígitos (ids de grupo/lid do WhatsApp passam disso).
+  return d.length >= 12 && d.length <= 15 ? '+' + d : '';
 }
 
 function normCep(v?: string | null): string {

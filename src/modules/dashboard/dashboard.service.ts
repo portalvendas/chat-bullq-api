@@ -1200,23 +1200,70 @@ export class DashboardService {
     const round2 = (n: number) => Math.round(n * 100) / 100;
     const ymd = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : '');
     const gclidOf = (m: any) => String(m?.tracking?.gclid ?? '').trim();
+    /**
+     * Lead de ORIGEM GOOGLE: tem id de clique do Google (gclid/gbraid/wbraid)
+     * ou utm_source do Google. Só esses vão para a aba ECL — antes ia todo
+     * pedido com e-mail/telefone (Meta, orgânico, recompra) e a planilha
+     * parecia o faturamento inteiro.
+     */
+    const isGoogleLead = (m: any) => {
+      const t = m?.tracking ?? {};
+      if (t.gclid || t.gbraid || t.wbraid) return true;
+      const src = `${t.utm_source ?? ''} ${m?.source ?? ''}`.toLowerCase();
+      return /google|gads|adwords|youtube/.test(src);
+    };
 
     // Conversion Time no formato do Google Ads: "YYYY-MM-DD HH:mm:ss-03:00"
-    // (America/Sao_Paulo, sem horário de verão desde 2019). A data do Tiny quase
-    // sempre vem sem hora -> usa 12:00:00 pra nunca cruzar a virada do dia.
-    const convTime = (d?: Date | null): string => {
-      if (!d) return '';
-      const local = new Date(d.getTime() - 3 * 3600 * 1000); // desloca p/ -03:00
-      const p = (n: number) => String(n).padStart(2, '0');
-      let hh = local.getUTCHours();
-      let mm = local.getUTCMinutes();
-      let ss = local.getUTCSeconds();
-      if (hh === 0 && mm === 0 && ss === 0) {
-        hh = 12;
-        mm = 0;
-        ss = 0;
+    // (America/Sao_Paulo, sem horário de verão desde 2019).
+    const BR_MS = 3 * 3600 * 1000;
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const fmtBr = (d: Date): string => {
+      const l = new Date(d.getTime() - BR_MS);
+      return `${l.getUTCFullYear()}-${p2(l.getUTCMonth() + 1)}-${p2(l.getUTCDate())} ${p2(l.getUTCHours())}:${p2(l.getUTCMinutes())}:${p2(l.getUTCSeconds())}-03:00`;
+    };
+    const brDay = (d: Date) => new Date(d.getTime() - BR_MS).toISOString().slice(0, 10);
+    /** Data+HORA real que o Tiny mandou no documento (o campo `data` guarda só o dia). */
+    const rawDateTime = (raw: any): Date | null => {
+      for (const k of ['dataCriacao', 'data_criacao', 'dataHoraCriacao', 'data']) {
+        const v = raw?.[k];
+        if (typeof v !== 'string') continue;
+        const t = v.trim();
+        // ISO com fuso explícito (Z / ±hh:mm) → instante exato.
+        if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/.test(t)) {
+          const d = new Date(t.replace(' ', 'T'));
+          if (!isNaN(d.getTime())) return d;
+        }
+        // Sem fuso → horário de Brasília.
+        let m = t.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+        if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0)) + BR_MS);
+        m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+        if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] ?? 0)) + BR_MS);
       }
-      return `${local.getUTCFullYear()}-${p(local.getUTCMonth() + 1)}-${p(local.getUTCDate())} ${p(hh)}:${p(mm)}:${p(ss)}-03:00`;
+      return null;
+    };
+    /**
+     * Horário REAL da conversão (antes: dia do documento fixo às 09:00 → o
+     * Google rejeitava quando o clique foi depois das 9h no mesmo dia).
+     *  1) hora que o Tiny mandou no documento (dataCriacao com hora);
+     *  2) senão, quando o Kortia recebeu o documento do Tiny (sync), se for
+     *     do mesmo dia;
+     *  3) senão, 23:59 do dia do documento.
+     * Travas: nunca antes do lead (clique ≤ criação do lead → +1 min) e nunca
+     * no futuro (o Google rejeita as duas).
+     */
+    const convTime = (
+      doc: { data: Date | null; raw: any; createdAt: Date },
+      leadAt?: Date | null,
+    ): string => {
+      if (!doc.data) return '';
+      const day = brDay(doc.data);
+      let t = rawDateTime(doc.raw);
+      if (!t || brDay(t) !== day) t = brDay(doc.createdAt) === day ? doc.createdAt : null;
+      if (!t) t = new Date(Date.parse(`${day}T23:59:00-03:00`));
+      if (leadAt && t.getTime() <= leadAt.getTime()) t = new Date(leadAt.getTime() + 60_000);
+      const maxT = Date.now() - 60_000;
+      if (t.getTime() > maxT) t = new Date(maxT);
+      return fmtBr(t);
     };
     const sha256 = (v: string) => crypto.createHash('sha256').update(v, 'utf8').digest('hex');
     const normEmail = (e?: string | null) => {
@@ -1236,18 +1283,27 @@ export class DashboardService {
     // Situações que NÃO são venda efetiva — não viram "Pedido Pago".
     const NAO_VENDA = new Set(['cancelada', 'dados incompletos', 'removido']);
 
-    // Documentos do período com contato (lead) vinculado.
+    // Documentos do período com contato (lead) vinculado. PEDIDO só conta
+    // como venda efetiva: fora de marketplace (ML/Shopee/…) e natureza "Venda"
+    // — mesma regra do Purchase da Meta (corrigida em 16/10).
     const docs = await this.prisma.tinyDocument.findMany({
       where: {
         organizationId,
-        kind: { in: ['PEDIDO', 'ORCAMENTO'] },
         data: { gte: range.from, lte: range.to },
         contactId: { not: null },
+        OR: [
+          { kind: 'ORCAMENTO' },
+          {
+            kind: 'PEDIDO',
+            isMarketplace: false,
+            natureza: { contains: 'venda', mode: 'insensitive' },
+          },
+        ],
       },
       select: {
         kind: true, tinyId: true, numero: true, data: true, valor: true, situacao: true,
         clienteNome: true, clienteEmail: true, clienteTelefone: true,
-        contactId: true, matchedBy: true,
+        contactId: true, matchedBy: true, raw: true, createdAt: true,
       },
       orderBy: { data: 'asc' },
     });
@@ -1256,10 +1312,19 @@ export class DashboardService {
     const contacts = cids.length
       ? await this.prisma.contact.findMany({
           where: { id: { in: cids } },
-          select: { id: true, name: true, phone: true, email: true, metadata: true },
+          select: { id: true, name: true, phone: true, email: true, metadata: true, createdAt: true },
         })
       : [];
     const cById = new Map(contacts.map((c) => [c.id, c] as const));
+
+    // Aba Auditoria é conferência INTERNA: e-mail e telefone MASCARADOS (o
+    // dado aberto não sai do CRM; o Google só recebe hash na aba ECL).
+    const maskEmail = (e: string) => {
+      if (!e) return '';
+      const [u, dom] = e.split('@');
+      return `${u.slice(0, 1)}***@${dom ?? ''}`;
+    };
+    const maskPhone = (ph: string) => (ph ? `${ph.slice(0, 5)}*****${ph.slice(-4)}` : '');
 
     // Aba 1: import por GCLID (Google Click Conversions) — pronto p/ importar.
     const gclidRows: Cell[][] = [
@@ -1273,12 +1338,13 @@ export class DashboardService {
     // Aba 3: auditoria legível (conferência).
     const auditRows: Cell[][] = [
       ['Tipo', 'Conversion Name', 'Numero', 'Order ID', 'Conversion Time', 'Valor (R$)',
-       'Situacao', 'Via', 'gclid', 'E-mail', 'Telefone', 'Cliente', 'Casou por'].map(H),
+       'Situacao', 'Via', 'gclid', 'E-mail (mascarado)', 'Telefone (mascarado)', 'Cliente', 'Casou por'].map(H),
     ];
 
     let nGclid = 0;
     let nEcl = 0;
     let nSemChave = 0;
+    let nForaGoogle = 0;
     for (const d of docs) {
       const situ = String(d.situacao ?? '').toLowerCase();
       if (d.kind === 'PEDIDO' && NAO_VENDA.has(situ)) continue; // não é venda paga
@@ -1288,7 +1354,7 @@ export class DashboardService {
       const gclid = gclidOf(m);
       const value = round2(num(d.valor));
       const name = convName(d.kind);
-      const time = convTime(d.data);
+      const time = convTime(d, c?.createdAt ?? null);
       const oid = orderId(d.kind, d.numero, d.tinyId);
       const email = normEmail(c?.email ?? d.clienteEmail);
       const phone = normPhoneE164(c?.phone ?? d.clienteTelefone);
@@ -1299,6 +1365,9 @@ export class DashboardService {
         gclidRows.push([S(gclid), S(name), S(time), N(value), S('BRL'), S(oid)]);
         via = 'GCLID';
         nGclid++;
+      } else if (!isGoogleLead(m)) {
+        via = 'FORA DO GOOGLE (não enviado)';
+        nForaGoogle++;
       } else if (email || phone) {
         eclRows.push([
           S(email ? sha256(email) : ''),
@@ -1315,7 +1384,7 @@ export class DashboardService {
       auditRows.push([
         S(d.kind === 'PEDIDO' ? 'Pedido' : 'Orcamento'), S(name), S(d.numero ?? ''), S(oid),
         S(time), N(value), S(d.situacao ?? ''), S(via), S(gclid),
-        S(email), S(phone), S(cliente), S(d.matchedBy ?? ''),
+        S(maskEmail(email)), S(maskPhone(phone)), S(cliente), S(d.matchedBy ?? ''),
       ]);
     }
 
@@ -1324,7 +1393,8 @@ export class DashboardService {
       [S('Documentos no periodo'), N(docs.length)],
       [S('Conversoes via GCLID'), N(nGclid)],
       [S('Conversoes via ECL (email/telefone)'), N(nEcl)],
-      [S('Sem chave (sem gclid e sem email/telefone)'), N(nSemChave)],
+      [S('Sem chave (lead Google sem gclid e sem email/telefone)'), N(nSemChave)],
+      [S('Fora do Google (Meta/orgânico/recompra — não enviados)'), N(nForaGoogle)],
       [S('Periodo de'), S(ymd(range.from))],
       [S('Periodo ate'), S(ymd(range.to))],
     ];

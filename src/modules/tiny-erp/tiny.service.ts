@@ -46,7 +46,7 @@ const MARKETPLACE_RE =
 
 /** Throttle em memória da reconciliação de exclusões (por org). Evita varrer
  *  todos os pedidos do Tiny a cada ciclo de 15min — 1x a cada 6h basta. */
-const RECONCILE_THROTTLE_MS = 6 * 3600 * 1000;
+const RECONCILE_THROTTLE_MS = 2 * 3600 * 1000;
 
 /** Valor sentinela do filtro por vendedor = pedidos/orçamentos sem vendedor. */
 const SEM_VENDEDOR = '__sem__';
@@ -238,7 +238,7 @@ export class TinyService {
       } catch (err: any) {
         this.logger.warn(`relinkBySameTinyContact falhou (best-effort): ${err?.message ?? err}`);
       }
-      // Reconciliação de exclusões (throttle 6h) — SÓ no sync em background
+      // Reconciliação de exclusões (throttle 2h) — SÓ no sync em background
       // (cron). Fora do caminho manual pra não somar ao timeout da request.
       if (opts?.reconcile) {
         try {
@@ -1122,6 +1122,8 @@ export class TinyService {
     return {
       organizationId,
       kind: 'ORCAMENTO',
+      // Excluído no Tiny (situacao NULL é o normal do orçamento → mantém).
+      AND: [{ OR: [{ situacao: null }, { situacao: { not: 'Removido' } }] }],
       ...(range ? { data: range } : {}),
       ...this.vendedorClause(vendedor),
     };
@@ -1178,20 +1180,133 @@ export class TinyService {
       }
     }
 
-    let removed = 0;
-    const CHUNK = 500;
-    for (let i = 0; i < paraRemover.length; i += CHUNK) {
-      const slice = paraRemover.slice(i, i + CHUNK);
-      const r = await this.prisma.tinyDocument.updateMany({
-        where: { id: { in: slice } },
+    // 4) Orçamentos excluídos no Tiny (mesma ideia, janela de 120 dias — a
+    //    listagem de orçamentos só filtra por data).
+    const orcRemover = await this.findDeletedOrcamentos(organizationId);
+
+    if (paraRemover.length || orcRemover.length) {
+      await this.prisma.tinyDocument.updateMany({
+        where: { id: { in: [...paraRemover, ...orcRemover] } },
         data: { situacao: 'Removido' },
       });
-      removed += r.count;
     }
+    // 5) EXCLUI do Kortia tudo que foi removido no Tiny (inclui os marcados
+    //    antes como 'Removido' por esta rotina ou pelo enrichDetails).
+    const purged = await this.purgeRemovedDocuments(organizationId);
+    const removed = paraRemover.length + orcRemover.length;
     this.logger.log(
-      `reconcileDeleted org=${organizationId} live=${liveIds.size} scanned=${candidatos.length} suspeitos=${suspeitos.length} removed=${removed}`,
+      `reconcileDeleted org=${organizationId} live=${liveIds.size} scanned=${candidatos.length} suspeitos=${suspeitos.length} pedidos=${paraRemover.length} orcamentos=${orcRemover.length} excluidos=${purged.deleted} mantidos_por_comprovante=${purged.kept}`,
     );
     return { live: liveIds.size, scanned: candidatos.length, removed };
+  }
+
+  /** Orçamentos dos últimos 120 dias que sumiram do Tiny (confirmado por 404). */
+  private async findDeletedOrcamentos(organizationId: string): Promise<string[]> {
+    const from = new Date(Date.now() - 120 * 24 * 3600 * 1000);
+    const live = new Set<string>();
+    let offset = 0;
+    const limit = 100;
+    let total = Infinity;
+    while (offset < total) {
+      const page = await this.http.listarOrcamentos(organizationId, {
+        offset,
+        limit,
+        dataInicio: this.ymd(from),
+        dataFim: this.ymd(new Date(Date.now() + 24 * 3600 * 1000)),
+      });
+      const itens = page.itens ?? [];
+      total = page.paginacao?.total ?? itens.length;
+      for (const o of itens) if (o?.id != null) live.add(String(o.id));
+      if (itens.length < limit) break;
+      offset += limit;
+    }
+    if (live.size === 0) return []; // instabilidade: não arrisca
+
+    // Margem de 2 dias na borda da janela (data do Tiny x nossa data às 12h UTC).
+    const candidatos = await this.prisma.tinyDocument.findMany({
+      where: {
+        organizationId,
+        kind: 'ORCAMENTO',
+        data: { gte: new Date(from.getTime() + 2 * 24 * 3600 * 1000) },
+        OR: [{ situacao: null }, { situacao: { not: 'Removido' } }],
+      },
+      select: { id: true, tinyId: true },
+    });
+    const out: string[] = [];
+    for (const c of candidatos) {
+      if (live.has(c.tinyId)) continue;
+      try {
+        await this.http.getOrcamento(organizationId, c.tinyId);
+      } catch (err: any) {
+        if (err?.statusCode === 404) out.push(c.id);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Apaga do Kortia os documentos marcados 'Removido' (excluídos no Tiny).
+   * Comprovante anexado não se perde: se houver um "gêmeo" vivo (mesmo
+   * cliente, mesmo tipo e valor, até 3 dias — caso típico de pedido duplicado
+   * e um deles apagado), o comprovante passa para ele; sem gêmeo, o documento
+   * fica como 'Removido' (oculto das listas e totais) para não perder o arquivo.
+   * Eventos da Meta (CAPI) do documento são apagados junto (cascade).
+   */
+  private async purgeRemovedDocuments(
+    organizationId: string,
+  ): Promise<{ deleted: number; kept: number }> {
+    const removidos = await this.prisma.tinyDocument.findMany({
+      where: { organizationId, situacao: 'Removido' },
+      select: {
+        id: true,
+        kind: true,
+        valor: true,
+        data: true,
+        contactId: true,
+        tinyContatoId: true,
+        _count: { select: { receipts: true } },
+      },
+    });
+    let deleted = 0;
+    let kept = 0;
+    for (const d of removidos) {
+      if (d._count.receipts > 0) {
+        const day = 3 * 24 * 3600 * 1000;
+        const twin =
+          d.data && (d.contactId || d.tinyContatoId)
+            ? await this.prisma.tinyDocument.findFirst({
+                where: {
+                  organizationId,
+                  kind: d.kind,
+                  id: { not: d.id },
+                  valor: d.valor ?? undefined,
+                  data: {
+                    gte: new Date(d.data.getTime() - day),
+                    lte: new Date(d.data.getTime() + day),
+                  },
+                  OR: [
+                    ...(d.contactId ? [{ contactId: d.contactId }] : []),
+                    ...(d.tinyContatoId ? [{ tinyContatoId: d.tinyContatoId }] : []),
+                  ],
+                  AND: [{ OR: [{ situacao: null }, { situacao: { not: 'Removido' } }] }],
+                },
+                orderBy: { data: 'desc' },
+                select: { id: true },
+              })
+            : null;
+        if (!twin) {
+          kept++;
+          continue;
+        }
+        await this.prisma.tinyReceipt.updateMany({
+          where: { tinyDocumentId: d.id },
+          data: { tinyDocumentId: twin.id },
+        });
+      }
+      await this.prisma.tinyDocument.delete({ where: { id: d.id } }).catch(() => undefined);
+      deleted++;
+    }
+    return { deleted, kept };
   }
 
   /**

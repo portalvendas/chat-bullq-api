@@ -1438,8 +1438,18 @@ export class DashboardService {
     }> = [];
     for (const c of cards) {
       const m = (c.metadata ?? {}) as any;
-      const utmS = (m?.tracking?.utm_source as string) || null;
-      const utmC = (m?.tracking?.utm_campaign as string) || (m?.campaignName as string) || null;
+      // Google Ads com auto-tagging não traz utm — só gclid/gbraid na URL.
+      // Conta como origem conhecida (leads antigos, antes da derivação na entrada).
+      const tr = (m?.tracking ?? {}) as Record<string, any>;
+      const refQ = String(tr.referrer ?? tr.page_url ?? '');
+      const isGoogleAds =
+        !!(tr.gclid || tr.gbraid || tr.wbraid || tr.gad_source) || /[?&](gclid|gbraid|wbraid)=/.test(refQ);
+      const campId = tr.gad_campaignid || (refQ.match(/[?&]gad_campaignid=(\d+)/) ?? [])[1];
+      const utmS = (tr.utm_source as string) || (isGoogleAds ? 'google (gclid)' : null);
+      const utmC =
+        (tr.utm_campaign as string) ||
+        (m?.campaignName as string) ||
+        (isGoogleAds && campId ? `Google #${campId}` : null);
       const phone = c.contact?.phone || null;
       if (utmS) comUtmSource += 1;
       if (utmC) comUtmCampaign += 1;

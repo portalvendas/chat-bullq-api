@@ -164,7 +164,45 @@ export class PublicLeadsService {
         .find((v) => /^https?:\/\//i.test(v));
       if (pageUrl) t.page_url = pageUrl.slice(0, 1000);
     }
+    this.deriveAdSource(t);
     return t;
+  }
+
+  /**
+   * Anúncio do Google com auto-tagging chega SEM utm (só gclid/gbraid/
+   * gad_campaignid na URL) → o lead aparecia como "sem origem". Aqui, quando
+   * utm_source está vazio, deriva da URL: Google Ads → utm_source=google,
+   * utm_medium=cpc, utm_campaign=<id da campanha>. Marca utm_derived=true
+   * (não foi a LP que mandou). Não sobrescreve utm que veio preenchida.
+   *   referrer "...?gad_source=1&gad_campaignid=2417...&gclid=Cj0..." →
+   *   { utm_source:'google', utm_medium:'cpc', utm_campaign:'2417...', gclid:'Cj0...' }
+   */
+  private deriveAdSource(t: Record<string, any>): void {
+    const blank = (v: any) => v == null || String(v).trim() === '';
+    const qs = new URLSearchParams();
+    for (const u of [t.page_url, t.referrer]) {
+      if (typeof u !== 'string' || !u.includes('?')) continue;
+      try {
+        new URL(u).searchParams.forEach((v, k) => {
+          if (!qs.has(k) && v) qs.set(k, v);
+        });
+      } catch {
+        /* URL inválida — ignora */
+      }
+    }
+    for (const k of ['gclid', 'gbraid', 'wbraid', 'gad_campaignid', 'gad_source', 'fbclid']) {
+      if (blank(t[k]) && qs.get(k)) t[k] = qs.get(k);
+    }
+    if (!blank(t.utm_source)) return;
+    if (!blank(t.gclid) || !blank(t.gbraid) || !blank(t.wbraid) || !blank(t.gad_source)) {
+      t.utm_source = 'google';
+      if (blank(t.utm_medium)) t.utm_medium = 'cpc';
+      if (blank(t.utm_campaign) && !blank(t.gad_campaignid)) t.utm_campaign = String(t.gad_campaignid);
+      t.utm_derived = true;
+    } else if (!blank(t.fbclid)) {
+      t.utm_source = 'facebook';
+      t.utm_derived = true;
+    }
   }
 
   /** Normaliza a temperatura do lead; se ausente, deriva do score

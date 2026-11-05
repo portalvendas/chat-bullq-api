@@ -1,3 +1,4 @@
+import { TinyReportService } from './tiny-report.service';
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TinyController, TinyOAuthCallbackController } from './tiny.controller';
@@ -20,6 +21,7 @@ import { UnassignedLeadsService } from './unassigned-leads.service';
   controllers: [TinyController, TinyOAuthCallbackController],
   providers: [
     TinyService,
+    TinyReportService,
     TinyReceiptsService,
     TinyHttpClient,
     TinyCronService,

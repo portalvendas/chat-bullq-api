@@ -1,3 +1,4 @@
+import { TinyReportService } from './tiny-report.service';
 import {
   Controller,
   Get,
@@ -50,6 +51,7 @@ export class TinyController {
     private readonly capi: MetaCapiService,
     private readonly receipts: TinyReceiptsService,
     private readonly unassigned: UnassignedLeadsService,
+    private readonly report: TinyReportService,
   ) {}
 
   // ── Comprovantes de pagamento do pedido ──────────────────────────────
@@ -251,6 +253,29 @@ export class TinyController {
     @Query('to') to?: string,
   ) {
     return this.service.vendors(orgId, from, to);
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary:
+      'Relatório .xlsx de Pedidos & Propostas com os MESMOS filtros da tela (período, vendedor, comprovante)',
+  })
+  async exportReport(
+    @CurrentOrg('id') orgId: string,
+    @Res() res: Response,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('vendedor') vendedor?: string,
+    @Query('comprovante') comprovante?: string,
+  ) {
+    const buf = await this.report.build(orgId, { from, to, vendedor, comprovante });
+    const d = (v?: string) => (v ? new Date(v).toISOString().slice(0, 10) : 'tudo');
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="vendas_${d(from)}_a_${d(to)}.xlsx"`,
+      'Content-Length': String(buf.length),
+    });
+    res.end(buf);
   }
 
   @Get('orders')

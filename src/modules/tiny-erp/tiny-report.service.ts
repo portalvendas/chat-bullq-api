@@ -45,7 +45,7 @@ export class TinyReportService {
     ]);
 
     return buildXlsx([
-      { name: 'Resumo', rows: this.resumo(summary, f) },
+      { name: 'Resumo', rows: [...this.resumo(summary, f), ...this.resumoComprovantes(pedidos)] },
       { name: 'Por vendedor', rows: this.porVendedor(summary) },
       { name: 'Pedidos', rows: this.docRows(pedidos, true) },
       { name: 'Propostas', rows: this.docRows(propostas, false) },
@@ -103,6 +103,26 @@ export class TinyReportService {
     return rows;
   }
 
+  /** Comprovantes dos pedidos do filtro (mesma lista da aba Pedidos). */
+  private resumoComprovantes(pedidos: any[]): Cell[][] {
+    const valor = pedidos.reduce((a, d) => a + (d.valor ?? 0), 0);
+    const soma = pedidos.reduce((a, d) => a + (d.comprovanteSoma ?? 0), 0);
+    const qtd = pedidos.reduce((a, d) => a + (d.comprovanteCount ?? 0), 0);
+    const by = (st: string) => pedidos.filter((d) => d.comprovanteStatus === st).length;
+    return [
+      [],
+      [H('Comprovantes de pagamento (pedidos da aba Pedidos)'), S('')],
+      [S('Valor dos pedidos (R$)'), N(round2(valor))],
+      [S('Soma dos comprovantes (R$)'), N(round2(soma))],
+      [S('Saldo a comprovar (R$)'), N(round2(valor - soma))],
+      [S('Comprovantes anexados (qtd)'), N(qtd)],
+      [S('Pedidos com comprovante OK'), N(by('confere'))],
+      [S('Pedidos com comprovante parcial'), N(by('parcial'))],
+      [S('Pedidos com comprovante a mais'), N(by('excedente'))],
+      [S('Pedidos sem comprovante'), N(by('sem'))],
+    ];
+  }
+
   private porVendedor(s: any): Cell[][] {
     const rows: Cell[][] = [
       ['Vendedor', 'Leads', 'Lead → Pedido', 'Pedidos', 'R$ pedidos', 'Propostas', 'R$ propostas', 'Conv.', 'Conv. R$', 'Ticket médio'].map(H),
@@ -147,12 +167,26 @@ export class TinyReportService {
     const head = [
       'Número', 'Situação', 'Data', 'Cliente (Tiny)', 'Lead vinculado', 'Telefone',
       'Dias (orç. → últ. msg)', 'Vendedor', 'Valor (R$)',
-      ...(pedido ? ['Comprovante', 'Qtd comprovantes', 'Soma comprovantes (R$)'] : []),
+      ...(pedido
+        ? ['Produtos líquidos (R$)', 'Frete (R$)', 'Comprovante', 'Qtd comprovantes', 'Soma comprovantes (R$)', 'Saldo a comprovar (R$)']
+        : []),
     ];
     const rows: Cell[][] = [head.map(H)];
     let total = 0;
+    let totalProd = 0;
+    let totalFrete = 0;
+    let totalCompQtd = 0;
+    let totalCompSoma = 0;
+    let totalSaldo = 0;
     for (const d of items) {
       total += d.valor ?? 0;
+      totalProd += d.valorProdutos ?? 0;
+      totalFrete += d.valorFrete ?? 0;
+      totalCompQtd += d.comprovanteCount ?? 0;
+      totalCompSoma += d.comprovanteSoma ?? 0;
+      // Saldo = valor do pedido − comprovantes (negativo = recebeu a mais).
+      const saldo = round2((d.valor ?? 0) - (d.comprovanteSoma ?? 0));
+      totalSaldo += saldo;
       rows.push([
         S(d.numero ?? ''),
         S(d.situacao ?? ''),
@@ -165,14 +199,22 @@ export class TinyReportService {
         N(round2(d.valor ?? 0)),
         ...(pedido
           ? [
+              d.valorProdutos != null ? N(round2(d.valorProdutos)) : S('a apurar'),
+              d.valorFrete != null ? N(round2(d.valorFrete)) : S('a apurar'),
               S(COMPROVANTE_LABEL[d.comprovanteStatus] ?? d.comprovanteStatus ?? ''),
               N(d.comprovanteCount ?? 0),
               N(round2(d.comprovanteSoma ?? 0)),
+              N(round2((d.valor ?? 0) - (d.comprovanteSoma ?? 0))),
             ]
           : []),
       ]);
     }
-    rows.push([H('Total'), S(''), S(''), S(''), S(`${items.length} documento(s)`), S(''), S(''), S(''), N(round2(total))]);
+    rows.push([
+      H('Total'), S(''), S(''), S(''), S(`${items.length} documento(s)`), S(''), S(''), S(''), N(round2(total)),
+      ...(pedido
+        ? [N(round2(totalProd)), N(round2(totalFrete)), S(''), N(totalCompQtd), N(round2(totalCompSoma)), N(round2(totalSaldo))]
+        : []),
+    ]);
     return rows;
   }
 }

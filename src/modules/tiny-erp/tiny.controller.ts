@@ -245,6 +245,19 @@ export class TinyController {
     );
   }
 
+  @Get('leads-by-channel')
+  @ApiOperation({
+    summary: 'Origem dos leads por canal + tempo de resposta (geral ou de um vendedor da tabela)',
+  })
+  leadsByChannel(
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('vendedor') vendedor?: string,
+  ) {
+    return this.service.leadsByChannel(orgId, from, to, vendedor);
+  }
+
   @Get('vendors')
   @ApiOperation({ summary: 'Vendedores distintos no período (opções do filtro)' })
   vendors(

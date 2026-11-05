@@ -6,7 +6,8 @@ import { TinyHttpClient } from './tiny.http-client';
 import { MetaCapiService } from './meta-capi/meta-capi.service';
 import { MetaCapiLeadsService } from './meta-capi/meta-capi-leads.service';
 import { ConversationStatus, Prisma } from '@prisma/client';
-import { waitingConversationsSql } from '../../common/waiting-reply.sql';
+import { humanOutboundSql, waitingConversationsSql } from '../../common/waiting-reply.sql';
+import { businessMinutesBetween } from '../../common/business-hours/business-hours.util';
 import { LeadScopeService } from '../lead-distribution/lead-scope.service';
 
 /**
@@ -1648,9 +1649,30 @@ export class TinyService {
     const leadsByUser = leadsByUserRaw.map((r) => ({ assignedToId: r.assignedToId, _count: { _all: r.n } }));
     if (!leadsByUser.length) return;
 
-    // 1º nome → chaves de vendedor do Tiny presentes na tabela.
+    const keyOf = this.vendorKeyResolver([...byVend.keys()], members);
+    const filterKey = vendedorFilter?.trim() || null;
+
+    for (const g of leadsByUser) {
+      const k = keyOf(g.assignedToId);
+      if (filterKey && k !== filterKey) continue;
+      const e = row(k);
+      e.leadsCount += g._count._all;
+      byVend.set(k, e);
+    }
+  }
+
+
+  /**
+   * Usuário do CRM (dono do lead) → chave da linha "Por vendedor": o nome do
+   * vendedor no Tiny quando o 1º nome casa de forma única; senão o nome do
+   * usuário. null → "Sem vendedor". Mesma regra da coluna Leads.
+   */
+  private vendorKeyResolver(
+    vendorKeys: string[],
+    members: { user: { id: string; name: string } | null }[],
+  ): (userId: string | null) => string {
     const vendByFirst = new Map<string, string[]>();
-    for (const k of byVend.keys()) {
+    for (const k of vendorKeys) {
       if (k === 'Sem vendedor') continue;
       const f = this.normNameTokens(k)[0];
       if (f) vendByFirst.set(f, [...(vendByFirst.get(f) ?? []), k]);
@@ -1661,25 +1683,134 @@ export class TinyService {
       if (f) usersByFirst.set(f, (usersByFirst.get(f) ?? 0) + 1);
     }
     const userName = new Map(members.filter((m) => m.user).map((m) => [m.user!.id, m.user!.name]));
-    const filterKey = vendedorFilter?.trim() || null;
-
-    for (const g of leadsByUser) {
-      let k: string;
-      if (!g.assignedToId) {
-        k = 'Sem vendedor';
-      } else {
-        const name = userName.get(g.assignedToId) ?? 'Usuário removido';
-        const f = this.normNameTokens(name)[0];
-        const vendKeys = f ? vendByFirst.get(f) : undefined;
-        k = vendKeys?.length === 1 && usersByFirst.get(f!) === 1 ? vendKeys[0] : name;
-      }
-      if (filterKey && k !== filterKey) continue;
-      const e = row(k);
-      e.leadsCount += g._count._all;
-      byVend.set(k, e);
-    }
+    return (userId) => {
+      if (!userId) return 'Sem vendedor';
+      const name = userName.get(userId) ?? 'Usuário removido';
+      const f = this.normNameTokens(name)[0];
+      const vendKeys = f ? vendByFirst.get(f) : undefined;
+      return vendKeys?.length === 1 && usersByFirst.get(f!) === 1 ? vendKeys[0] : name;
+    };
   }
 
+  /**
+   * ORIGEM dos leads do período por CANAL + TEMPO DE RESPOSTA, geral ou de um
+   * vendedor (mesma chave da tabela "Por vendedor"). Mesmo conjunto de leads
+   * da coluna Leads: 1 pessoa = 1 lead, dono efetivo (card → conversa).
+   *
+   * Tempo de resposta = do lead entrar (criação do card) até a 1ª mensagem
+   * HUMANA ao cliente em qualquer número (regra única: vendedora no CRM,
+   * celular ou Salesbot disparado por ela). Mediana em horário corrido e em
+   * EXPEDIENTE (ignora noite/fim de semana/feriado da agenda da empresa).
+   *
+   * @example leadsByChannel(org, '2026-11-01', '2026-11-30', 'Kelen do Rosario de Moraes')
+   *   → { total: 65, canais: [{ canal: 'Google', leads: 21, respondidos: 20,
+   *        medianaMin: 12, medianaExpedienteMin: 7, ate15minPct: 0.71 }, ...] }
+   */
+  async leadsByChannel(organizationId: string, from?: string, to?: string, vendedor?: string) {
+    const range = this.buildRange(from, to);
+    const human = humanOutboundSql('m');
+    const [rows, members, vendPed, vendOrc, org, me] = await Promise.all([
+      this.prisma.$queryRaw<
+        {
+          createdAt: Date;
+          owner: string | null;
+          src: string | null;
+          ktr: any;
+          ctr: any;
+          chan: string | null;
+          firstHuman: Date | null;
+        }[]
+      >`
+        WITH k AS (
+          SELECT k.id, k.created_at, k.contact_id, k.conversation_id, k.metadata,
+                 ${LEAD_PERSON_KEY} AS person,
+                 COALESCE(k.assigned_to_id, (
+                   SELECT cv.assigned_to_id FROM conversations cv
+                   WHERE cv.contact_id = k.contact_id AND cv.organization_id = k.organization_id
+                     AND cv.assigned_to_id IS NOT NULL
+                   ORDER BY (cv.id = k.conversation_id) DESC, cv.last_message_at DESC NULLS LAST
+                   LIMIT 1)) AS owner
+          FROM cards k
+          LEFT JOIN contacts ct ON ct.id = k.contact_id
+          WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+        ),
+        p AS (
+          SELECT DISTINCT ON (person) * FROM k
+          ORDER BY person, (owner IS NULL), created_at DESC
+        )
+        SELECT p.created_at AS "createdAt", p.owner,
+               p.metadata->>'source' AS src,
+               p.metadata->'tracking' AS ktr,
+               ct.metadata->'tracking' AS ctr,
+               (SELECT ch.type::text FROM conversations cv JOIN channels ch ON ch.id = cv.channel_id
+                 WHERE cv.contact_id = p.contact_id
+                 ORDER BY (cv.id = p.conversation_id) DESC, cv.created_at ASC LIMIT 1) AS chan,
+               (SELECT min(m.created_at) FROM conversations cv JOIN messages m ON m.conversation_id = cv.id
+                 WHERE cv.contact_id = p.contact_id AND ${human}
+                   AND m.created_at >= p.created_at - interval '1 minute') AS "firstHuman"
+        FROM p LEFT JOIN contacts ct ON ct.id = p.contact_id`,
+      this.prisma.userOrganization.findMany({
+        where: { organizationId },
+        select: { user: { select: { id: true, name: true } } },
+      }),
+      vendedor
+        ? this.prisma.tinyDocument.groupBy({ by: ['vendedor'], where: this.pedidoWhere(organizationId, range) })
+        : Promise.resolve([] as { vendedor: string | null }[]),
+      vendedor
+        ? this.prisma.tinyDocument.groupBy({ by: ['vendedor'], where: this.orcamentoWhere(organizationId, range) })
+        : Promise.resolve([] as { vendedor: string | null }[]),
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { businessHours247: true, businessTimezone: true, businessHoursSchedule: true, businessHolidays: true },
+      }),
+      this.leadScope.restrictedUserId(organizationId),
+    ]);
+
+    let leads = rows;
+    if (me) leads = leads.filter((r) => r.owner === me); // vendedora: só os dela
+    if (vendedor) {
+      const keys = [...new Set([...vendPed, ...vendOrc].map((v) => v.vendedor?.trim() || 'Sem vendedor'))];
+      const keyOf = this.vendorKeyResolver(keys, members as any);
+      leads = leads.filter((r) => keyOf(r.owner) === vendedor.trim());
+    }
+
+    type Agg = { leads: number; respondidos: number; min: number[]; exp: number[]; ate15: number };
+    const by = new Map<string, Agg>();
+    const all: Agg = { leads: 0, respondidos: 0, min: [], exp: [], ate15: 0 };
+    for (const r of leads) {
+      const canal = leadChannel(r.src, { ...(r.ctr ?? {}), ...(r.ktr ?? {}) }, r.chan);
+      const a = by.get(canal) ?? { leads: 0, respondidos: 0, min: [], exp: [], ate15: 0 };
+      for (const g of [a, all]) {
+        g.leads++;
+        if (r.firstHuman) {
+          const start = new Date(r.createdAt);
+          const end = new Date(r.firstHuman);
+          const real = Math.max(0, (end.getTime() - start.getTime()) / 60000);
+          const exp = org ? businessMinutesBetween(org as any, start, end) : real;
+          g.respondidos++;
+          g.min.push(real);
+          g.exp.push(exp);
+          if (exp <= 15) g.ate15++;
+        }
+      }
+      by.set(canal, a);
+    }
+    const out = (canal: string, a: Agg) => ({
+      canal,
+      leads: a.leads,
+      respondidos: a.respondidos,
+      semResposta: a.leads - a.respondidos,
+      medianaMin: median(a.min),
+      medianaExpedienteMin: median(a.exp),
+      mediaExpedienteMin: a.exp.length ? Math.round(a.exp.reduce((x, y) => x + y, 0) / a.exp.length) : null,
+      ate15minPct: a.leads ? a.ate15 / a.leads : null,
+    });
+    return {
+      vendedor: vendedor?.trim() || null,
+      total: out('Total', all),
+      canais: [...by.entries()].map(([c, a]) => out(c, a)).sort((x, y) => y.leads - x.leads),
+    };
+  }
 
   // ── Leads sem resposta (regra única) ─────────────────────────────────
 
@@ -2655,4 +2786,40 @@ export class TinyService {
       orcamentos: docs.filter((d) => d.kind === 'ORCAMENTO'),
     };
   }
+}
+
+/** Mediana arredondada (minutos); null sem amostra. */
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const a = [...xs].sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return Math.round(a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2);
+}
+
+/**
+ * Canal de ORIGEM do lead, pela ordem de evidência:
+ * marketplace → TikTok → Google (gclid/utm) → IA (ChatGPT etc.) → formulário
+ * do Facebook → anúncio Meta que abre o WhatsApp (ctwa) → Instagram →
+ * Facebook → Meta Ads (sem FB/IG) → direct do Instagram → LP sem origem →
+ * WhatsApp direto → outros.
+ *   leadChannel('LP_nova', { utm_source: 'ig' }, 'WHATSAPP_OFFICIAL') → 'Instagram'
+ */
+export function leadChannel(src: string | null, tr: Record<string, any>, chan: string | null): string {
+  const s = String(src ?? '').toLowerCase();
+  const utm = String(tr.utm_source ?? '').toLowerCase().trim();
+  const c = String(chan ?? '').toUpperCase();
+  if (s === 'marketplace-sync' || c === 'MERCADO_LIVRE' || c === 'SHOPEE') return 'Marketplace';
+  if (utm.includes('tiktok') || tr.ttclid) return 'TikTok';
+  if (tr.gclid || tr.gbraid || tr.wbraid || tr.gad_source || /google|gads|adwords|youtube/.test(utm)) return 'Google';
+  if (/chatgpt|openai|perplexity|gemini|copilot|claude/.test(utm)) return 'ChatGPT / IA';
+  if (s === 'facebook_leadads' || tr.leadgenId) return 'Facebook (formulário)';
+  if (tr.ctwa_clid) return 'Anúncio Meta → WhatsApp';
+  if (utm === 'ig' || utm.includes('insta')) return 'Instagram';
+  if (utm === 'fb' || utm.includes('face')) return 'Facebook';
+  if (utm.includes('meta') || tr.fbclid) return 'Meta Ads';
+  if (c === 'INSTAGRAM') return 'Instagram (direct)';
+  if (utm) return 'Outros';
+  if (s.startsWith('lp') || s.includes('landing')) return 'Landing page (sem origem)';
+  if (c.startsWith('WHATSAPP')) return 'WhatsApp direto';
+  return 'Outros / manual';
 }

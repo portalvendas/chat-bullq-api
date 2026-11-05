@@ -2216,9 +2216,11 @@ model TinyDocument {
   matchManual    Boolean   @default(false) @map("match_manual")
   /// Payload cru do Tiny (auditoria / campos extras).
   raw            Json?
-  /// Frete + outras despesas do pedido (só no detalhe do Tiny). Base da
-  /// comissão = valor − valorFrete. null = ainda não apurado.
+  /// Frete do pedido (só no detalhe do Tiny). null = ainda não apurado.
   valorFrete     Decimal?  @map("valor_frete") @db.Decimal(14, 2)
+  /// Produtos LÍQUIDOS (total de produtos − desconto), do detalhe do Tiny.
+  /// Base da comissão = valorProdutos − valorFrete.
+  valorProdutos  Decimal?  @map("valor_produtos") @db.Decimal(14, 2)
   /// Quando o frete foi lido do Tiny (re-lê se o valor do pedido mudar).
   freteCheckedAt DateTime? @map("frete_checked_at")
   /// Valor do pedido no momento em que o frete foi lido.

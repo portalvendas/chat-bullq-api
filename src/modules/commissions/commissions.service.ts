@@ -9,6 +9,15 @@ import { calcCommission, monthRange, type PercentBase } from './commission.calc'
 /** Mesma regra de "venda efetiva" do Pedidos & Propostas. */
 const EXCLUIDOS = ['Cancelada', 'Dados Incompletos', 'Removido'];
 const SEM_VENDEDOR = 'Sem vendedor';
+/** Pedido com produtos/frete já lidos do Tiny PARA O VALOR ATUAL do pedido. */
+const APURADO = Prisma.raw(
+  `(frete_checked_at IS NOT NULL AND valor_produtos IS NOT NULL AND frete_valor_ref IS NOT DISTINCT FROM valor)`,
+);
+/** Produtos líquidos (produtos − desconto); sem apuração, o valor do pedido. */
+const PRODUTOS = Prisma.raw(`CASE WHEN ${'(frete_checked_at IS NOT NULL AND valor_produtos IS NOT NULL AND frete_valor_ref IS NOT DISTINCT FROM valor)'} THEN valor_produtos ELSE valor END`);
+/** Frete do pedido (0 enquanto não apurado). */
+const FRETE = Prisma.raw(`CASE WHEN ${'(frete_checked_at IS NOT NULL AND valor_produtos IS NOT NULL AND frete_valor_ref IS NOT DISTINCT FROM valor)'} THEN COALESCE(valor_frete, 0) ELSE 0 END`);
+
 /** Vendedor normalizado: vazio, "—" e NULL viram "Sem vendedor" (1 grupo só). */
 const VEND_EXPR = Prisma.raw(
   `CASE WHEN vendedor IS NULL OR TRIM(vendedor) IN ('', '—') THEN '${SEM_VENDEDOR}' ELSE TRIM(vendedor) END`,
@@ -29,8 +38,13 @@ export interface PlanInput {
 interface SalesRow {
   vendedor: string;
   pedidos: number;
+  /** Valor total dos pedidos (como no Tiny). */
   bruto: number;
+  /** Produtos líquidos (produtos − desconto). */
+  produtos: number;
   frete: number;
+  /** Base da comissão = produtos líquidos − frete (por pedido, mínimo 0). */
+  base: number;
   pendentes: number;
 }
 
@@ -140,8 +154,8 @@ export class CommissionsService {
 
     const rows = [...names].map((vendedor) => {
       const plan = plans.find((p) => p.vendedor === vendedor) ?? null;
-      const s = salesBy.get(vendedor) ?? { vendedor, pedidos: 0, bruto: 0, frete: 0, pendentes: 0 };
-      const vendas = s.bruto - s.frete;
+      const s = salesBy.get(vendedor) ?? { vendedor, pedidos: 0, bruto: 0, produtos: 0, frete: 0, base: 0, pendentes: 0 };
+      const vendas = s.base;
       const metaMes = goalBy.get(vendedor);
       const rule = plan
         ? {
@@ -161,6 +175,7 @@ export class CommissionsService {
         metaDoMes: metaMes ?? null,
         pedidos: s.pedidos,
         bruto: r2(s.bruto),
+        produtos: r2(s.produtos),
         frete: r2(s.frete),
         vendas: r2(vendas),
         fretePendente: s.pendentes,
@@ -179,6 +194,7 @@ export class CommissionsService {
       totais: {
         pedidos: rows.reduce((a, r) => a + r.pedidos, 0),
         bruto: sum((r) => r.bruto),
+        produtos: sum((r) => r.produtos),
         frete: sum((r) => r.frete),
         vendas: sum((r) => r.vendas),
         comissao: sum((r) => r.calc?.total ?? 0),
@@ -201,15 +217,15 @@ export class CommissionsService {
 
     const resumo: Cell[][] = [
       [H(`Comissões — ${month}`)],
-      [S('Base'), S('Pedidos de venda direta do Tiny, só produtos (sem frete)')],
+      [S('Base da comissão'), S('Produtos (valor líquido, após desconto) − Frete, dos pedidos de venda direta do Tiny')],
       [S('Gerado em'), S(new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }))],
       [],
-      ['Vendedor', 'Pedidos', 'Valor bruto (R$)', 'Frete (R$)', 'Vendas sem frete (R$)', 'Meta (R$)', 'Atingimento',
-       'Fixo (R$)', '% após meta', 'Base do %', 'Variável (R$)', 'Comissão total (R$)', 'Pedidos sem frete apurado'].map(H),
+      ['Vendedor', 'Pedidos', 'Total dos pedidos (R$)', 'Produtos líquidos (R$)', 'Frete (R$)', 'Base da comissão (R$)', 'Meta (R$)', 'Atingimento',
+       'Fixo (R$)', '% após meta', 'Base do %', 'Variável (R$)', 'Comissão total (R$)', 'Pedidos a apurar no Tiny'].map(H),
     ];
     for (const r of rep.rows) {
       resumo.push([
-        S(r.vendedor), N(r.pedidos), N(r.bruto), N(r.frete), N(r.vendas),
+        S(r.vendedor), N(r.pedidos), N(r.bruto), N(r.produtos), N(r.frete), N(r.vendas),
         r.calc ? N(r.calc.meta) : S(r.temRegra ? 'regra inativa' : 'sem regra'),
         S(r.calc ? pct(r.calc.atingimento) : ''),
         r.calc ? N(r.calc.fixo) : S(''),
@@ -221,27 +237,28 @@ export class CommissionsService {
       ]);
     }
     resumo.push([
-      H('Total'), N(rep.totais.pedidos), N(rep.totais.bruto), N(rep.totais.frete), N(rep.totais.vendas),
+      H('Total'), N(rep.totais.pedidos), N(rep.totais.bruto), N(rep.totais.produtos), N(rep.totais.frete), N(rep.totais.vendas),
       S(''), S(''), S(''), S(''), S(''), S(''), N(rep.totais.comissao), N(rep.totais.fretePendente),
     ]);
 
     const docs = await this.prisma.$queryRaw<any[]>`
       SELECT ${VEND_EXPR} AS vendedor, numero, data, situacao,
-             cliente_nome AS cliente, valor::float8 AS valor, valor_frete::float8 AS frete,
-             (frete_checked_at IS NOT NULL AND frete_valor_ref IS NOT DISTINCT FROM valor) AS apurado
+             cliente_nome AS cliente, valor::float8 AS valor,
+             (${PRODUTOS})::float8 AS produtos, (${FRETE})::float8 AS frete, ${APURADO} AS apurado
       FROM tiny_documents
       WHERE ${this.salesWhere(org, from, to)}
       ORDER BY 1, data, numero`;
     const pedidos: Cell[][] = [
-      ['Vendedor', 'Número', 'Data', 'Situação', 'Cliente', 'Valor (R$)', 'Frete (R$)', 'Vendas sem frete (R$)', 'Frete apurado'].map(H),
+      ['Vendedor', 'Número', 'Data', 'Situação', 'Cliente', 'Total do pedido (R$)', 'Produtos líquidos (R$)', 'Frete (R$)', 'Base da comissão (R$)', 'Apurado no Tiny'].map(H),
     ];
     for (const d of docs) {
-      const frete = d.apurado ? Number(d.frete ?? 0) : 0;
+      const prod = Number(d.produtos ?? 0);
+      const frete = Number(d.frete ?? 0);
       pedidos.push([
         S(d.vendedor), S(d.numero ?? ''),
         S(d.data ? new Date(d.data).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : ''),
         S(d.situacao ?? ''), S(d.cliente ?? ''),
-        N(r2(d.valor ?? 0)), N(r2(frete)), N(r2((d.valor ?? 0) - frete)), S(d.apurado ? 'sim' : 'não'),
+        N(r2(d.valor ?? 0)), N(r2(prod)), N(r2(frete)), N(r2(Math.max(prod - frete, 0))), S(d.apurado ? 'sim' : 'não'),
       ]);
     }
     return buildXlsx([
@@ -270,18 +287,19 @@ export class CommissionsService {
   }
 
   /**
-   * Vendas do mês por vendedor. Frete só conta quando foi apurado PARA O VALOR
-   * ATUAL do pedido; sem isso o pedido entra pelo valor cheio e é contado em
-   * "pendentes" (a tela avisa e oferece "Atualizar fretes").
+   * Vendas do mês por vendedor. Base da comissão = PRODUTOS LÍQUIDOS − FRETE,
+   * por pedido (mínimo 0). Pedido ainda não apurado no Tiny (ou cujo valor
+   * mudou desde a leitura) entra pelo valor do pedido e conta em "pendentes".
    */
   private async salesByVendor(org: string, from: Date, to: Date): Promise<SalesRow[]> {
     const rows = await this.prisma.$queryRaw<any[]>`
       SELECT ${VEND_EXPR} AS vendedor,
              count(*)::int AS pedidos,
              COALESCE(sum(valor), 0)::float8 AS bruto,
-             COALESCE(sum(CASE WHEN frete_checked_at IS NOT NULL AND frete_valor_ref IS NOT DISTINCT FROM valor
-                               THEN valor_frete ELSE 0 END), 0)::float8 AS frete,
-             count(*) FILTER (WHERE frete_checked_at IS NULL OR frete_valor_ref IS DISTINCT FROM valor)::int AS pendentes
+             COALESCE(sum(${PRODUTOS}), 0)::float8 AS produtos,
+             COALESCE(sum(${FRETE}), 0)::float8 AS frete,
+             COALESCE(sum(GREATEST(${PRODUTOS} - ${FRETE}, 0)), 0)::float8 AS base,
+             count(*) FILTER (WHERE NOT ${APURADO})::int AS pendentes
       FROM tiny_documents
       WHERE ${this.salesWhere(org, from, to)}
       GROUP BY 1`;
@@ -289,7 +307,9 @@ export class CommissionsService {
       vendedor: r.vendedor,
       pedidos: r.pedidos,
       bruto: Number(r.bruto),
+      produtos: Number(r.produtos),
       frete: Number(r.frete),
+      base: Number(r.base),
       pendentes: r.pendentes,
     }));
   }

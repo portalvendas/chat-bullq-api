@@ -2021,7 +2021,7 @@ export class TinyService {
         AND kind = 'PEDIDO' AND is_marketplace = false
         AND natureza ILIKE '%venda%'
         AND COALESCE(situacao, '') <> ALL(${PEDIDO_STATUS_EXCLUIDOS}::text[])
-        AND (frete_checked_at IS NULL OR frete_valor_ref IS DISTINCT FROM valor)
+        AND (frete_checked_at IS NULL OR valor_produtos IS NULL OR frete_valor_ref IS DISTINCT FROM valor)
         ${opts.from ? Prisma.sql`AND data >= (${opts.from.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
         ${opts.to ? Prisma.sql`AND data <= (${opts.to.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
       ORDER BY data DESC NULLS LAST
@@ -2031,12 +2031,24 @@ export class TinyService {
     for (const r of rows) {
       try {
         const det = await this.http.getPedido(organizationId, r.tinyId);
-        const frete =
-          (this.parseDecimal(det?.valorFrete) ?? 0) +
-          (this.parseDecimal(det?.valorOutrasDespesas) ?? 0);
+        const frete = this.parseDecimal(det?.valorFrete) ?? 0;
+        const outras = this.parseDecimal(det?.valorOutrasDespesas) ?? 0;
+        const totalProdutos = this.parseDecimal(det?.valorTotalProdutos);
+        const desconto = this.parseDecimal(det?.valorDesconto) ?? 0;
+        // Produtos LÍQUIDOS = produtos − desconto. Sem o total de produtos no
+        // detalhe, deriva do total do pedido: total − frete − outras despesas.
+        const produtos =
+          totalProdutos != null
+            ? totalProdutos - desconto
+            : Number(r.valor ?? 0) - frete - outras;
         await this.prisma.tinyDocument.update({
           where: { id: r.id },
-          data: { valorFrete: frete as any, freteCheckedAt: new Date(), freteValorRef: r.valor },
+          data: {
+            valorFrete: frete as any,
+            valorProdutos: Math.max(0, Math.round(produtos * 100) / 100) as any,
+            freteCheckedAt: new Date(),
+            freteValorRef: r.valor,
+          },
         });
         checked++;
       } catch (err: any) {
@@ -2311,6 +2323,20 @@ export class TinyService {
         clienteTelefone: d.clienteTelefone,
         vendedor: d.vendedor,
         matchedBy: d.matchedBy,
+        // Produtos líquidos e frete (lidos do detalhe do Tiny para o valor atual
+        // do pedido); null enquanto não apurados.
+        ...(() => {
+          const ok =
+            d.freteCheckedAt != null &&
+            d.valorProdutos != null &&
+            d.freteValorRef != null &&
+            d.valor != null &&
+            Number(d.freteValorRef) === Number(d.valor);
+          return {
+            valorProdutos: ok ? Number(d.valorProdutos) : null,
+            valorFrete: ok ? Number(d.valorFrete ?? 0) : null,
+          };
+        })(),
         // Comprovantes: quantos, soma e status vs total do pedido.
         comprovanteCount: recByDoc.get(d.id)?.count ?? 0,
         comprovanteSoma: recByDoc.get(d.id)?.soma ?? 0,

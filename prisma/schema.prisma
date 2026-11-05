@@ -303,6 +303,8 @@ model Organization {
 
   @@map("organizations")
   funnelAuditFindings FunnelAuditFinding[]
+  commissionPlans     CommissionPlan[]
+  commissionGoals     CommissionGoal[]
 }
 
 /// Orquestrador de leads: distribui cada lead novo (conversa sem responsável)
@@ -2214,6 +2216,13 @@ model TinyDocument {
   matchManual    Boolean   @default(false) @map("match_manual")
   /// Payload cru do Tiny (auditoria / campos extras).
   raw            Json?
+  /// Frete + outras despesas do pedido (só no detalhe do Tiny). Base da
+  /// comissão = valor − valorFrete. null = ainda não apurado.
+  valorFrete     Decimal?  @map("valor_frete") @db.Decimal(14, 2)
+  /// Quando o frete foi lido do Tiny (re-lê se o valor do pedido mudar).
+  freteCheckedAt DateTime? @map("frete_checked_at")
+  /// Valor do pedido no momento em que o frete foi lido.
+  freteValorRef  Decimal?  @map("frete_valor_ref") @db.Decimal(14, 2)
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -2697,4 +2706,51 @@ model ContactImport {
 
   @@index([organizationId, createdAt])
   @@map("contact_imports")
+}
+
+/// Regra de COMISSÃO por vendedor (vendedor = nome do vendedor no Tiny, que é
+/// quem aparece nos pedidos). Só o dono (OWNER) vê/edita.
+///  - fixedAmount: valor fixo pago até atingir a meta;
+///  - goalAmount:  meta mensal padrão em R$ (base sem frete); o mês pode ter
+///                 meta própria em CommissionGoal;
+///  - percent:     % aplicado depois de bater a meta;
+///  - percentBase: EXCEDENTE (% só sobre o que passou da meta) | TOTAL (% sobre
+///                 todo o vendido no mês);
+///  - keepFixed:   ao bater a meta, mantém o fixo e soma o % (true) ou o %
+///                 substitui o fixo (false).
+model CommissionPlan {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  vendedor       String
+  userId         String?  @map("user_id")
+  active         Boolean  @default(true)
+  fixedAmount    Decimal  @default(0) @map("fixed_amount") @db.Decimal(14, 2)
+  goalAmount     Decimal  @default(0) @map("goal_amount") @db.Decimal(14, 2)
+  percent        Decimal  @default(0) @db.Decimal(6, 3)
+  percentBase    String   @default("EXCEDENTE") @map("percent_base")
+  keepFixed      Boolean  @default(true) @map("keep_fixed")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, vendedor], name: "uq_commission_plan_org_vendedor", map: "uq_commission_plan_org_vendedor")
+  @@map("commission_plans")
+}
+
+/// Meta de um MÊS específico (sobrepõe a meta padrão da regra). month = "AAAA-MM".
+model CommissionGoal {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  vendedor       String
+  month          String
+  goalAmount     Decimal  @map("goal_amount") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, vendedor, month], name: "uq_commission_goal_org_vend_month", map: "uq_commission_goal_org_vend_month")
+  @@map("commission_goals")
 }

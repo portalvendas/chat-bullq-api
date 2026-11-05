@@ -35,6 +35,7 @@ import { FunnelAuditModule } from './modules/funnel-audit/funnel-audit.module';
 import { WhatsappWindowModule } from './modules/whatsapp-window/whatsapp-window.module';
 import { PermissionGroupsModule } from './modules/permission-groups/permission-groups.module';
 import { TinyModule } from './modules/tiny-erp/tiny.module';
+import { CommissionsModule } from './modules/commissions/commissions.module';
 import { LeadDistributionModule } from './modules/lead-distribution/lead-distribution.module';
 import { CommercialRoutineModule } from './modules/commercial-routine/commercial-routine.module';
 import { ProductivityModule } from './modules/productivity/productivity.module';
@@ -98,6 +99,7 @@ import redisConfig from './config/redis.config';
     WhatsappWindowModule,
     PermissionGroupsModule,
     TinyModule,
+    CommissionsModule,
     LeadDistributionModule,
     CommercialRoutineModule,
     ProductivityModule,

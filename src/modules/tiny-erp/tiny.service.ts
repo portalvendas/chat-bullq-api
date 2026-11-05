@@ -198,6 +198,12 @@ export class TinyService {
       } catch (err: any) {
         this.logger.warn(`enrichDetails falhou (best-effort): ${err?.message ?? err}`);
       }
+      // Frete dos pedidos (base da comissão = valor − frete). Lote pequeno.
+      try {
+        await this.enrichFreight(organizationId, { limit: 30 });
+      } catch (err: any) {
+        this.logger.warn(`enrichFreight falhou (best-effort): ${err?.message ?? err}`);
+      }
       // Enriquece os leads vinculados com e-mail/CPF/endereço dos documentos.
       try {
         const en = await this.enrichLinkedContacts(organizationId, { limit: 500 });
@@ -1998,6 +2004,51 @@ export class TinyService {
    * Best-effort: falha numa não derruba as outras. O cron completa ao longo
    * dos ciclos (rows que continuam nulas são retentadas).
    */
+  /**
+   * Lê do detalhe do Tiny o FRETE (+ outras despesas) dos pedidos de venda
+   * direta, para a comissão ser calculada só sobre produtos. Re-lê quando o
+   * valor do pedido mudou desde a última leitura (freteValorRef ≠ valor).
+   * Mais recentes primeiro; `from`/`to` restringem ao mês da apuração.
+   * @example await enrichFreight(org, { limit: 30 }) // → { checked: 30, failed: 0 }
+   */
+  async enrichFreight(
+    organizationId: string,
+    opts: { limit: number; from?: Date; to?: Date },
+  ): Promise<{ checked: number; failed: number }> {
+    const rows = await this.prisma.$queryRaw<{ id: string; tinyId: string; valor: any }[]>`
+      SELECT id, tiny_id AS "tinyId", valor FROM tiny_documents
+      WHERE organization_id = ${organizationId}
+        AND kind = 'PEDIDO' AND is_marketplace = false
+        AND natureza ILIKE '%venda%'
+        AND COALESCE(situacao, '') <> ALL(${PEDIDO_STATUS_EXCLUIDOS}::text[])
+        AND (frete_checked_at IS NULL OR frete_valor_ref IS DISTINCT FROM valor)
+        ${opts.from ? Prisma.sql`AND data >= (${opts.from.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
+        ${opts.to ? Prisma.sql`AND data <= (${opts.to.toISOString()}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
+      ORDER BY data DESC NULLS LAST
+      LIMIT ${opts.limit}`;
+    let checked = 0;
+    let failed = 0;
+    for (const r of rows) {
+      try {
+        const det = await this.http.getPedido(organizationId, r.tinyId);
+        const frete =
+          (this.parseDecimal(det?.valorFrete) ?? 0) +
+          (this.parseDecimal(det?.valorOutrasDespesas) ?? 0);
+        await this.prisma.tinyDocument.update({
+          where: { id: r.id },
+          data: { valorFrete: frete as any, freteCheckedAt: new Date(), freteValorRef: r.valor },
+        });
+        checked++;
+      } catch (err: any) {
+        failed++;
+        if (err?.statusCode !== 404) {
+          this.logger.warn(`frete do pedido ${r.tinyId} falhou: ${err?.message ?? err}`);
+        }
+      }
+    }
+    return { checked, failed };
+  }
+
   private async enrichDetails(organizationId: string, limit: number): Promise<void> {
     const half = Math.ceil(limit / 2);
     const [pedidos, orcamentos] = await Promise.all([

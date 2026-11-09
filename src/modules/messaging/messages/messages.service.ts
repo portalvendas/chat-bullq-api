@@ -100,6 +100,66 @@ export class MessagesService {
     return rawType as MessageContentType;
   }
 
+  /**
+   * Monta o envio de um TEMPLATE aprovado da Meta para esta conversa.
+   * content = { templateId, params?: string[] } — params preenchem {{1}}, {{2}}…
+   * do corpo, na ordem.
+   *   { templateId: 'tpl_1', params: ['Andiara'] } + corpo "Olá {{1}}, tudo bem?"
+   *   → provider { name, language:{code:'pt_BR'}, components:[{type:'body',
+   *       parameters:[{type:'text',text:'Andiara'}]}] }
+   *   → stored  { text: 'Olá Andiara, tudo bem?', template: { name, templateId } }
+   */
+  private async buildTemplate(
+    organizationId: string,
+    conversation: { channelId: string; channel: { type: any; config: any } },
+    content: Record<string, any>,
+  ) {
+    if (conversation.channel.type !== 'WHATSAPP_OFFICIAL') {
+      throw new BadRequestException('Template só pode ser enviado em canal WhatsApp Oficial');
+    }
+    const templateId = String(content?.templateId ?? '');
+    const t = templateId
+      ? await this.prisma.whatsappTemplate.findFirst({ where: { id: templateId, organizationId } })
+      : null;
+    if (!t) throw new NotFoundException('Template não encontrado');
+    if (t.status !== 'APPROVED') throw new BadRequestException('Template ainda não aprovado pela Meta');
+    const waba = (conversation.channel.config as any)?.businessAccountId ?? null;
+    if (t.channelId && t.channelId !== conversation.channelId && t.waba && waba && t.waba !== waba) {
+      throw new BadRequestException('Template de outra conta do WhatsApp (WABA)');
+    }
+    const comps = (Array.isArray(t.components) ? t.components : []) as any[];
+    const header = comps.find((c) => String(c?.type).toUpperCase() === 'HEADER');
+    if (header && String(header.format ?? 'TEXT').toUpperCase() !== 'TEXT') {
+      throw new BadRequestException('Template com imagem/vídeo/documento no cabeçalho ainda não é suportado no inbox');
+    }
+    if (header?.text && /\{\{\d+\}\}/.test(header.text)) {
+      throw new BadRequestException('Template com variável no cabeçalho ainda não é suportado no inbox');
+    }
+    const nVars = Math.max(0, ...[...t.bodyText.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1])));
+    const params: string[] = Array.isArray(content?.params) ? content.params.map((p: any) => String(p ?? '').trim()) : [];
+    if (params.length < nVars || params.slice(0, nVars).some((p) => !p)) {
+      throw new BadRequestException(`Preencha as ${nVars} variável(is) do template`);
+    }
+    const metaName =
+      t.metaName ?? t.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const text = t.bodyText.replace(/\{\{(\d+)\}\}/g, (_m, n) => params[Number(n) - 1] ?? '');
+    return {
+      templateId: t.id,
+      provider: {
+        name: metaName,
+        language: { code: t.language },
+        ...(nVars > 0
+          ? {
+              components: [
+                { type: 'body', parameters: params.slice(0, nVars).map((p) => ({ type: 'text', text: p })) },
+              ],
+            }
+          : {}),
+      },
+      stored: { text, template: { name: metaName, templateId: t.id } },
+    };
+  }
+
   async send(
     dto: SendMessageDto,
     senderId: string,
@@ -126,6 +186,11 @@ export class MessagesService {
     if (!contactChannel) {
       throw new NotFoundException('Contact channel not found');
     }
+
+    // Template aprovado (WhatsApp Oficial): única forma de iniciar/reabrir a
+    // conversa fora da janela de 24h. Vira mensagem da vendedora (sender =
+    // ela), com o texto já preenchido pra aparecer igual no inbox.
+    const tpl = dto.type === 'TEMPLATE' ? await this.buildTemplate(organizationId, conversation, dto.content) : null;
 
     // Resolve replyTo: dois caminhos possíveis dependendo de onde a chamada
     // veio. UI manda `replyToMessageId` (id interno) e a gente busca o
@@ -188,19 +253,21 @@ export class MessagesService {
     // criação — assim o registro salvo (e a bolha no CRM) fica correto e o
     // mesmo tipo vai pro provider. Ex.: imagem cadastrada como DOCUMENT vira
     // IMAGE e o WhatsApp/Z-API entrega como imagem.
-    const outboundType = this.resolveMediaType(dto.type, dto.content);
+    const outboundType = tpl ? MessageContentType.TEMPLATE : this.resolveMediaType(dto.type, dto.content);
 
     const message = await this.repository.create({
       conversationId: conversation.id,
       direction: MessageDirection.OUTBOUND,
       type: outboundType,
-      content: dto.content,
+      content: tpl ? tpl.stored : dto.content,
       status: MessageStatus.QUEUED,
       senderId,
       // metadata.replyTo é consumido pela UI pra renderizar a quote box
       // em cima da bolha — sem isso o quote só apareceria no app do
       // cliente (WhatsApp/IG), nunca no nosso inbox.
-      metadata: replyTo
+      metadata: tpl
+        ? { templateId: tpl.templateId, viaTemplate: true }
+        : replyTo
         ? {
             replyTo: {
               messageId: replyTo.messageId,
@@ -342,7 +409,7 @@ export class MessagesService {
       message,
     });
 
-    let outboundContent = dto.content;
+    let outboundContent: Record<string, any> = tpl ? tpl.provider : dto.content;
     if (conversation.isGroup && dto.type === 'TEXT' && outboundContent.text) {
       const sender = await this.prisma.user.findUnique({
         where: { id: senderId },

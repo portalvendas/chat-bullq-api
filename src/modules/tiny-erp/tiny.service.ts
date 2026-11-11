@@ -51,6 +51,8 @@ const RECONCILE_THROTTLE_MS = 2 * 3600 * 1000;
 
 /** Valor sentinela do filtro por vendedor = pedidos/orçamentos sem vendedor. */
 const SEM_VENDEDOR = '__sem__';
+/** Linha do "Origem dos leads" para propostas/pedidos sem lead (card) vinculado. */
+const SEM_LEAD_CANAL = 'Sem lead vinculado';
 const reconcileLastRunAt = new Map<string, number>();
 
 export interface DateRange {
@@ -1837,7 +1839,7 @@ export class TinyService {
   async leadsByChannel(organizationId: string, from?: string, to?: string, vendedor?: string) {
     const range = this.buildRange(from, to);
     const human = humanOutboundSql('m');
-    const [rows, members, vendPed, vendOrc, org, me] = await Promise.all([
+    const [rows, members, vendPed, vendOrc, org, me, docs] = await Promise.all([
       this.prisma.$queryRaw<
         {
           createdAt: Date;
@@ -1892,6 +1894,7 @@ export class TinyService {
         select: { businessHours247: true, businessTimezone: true, businessHoursSchedule: true, businessHolidays: true },
       }),
       this.leadScope.restrictedUserId(organizationId),
+      this.docsByChannel(organizationId, range, vendedor),
     ]);
 
     let leads = rows;
@@ -1902,12 +1905,19 @@ export class TinyService {
       leads = leads.filter((r) => keyOf(r.owner) === vendedor.trim());
     }
 
-    type Agg = { leads: number; respondidos: number; min: number[]; exp: number[]; ate15: number };
+    type Agg = {
+      leads: number; respondidos: number; min: number[]; exp: number[]; ate15: number;
+      propostas: number; propostasValor: number; pedidos: number; pedidosValor: number;
+    };
+    const blank = (): Agg => ({
+      leads: 0, respondidos: 0, min: [], exp: [], ate15: 0,
+      propostas: 0, propostasValor: 0, pedidos: 0, pedidosValor: 0,
+    });
     const by = new Map<string, Agg>();
-    const all: Agg = { leads: 0, respondidos: 0, min: [], exp: [], ate15: 0 };
+    const all: Agg = blank();
     for (const r of leads) {
       const canal = leadChannel(r.src, { ...(r.ctr ?? {}), ...(r.ktr ?? {}) }, r.chan);
-      const a = by.get(canal) ?? { leads: 0, respondidos: 0, min: [], exp: [], ate15: 0 };
+      const a = by.get(canal) ?? blank();
       for (const g of [a, all]) {
         g.leads++;
         if (r.firstHuman) {
@@ -1923,6 +1933,23 @@ export class TinyService {
       }
       by.set(canal, a);
     }
+    // Propostas/pedidos do período no canal do lead do contato. Vendedora
+    // restrita: só os documentos de leads dela (mesma regra da coluna Leads).
+    for (const d of docs) {
+      if (me && d.owner !== me) continue;
+      const a = by.get(d.canal) ?? blank();
+      for (const g of [a, all]) {
+        if (d.kind === 'PEDIDO') {
+          g.pedidos++;
+          g.pedidosValor += d.valor;
+        } else {
+          g.propostas++;
+          g.propostasValor += d.valor;
+        }
+      }
+      by.set(d.canal, a);
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
     const out = (canal: string, a: Agg) => ({
       canal,
       leads: a.leads,
@@ -1932,12 +1959,99 @@ export class TinyService {
       medianaExpedienteMin: median(a.exp),
       mediaExpedienteMin: a.exp.length ? Math.round(a.exp.reduce((x, y) => x + y, 0) / a.exp.length) : null,
       ate15minPct: a.leads ? a.ate15 / a.leads : null,
+      propostas: a.propostas,
+      propostasValor: r2(a.propostasValor),
+      pedidos: a.pedidos,
+      pedidosValor: r2(a.pedidosValor),
     });
     return {
       vendedor: vendedor?.trim() || null,
       total: out('Total', all),
-      canais: [...by.entries()].map(([c, a]) => out(c, a)).sort((x, y) => y.leads - x.leads),
+      canais: [...by.entries()]
+        .map(([c, a]) => out(c, a))
+        .sort((x, y) =>
+          // "Sem lead vinculado" sempre por último
+          Number(x.canal === SEM_LEAD_CANAL) - Number(y.canal === SEM_LEAD_CANAL) ||
+          y.leads - x.leads || y.pedidosValor - x.pedidosValor),
     };
+  }
+
+  /**
+   * Propostas e pedidos do PERÍODO (por data do documento, MESMO filtro dos
+   * cards "Qtd. de propostas"/pedidos — então o Total bate com a tela)
+   * atribuídos ao CANAL de origem do lead do contato vinculado.
+   *
+   * Qual card do contato define o canal: o mais recente criado ATÉ a data do
+   * documento (a entrada que gerou a negociação); se todos forem posteriores,
+   * o mais antigo. Documento sem contato vinculado ou contato sem card cai em
+   * "Sem lead vinculado". O canal usa a mesma leadChannel() da coluna Leads.
+   *
+   * @example → [{ kind: 'PEDIDO', valor: 4890, canal: 'Meta Ads', owner: 'userKelen' },
+   *             { kind: 'ORCAMENTO', valor: 1200, canal: 'Sem lead vinculado', owner: null }]
+   */
+  private async docsByChannel(
+    organizationId: string,
+    range: DateRange | undefined,
+    vendedor?: string,
+  ): Promise<Array<{ kind: 'PEDIDO' | 'ORCAMENTO'; valor: number; canal: string; owner: string | null }>> {
+    const [peds, orcs] = await Promise.all([
+      this.prisma.tinyDocument.findMany({
+        where: this.pedidoWhere(organizationId, range, vendedor),
+        select: { id: true },
+      }),
+      this.prisma.tinyDocument.findMany({
+        where: this.orcamentoWhere(organizationId, range, vendedor),
+        select: { id: true },
+      }),
+    ]);
+    const ids = [...peds, ...orcs].map((d) => d.id);
+    if (ids.length === 0) return [];
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        kind: string;
+        valor: number | null;
+        hasCard: boolean;
+        src: string | null;
+        ktr: any;
+        ctr: any;
+        chan: string | null;
+        owner: string | null;
+      }[]
+    >`
+      SELECT d.kind, d.valor::float AS valor,
+             (c.id IS NOT NULL) AS "hasCard",
+             c.metadata->>'source' AS src,
+             c.metadata->'tracking' AS ktr,
+             ct.metadata->'tracking' AS ctr,
+             (SELECT ch.type::text FROM conversations cv JOIN channels ch ON ch.id = cv.channel_id
+               WHERE cv.contact_id = d.contact_id
+               ORDER BY (cv.id = c.conversation_id) DESC, cv.created_at ASC LIMIT 1) AS chan,
+             COALESCE(c.assigned_to_id, (
+               SELECT cv.assigned_to_id FROM conversations cv
+               WHERE cv.contact_id = d.contact_id AND cv.organization_id = d.organization_id
+                 AND cv.assigned_to_id IS NOT NULL
+               ORDER BY (cv.id = c.conversation_id) DESC, cv.last_message_at DESC NULLS LAST
+               LIMIT 1)) AS owner
+      FROM tiny_documents d
+      LEFT JOIN contacts ct ON ct.id = d.contact_id
+      LEFT JOIN LATERAL (
+        SELECT k.id, k.metadata, k.conversation_id, k.assigned_to_id
+        FROM cards k
+        WHERE k.contact_id = d.contact_id AND k.organization_id = d.organization_id
+        ORDER BY (k.created_at <= COALESCE(d.data, now())) DESC,
+                 CASE WHEN k.created_at <= COALESCE(d.data, now()) THEN k.created_at END DESC NULLS LAST,
+                 k.created_at ASC
+        LIMIT 1
+      ) c ON true
+      WHERE d.id = ANY(${ids})`;
+
+    return rows.map((r) => ({
+      kind: r.kind === 'PEDIDO' ? 'PEDIDO' : 'ORCAMENTO',
+      valor: Number(r.valor ?? 0),
+      canal: r.hasCard ? leadChannel(r.src, { ...(r.ctr ?? {}), ...(r.ktr ?? {}) }, r.chan) : SEM_LEAD_CANAL,
+      owner: r.owner,
+    }));
   }
 
   // ── Leads sem resposta (regra única) ─────────────────────────────────

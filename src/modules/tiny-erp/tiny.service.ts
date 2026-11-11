@@ -1598,6 +1598,134 @@ export class TinyService {
   }
 
   /**
+   * Série temporal de VENDAS (pedidos venda efetiva), PROPOSTAS e LEADS do
+   * período, para gráficos (dashboard mobile). Usa exatamente os mesmos
+   * filtros dos cards (pedidoWhere/orcamentoWhere/pessoa única por bucket),
+   * então a soma dos buckets de pedidos/propostas BATE com o summary.
+   *
+   * Granularidade automática p/ não explodir pontos no celular:
+   *   ≤ 62 dias → dia · ≤ 200 dias → semana (seg) · acima/aberto → mês.
+   * Buckets no fuso do expediente da org (businessTimezone). Buckets vazios
+   * são preenchidos com zero; zeros à esquerda (ex.: "Tudo" desde 2020) são
+   * aparados.
+   *
+   * @example dailySeries(org, '2026-11-01T03:00:00Z', '2026-11-10T23:00:00Z') →
+   *   { bucket: 'day', points: [{ date: '2026-11-01', pedidos: 3, vendas: 8450.5,
+   *     propostas: 7, propostasValor: 21900, leads: 41 }, ...] }
+   */
+  async dailySeries(
+    organizationId: string,
+    from?: string,
+    to?: string,
+  ): Promise<{
+    bucket: 'day' | 'week' | 'month';
+    points: Array<{
+      date: string;
+      pedidos: number;
+      vendas: number;
+      propostas: number;
+      propostasValor: number;
+      leads: number;
+    }>;
+  }> {
+    const range = this.buildRange(from, to);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { businessTimezone: true },
+    });
+    const tz = org?.businessTimezone || 'America/Sao_Paulo';
+
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const days =
+      range?.gte && range?.lte
+        ? Math.ceil((range.lte.getTime() - range.gte.getTime()) / DAY_MS)
+        : Infinity;
+    const bucket: 'day' | 'week' | 'month' = days <= 62 ? 'day' : days <= 200 ? 'week' : 'month';
+
+    const [peds, orcs, leadRows] = await Promise.all([
+      this.prisma.tinyDocument.findMany({
+        where: this.pedidoWhere(organizationId, range),
+        select: { data: true, valor: true },
+      }),
+      this.prisma.tinyDocument.findMany({
+        where: this.orcamentoWhere(organizationId, range),
+        select: { data: true, valor: true },
+      }),
+      // bucket vem de whitelist acima → Prisma.raw é seguro aqui.
+      this.prisma.$queryRaw<{ d: string; n: number }[]>`
+        SELECT to_char(date_trunc(${Prisma.raw(`'${bucket}'`)},
+                 (k.created_at AT TIME ZONE 'UTC') AT TIME ZONE ${tz}), 'YYYY-MM-DD') AS d,
+               COUNT(DISTINCT ${LEAD_PERSON_KEY})::int AS n
+        FROM cards k LEFT JOIN contacts ct ON ct.id = k.contact_id
+        WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+        GROUP BY 1`,
+    ]);
+
+    const toKey = this.bucketKeyFn(tz, bucket);
+    type Pt = { date: string; pedidos: number; vendas: number; propostas: number; propostasValor: number; leads: number };
+    const map = new Map<string, Pt>();
+    const pt = (k: string): Pt => {
+      let p = map.get(k);
+      if (!p) {
+        p = { date: k, pedidos: 0, vendas: 0, propostas: 0, propostasValor: 0, leads: 0 };
+        map.set(k, p);
+      }
+      return p;
+    };
+    for (const d of peds) {
+      if (!d.data) continue;
+      const p = pt(toKey(d.data));
+      p.pedidos += 1;
+      p.vendas += Number(d.valor ?? 0);
+    }
+    for (const d of orcs) {
+      if (!d.data) continue;
+      const p = pt(toKey(d.data));
+      p.propostas += 1;
+      p.propostasValor += Number(d.valor ?? 0);
+    }
+    for (const r of leadRows) pt(r.d).leads += r.n;
+
+    // Preenche buckets vazios entre o 1º e o último ponto (ou o range).
+    const start = range?.gte ? toKey(range.gte) : [...map.keys()].sort()[0];
+    const end = toKey(range?.lte ?? new Date());
+    if (start) {
+      for (let k = start, guard = 0; k <= end && guard < 2000; k = this.nextBucket(k, bucket), guard++) pt(k);
+    }
+    const points = [...map.values()]
+      .filter((p) => p.date <= end)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((p) => ({ ...p, vendas: Math.round(p.vendas * 100) / 100, propostasValor: Math.round(p.propostasValor * 100) / 100 }));
+    const firstNonZero = points.findIndex((p) => p.pedidos || p.propostas || p.leads);
+    return { bucket, points: firstNonZero > 0 ? points.slice(firstNonZero) : points };
+  }
+
+  /** Converte um instante na chave do bucket (YYYY-MM-DD) no fuso informado.
+   *  Semana começa na segunda (igual ao date_trunc('week') do Postgres). */
+  private bucketKeyFn(tz: string, bucket: 'day' | 'week' | 'month'): (d: Date) => string {
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    return (d: Date) => {
+      const day = fmt.format(d); // YYYY-MM-DD
+      if (bucket === 'day') return day;
+      if (bucket === 'month') return `${day.slice(0, 7)}-01`;
+      const [y, m, dd] = day.split('-').map(Number);
+      const u = new Date(Date.UTC(y, m - 1, dd));
+      const dow = (u.getUTCDay() + 6) % 7; // 0 = segunda
+      u.setUTCDate(u.getUTCDate() - dow);
+      return u.toISOString().slice(0, 10);
+    };
+  }
+
+  private nextBucket(key: string, bucket: 'day' | 'week' | 'month'): string {
+    const [y, m, d] = key.split('-').map(Number);
+    const u = new Date(Date.UTC(y, m - 1, d));
+    if (bucket === 'day') u.setUTCDate(u.getUTCDate() + 1);
+    else if (bucket === 'week') u.setUTCDate(u.getUTCDate() + 7);
+    else u.setUTCMonth(u.getUTCMonth() + 1);
+    return u.toISOString().slice(0, 10);
+  }
+
+  /**
    * Soma em `leadsCount` os cards criados no período, pelo RESPONSÁVEL do card.
    *
    * O Tiny só tem o NOME do vendedor ("GABRIELLA APPEL GURKIEVCZ") e o CRM tem

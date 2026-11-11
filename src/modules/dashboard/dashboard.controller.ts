@@ -4,7 +4,8 @@ import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
-import { CurrentOrg, Roles } from '../../common/decorators';
+import { CurrentOrg, CurrentUser, Roles } from '../../common/decorators';
+import { MobileDashboardService } from './mobile-dashboard.service';
 import {
   GoogleAudiencesService,
   GOOGLE_AUDIENCES,
@@ -19,6 +20,7 @@ export class DashboardController {
   constructor(
     private readonly service: DashboardService,
     private readonly audiences: GoogleAudiencesService,
+    private readonly mobile: MobileDashboardService,
   ) {}
 
   private parseRange(from?: string, to?: string) {
@@ -27,6 +29,25 @@ export class DashboardController {
       from: from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
       to: to ? new Date(to) : now,
     };
+  }
+
+  @Get('mobile')
+  @ApiOperation({
+    summary:
+      'Dashboard mobile agregado (1 request): vendas, propostas, leads/dia, série, vendedores e atendimento',
+  })
+  @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
+  getMobile(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') userId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const range = this.parseRange(from, to);
+    if (isNaN(range.from.getTime()) || isNaN(range.to.getTime()) || range.from > range.to) {
+      throw new BadRequestException('Período inválido (from/to)');
+    }
+    return this.mobile.getSummary(orgId, userId, range);
   }
 
   @Get('commercial')

@@ -94,6 +94,19 @@ export class LeadAdsController {
     return this.service.savePage(orgId, dto);
   }
 
+  @Post('lead-ads/import')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, OrgGuard)
+  @ApiOperation({
+    summary: 'Importa (backfill) os leads já existentes de um formulário',
+  })
+  importForm(
+    @CurrentOrg('id') orgId: string,
+    @Body() dto: { formId: string; pageId?: string },
+  ) {
+    return this.service.importFormLeads(orgId, dto);
+  }
+
   @Delete('lead-ads/pages/:id')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, OrgGuard)

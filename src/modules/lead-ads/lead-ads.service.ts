@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import axios from 'axios';
@@ -115,40 +115,209 @@ export class LeadAdsService {
         },
       );
 
-      const fields = this.parseFieldData(data?.field_data ?? []);
-      const name = fields.name ?? null;
-      const phone = this.normalizePhone(fields.phone);
-      const email = fields.email ?? null;
-
-      const contact = await this.findOrCreateContact(page.organizationId, {
-        name,
-        phone,
-        email,
+      const { created } = await this.createLead(page, data, {
+        leadgenId: change.leadgenId,
+        formId: change.formId,
+        adId: change.adId,
       });
-
-      await this.pipelines.createEntryCardForContact(
-        page.organizationId,
-        contact.id,
-        name || phone || email || 'Lead do Facebook',
-        {
-          source: 'facebook_leadads',
-          leadgenId: change.leadgenId,
-          formId: data?.form_id ?? change.formId,
-          adId: data?.ad_id ?? change.adId,
-          campaignName: data?.campaign_name,
-          fields: fields.raw,
-        },
-        // Roteamento por origem: tipo FACEBOOK_LEADADS + exceção por página.
-        { leadSource: 'facebook_leadads', leadAdsPageId: page.pageId },
-      );
       this.logger.log(
-        `Lead Ads: lead ${change.leadgenId} → contato ${contact.id} (org ${page.organizationId})`,
+        `Lead Ads: lead ${change.leadgenId} → ${created ? 'card criado' : 'card existente'} (org ${page.organizationId})`,
       );
     } catch (err: any) {
       const msg =
         err?.response?.data?.error?.message ?? err?.message ?? 'erro';
       this.logger.warn(`Lead Ads: falha ao processar ${change.leadgenId}: ${msg}`);
     }
+  }
+
+  /**
+   * Cria contato + card de entrada a partir dos dados de UM lead já buscados
+   * na Graph API (field_data). Compartilhado pelo webhook (processLead) e pela
+   * importação (importFormLeads) — assim a lógica de criação/roteamento é uma
+   * só. Idempotente: createEntryCardForContact NÃO duplica card quando o
+   * contato já tem um card aberto (retorna null).
+   *
+   * @returns { created } — true se um card novo foi criado; false se o contato
+   *   já tinha card aberto (considerado "pulado" na importação).
+   */
+  private async createLead(
+    page: { organizationId: string; pageId: string },
+    lead: {
+      field_data?: any[];
+      form_id?: string;
+      ad_id?: string;
+      campaign_name?: string;
+    },
+    ids: { leadgenId: string; formId?: string; adId?: string },
+  ): Promise<{ created: boolean }> {
+    const fields = this.parseFieldData(lead?.field_data ?? []);
+    const name = fields.name ?? null;
+    const phone = this.normalizePhone(fields.phone);
+    const email = fields.email ?? null;
+
+    const contact = await this.findOrCreateContact(page.organizationId, {
+      name,
+      phone,
+      email,
+    });
+
+    const card = await this.pipelines.createEntryCardForContact(
+      page.organizationId,
+      contact.id,
+      name || phone || email || 'Lead do Facebook',
+      {
+        source: 'facebook_leadads',
+        leadgenId: ids.leadgenId,
+        formId: lead?.form_id ?? ids.formId,
+        adId: lead?.ad_id ?? ids.adId,
+        campaignName: lead?.campaign_name,
+        fields: fields.raw,
+      },
+      // Roteamento por origem: tipo FACEBOOK_LEADADS + exceção por página.
+      { leadSource: 'facebook_leadads', leadAdsPageId: page.pageId },
+    );
+    return { created: !!card };
+  }
+
+  /**
+   * Importa (backfill) os leads JÁ existentes de um formulário instantâneo.
+   *
+   * O webhook só captura leads NOVOS (submetidos após a assinatura). Para
+   * trazer os que já existem no formulário, lemos `GET /{form_id}/leads`
+   * (paginado por cursor) com o PAGE token salvo e processamos cada lead pelo
+   * mesmo caminho do webhook.
+   *
+   * Segurança/robustez: token vem do banco (nunca hardcoded); best-effort por
+   * lead (um lead com erro não aborta os demais); idempotente (não duplica
+   * card de contato que já tem card aberto); teto de páginas pra evitar loop.
+   *
+   * @example entrada: { formId: "1203...", pageId?: "10687..." }
+   * @example saída:   { formId, pageId, total: 42, created: 40, skipped: 2, errors: 0 }
+   */
+  async importFormLeads(
+    organizationId: string,
+    dto: { formId: string; pageId?: string },
+  ): Promise<{
+    formId: string;
+    pageId: string;
+    total: number;
+    created: number;
+    skipped: number;
+    errors: number;
+  }> {
+    const formId = String(dto?.formId ?? '').trim();
+    if (!/^\d+$/.test(formId)) {
+      throw new BadRequestException('Form ID inválido (use apenas dígitos).');
+    }
+
+    const page = await this.resolveOrgPage(organizationId, dto?.pageId);
+
+    let total = 0;
+    let created = 0;
+    let skipped = 0;
+    let errors = 0;
+    let after: string | undefined;
+    const MAX_PAGES = 50; // teto de segurança (~5000 leads a 100/página)
+
+    for (let p = 0; p < MAX_PAGES; p++) {
+      let batch: any;
+      try {
+        const { data } = await axios.get(
+          `https://graph.facebook.com/${this.apiVersion}/${formId}/leads`,
+          {
+            params: {
+              access_token: page.accessToken,
+              fields: 'id,created_time,field_data,ad_id,campaign_name',
+              limit: 100,
+              ...(after ? { after } : {}),
+            },
+            timeout: 30000,
+          },
+        );
+        batch = data;
+      } catch (err: any) {
+        const msg =
+          err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+        this.logger.warn(
+          `Lead Ads import: falha ao listar leads do form ${formId}: ${msg}`,
+        );
+        // Se nem a 1ª página veio, devolve erro claro pra UI; senão, para e
+        // retorna o que já importou.
+        if (total === 0) {
+          throw new BadRequestException(
+            `Não foi possível ler os leads do formulário: ${msg}`,
+          );
+        }
+        break;
+      }
+
+      const leads: any[] = Array.isArray(batch?.data) ? batch.data : [];
+      for (const lead of leads) {
+        total++;
+        const leadgenId = String(lead?.id ?? '');
+        if (!leadgenId) {
+          errors++;
+          continue;
+        }
+        try {
+          const { created: didCreate } = await this.createLead(page, lead, {
+            leadgenId,
+            formId,
+            adId: lead?.ad_id,
+          });
+          if (didCreate) created++;
+          else skipped++;
+        } catch (err: any) {
+          errors++;
+          const msg =
+            err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+          this.logger.warn(
+            `Lead Ads import: falha no lead ${leadgenId}: ${msg}`,
+          );
+        }
+      }
+
+      after = batch?.paging?.cursors?.after;
+      if (!after || leads.length === 0) break;
+    }
+
+    this.logger.log(
+      `Lead Ads import: form ${formId} (org ${organizationId}) → total=${total} criados=${created} existentes=${skipped} erros=${errors}`,
+    );
+    return { formId, pageId: page.pageId, total, created, skipped, errors };
+  }
+
+  /**
+   * Resolve a página de Lead Ads da org para a importação. Se `pageId` vier,
+   * valida que pertence à org e está ativa. Se não vier e houver exatamente
+   * uma página ativa, usa ela; com mais de uma, exige o pageId.
+   */
+  private async resolveOrgPage(organizationId: string, pageId?: string) {
+    if (pageId) {
+      const page = await this.prisma.leadAdsPage.findFirst({
+        where: { organizationId, pageId: String(pageId).trim() },
+      });
+      if (!page) {
+        throw new BadRequestException(
+          'Página não conectada para esta organização.',
+        );
+      }
+      if (!page.active) throw new BadRequestException('Página inativa.');
+      return page;
+    }
+    const pages = await this.prisma.leadAdsPage.findMany({
+      where: { organizationId, active: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (pages.length === 0) {
+      throw new BadRequestException('Nenhuma página de Lead Ads conectada.');
+    }
+    if (pages.length > 1) {
+      throw new BadRequestException(
+        'Mais de uma página conectada — informe o pageId do formulário.',
+      );
+    }
+    return pages[0];
   }
 
   private parseFieldData(fieldData: any[]): {

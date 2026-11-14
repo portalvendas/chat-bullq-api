@@ -176,7 +176,41 @@ export class LeadAdsService {
       // Roteamento por origem: tipo FACEBOOK_LEADADS + exceção por página.
       { leadSource: 'facebook_leadads', leadAdsPageId: page.pageId },
     );
+    // Cards criados ANTES do parser pt-BR entraram só com e-mail no título.
+    // Ao reprocessar (reimportação/novo evento) com nome em mãos, corrige o
+    // título do card aberto que ainda está "cru" (um e-mail).
+    if (!card && name) {
+      await this.fixOpenCardTitle(page.organizationId, contact.id, name);
+    }
     return { created: !!card };
+  }
+
+  /** Troca o título de um card aberto quando ele é só um e-mail e já temos o nome. */
+  private async fixOpenCardTitle(
+    organizationId: string,
+    contactId: string,
+    name: string,
+  ): Promise<void> {
+    try {
+      const open = await this.prisma.card.findFirst({
+        where: { organizationId, contactId, status: 'OPEN' },
+        select: { id: true, title: true },
+      });
+      if (!open) return;
+      const title = (open.title ?? '').trim();
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(title);
+      const nextName = name.trim();
+      if (looksLikeEmail && nextName && nextName !== title) {
+        await this.prisma.card.update({
+          where: { id: open.id },
+          data: { title: nextName },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Lead Ads: falha ao ajustar título do card (contato ${contactId}): ${err?.message ?? err}`,
+      );
+    }
   }
 
   /**
@@ -332,17 +366,74 @@ export class LeadAdsService {
     let lastName: string | undefined;
     let phone: string | undefined;
     let email: string | undefined;
+
+    // Os nomes dos campos variam por idioma/formulário (PT, EN ou rótulo
+    // customizado). Casamos por PALAVRA-CHAVE no nome do campo — não por
+    // igualdade exata — senão um form em pt-BR (`telefone`, `nome_completo`)
+    // não casa com `phone`/`full_name` e o card entra só com e-mail.
+    const has = (k: string, ...needles: string[]) =>
+      needles.some((n) => k.includes(n));
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     for (const f of fieldData) {
-      const key = String(f?.name ?? '').toLowerCase();
-      const value = Array.isArray(f?.values) ? String(f.values[0] ?? '') : '';
+      const key = String(f?.name ?? '').toLowerCase().trim();
+      const value = Array.isArray(f?.values)
+        ? String(f.values[0] ?? '').trim()
+        : '';
       if (!key) continue;
       raw[key] = value;
-      if (key === 'full_name' || key === 'name') name = value;
-      else if (key === 'first_name') firstName = value;
-      else if (key === 'last_name') lastName = value;
-      else if (key.includes('phone')) phone = value;
-      else if (key === 'email' || key.includes('email')) email = value;
+      if (!value) continue;
+
+      if (!email && has(key, 'email', 'e-mail', 'e_mail')) {
+        email = value;
+      } else if (
+        !phone &&
+        has(key, 'phone', 'telefone', 'celular', 'whatsapp', 'fone', 'tel')
+      ) {
+        phone = value;
+      } else if (
+        !name &&
+        (has(key, 'full_name', 'full name', 'nome_completo', 'nome completo') ||
+          key === 'name' ||
+          key === 'nome')
+      ) {
+        name = value;
+      } else if (
+        !firstName &&
+        has(key, 'first_name', 'first name', 'primeiro_nome')
+      ) {
+        firstName = value;
+      } else if (
+        !lastName &&
+        has(key, 'last_name', 'last name', 'sobrenome', 'ultimo_nome')
+      ) {
+        lastName = value;
+      }
     }
+
+    // Rede de segurança: se e-mail ou telefone não casaram por nome (rótulo
+    // atípico), inferimos pelo FORMATO do valor.
+    if (!email || !phone) {
+      for (const v of Object.values(raw)) {
+        if (!v) continue;
+        if (!email && EMAIL_RE.test(v)) {
+          email = v;
+          continue;
+        }
+        if (!phone) {
+          const digits = v.replace(/\D/g, '');
+          // BR: fixo/celular com DDD tem 10-11 dígitos; com DDI, até 13.
+          if (
+            digits.length >= 10 &&
+            digits.length <= 15 &&
+            /^[+\d][\d\s()+.-]*$/.test(v)
+          ) {
+            phone = v;
+          }
+        }
+      }
+    }
+
     if (!name && (firstName || lastName)) {
       name = [firstName, lastName].filter(Boolean).join(' ');
     }

@@ -12,7 +12,7 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set([
   'Pipeline', 'Card', 'AgentKnowledgeNote', 'KnowledgeItem', 'Cadence', 'Product',
   'OutboxEvent', 'Automation', 'AutomationRun', 'WhatsappTemplate', 'LeadAdsPage',
   'TinyIntegration', 'TinyDocument', 'MetaCapiConfig', 'MetaCapiEvent',
-  'MetaCapiLeadEvent', 'UserActivityMinute', 'CardEvent', 'LeadRotationCounter', 'FunnelAuditFinding', 'CommissionPlan', 'CommissionGoal',
+  'MetaCapiLeadEvent', 'UserActivityMinute', 'CardEvent', 'LeadRotationCounter', 'FunnelAuditFinding', 'FunnelAuditConfig', 'CommissionPlan', 'CommissionGoal',
 ]);
 
 /** Ações Prisma que operam em CONJUNTOS de linhas e, portanto, DEVEM filtrar

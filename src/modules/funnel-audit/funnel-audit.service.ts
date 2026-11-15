@@ -77,7 +77,21 @@ export class FunnelAuditService {
    * Disparo AGENDADO: um run por empresa ativa (não suspensa, com funil).
    * Run agendado = requestedById nulo → ao terminar, avisa cada vendedora.
    */
+  // Agendamento automático (default quando a org nunca salvou config).
+  private readonly DEFAULT_CONFIG = {
+    autoEnabled: true,
+    times: ['08:30', '12:30', '16:30'] as string[],
+    weekdays: [1, 2, 3, 4, 5, 6] as number[], // seg–sáb
+  };
+
+  /**
+   * Chamado pelo tick do cron (a cada 5 min). Para CADA org elegível, respeita
+   * a config dela (liga/desliga, horários e dias) e dispara se "agora" (fuso
+   * SP) cai na janela de algum horário configurado. `startRun` é idempotente
+   * (recusa se já há run RUNNING).
+   */
   async scheduleAll(): Promise<number> {
+    const { weekday, minuteOfDay } = this.nowInSaoPaulo();
     const orgs = await this.prisma.organization.findMany({
       where: { suspendedAt: null, pipelines: { some: { archived: false } } },
       select: { id: true },
@@ -85,13 +99,94 @@ export class FunnelAuditService {
     let n = 0;
     for (const o of orgs) {
       try {
+        const cfg = await this.getConfig(o.id);
+        if (!cfg.autoEnabled) continue;
+        if (!cfg.weekdays.includes(weekday)) continue;
+        const dueNow = cfg.times.some((t) => {
+          const [h, m] = t.split(':').map(Number);
+          const tMin = h * 60 + m;
+          // janela do tick de 5 min: dispara uma vez por horário
+          return minuteOfDay >= tMin && minuteOfDay < tMin + 5;
+        });
+        if (!dueNow) continue;
         const r = await this.startRun(o.id);
         if (!r.alreadyRunning) n++;
       } catch (err: any) {
-        this.logger.warn(`[funnel-audit] agenda falhou org=${o.id}: ${err?.message ?? err}`);
+        this.logger.warn(
+          `[funnel-audit] agenda falhou org=${o.id}: ${err?.message ?? err}`,
+        );
       }
     }
     return n;
+  }
+
+  /** Hora atual no fuso America/Sao_Paulo → { weekday 0=Dom..6=Sáb, minuteOfDay }. */
+  private nowInSaoPaulo(): { weekday: number; minuteOfDay: number } {
+    const sp = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }),
+    );
+    return { weekday: sp.getDay(), minuteOfDay: sp.getHours() * 60 + sp.getMinutes() };
+  }
+
+  /**
+   * Config de agendamento da org. Se nunca salvou, devolve os defaults com
+   * `isDefault: true` (o front mostra os valores-padrão sem precisar gravar).
+   */
+  async getConfig(organizationId: string): Promise<{
+    organizationId: string;
+    autoEnabled: boolean;
+    times: string[];
+    weekdays: number[];
+    isDefault: boolean;
+  }> {
+    const c = await this.prisma.funnelAuditConfig.findUnique({
+      where: { organizationId },
+    });
+    if (!c) return { organizationId, ...this.DEFAULT_CONFIG, isDefault: true };
+    return {
+      organizationId,
+      autoEnabled: c.autoEnabled,
+      times: c.times,
+      weekdays: c.weekdays,
+      isDefault: false,
+    };
+  }
+
+  /** Cria/atualiza a config da org. Normaliza e valida horários (HH:MM) e dias (0–6). */
+  async upsertConfig(
+    organizationId: string,
+    dto: { autoEnabled?: boolean; times?: string[]; weekdays?: number[] },
+  ) {
+    const times = Array.from(
+      new Set(
+        (dto.times ?? this.DEFAULT_CONFIG.times)
+          .map((t) => String(t).trim())
+          .filter((t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t)),
+      ),
+    ).sort();
+    const weekdays = Array.from(
+      new Set(
+        (dto.weekdays ?? this.DEFAULT_CONFIG.weekdays)
+          .map((d) => Number(d))
+          .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6),
+      ),
+    ).sort((a, b) => a - b);
+    const autoEnabled = dto.autoEnabled ?? true;
+    const saved = await this.prisma.funnelAuditConfig.upsert({
+      where: { organizationId },
+      create: { organizationId, autoEnabled, times, weekdays },
+      update: { autoEnabled, times, weekdays },
+    });
+    this.logger.log(
+      `[funnel-audit] config org=${organizationId} auto=${autoEnabled} times=[${times.join(',')}] dias=[${weekdays.join(',')}]`,
+    );
+    return {
+      organizationId,
+      autoEnabled: saved.autoEnabled,
+      times: saved.times,
+      weekdays: saved.weekdays,
+      isDefault: false,
+    };
   }
 
   /**

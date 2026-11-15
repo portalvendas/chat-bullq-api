@@ -270,6 +270,7 @@ model Organization {
   apiKeys       ApiKey[]
   customFields  CustomField[]
   aiAgents      AiAgent[]
+  funnelAuditConfig FunnelAuditConfig?
   aiTools       AiTool[]
   aiSkills      AiSkill[]
   inboxViews    InboxView[]
@@ -2437,6 +2438,25 @@ model FunnelAuditRun {
 
   @@index([organizationId, startedAt])
   @@map("funnel_audit_runs")
+}
+
+/// Config POR EMPRESA da Auditoria de Funil (liga/desliga automático + horários
+/// + dias). Sem linha = usa os defaults (ligado, 08:30/12:30/16:30, seg–sáb).
+model FunnelAuditConfig {
+  id             String   @id @default(cuid())
+  organizationId String   @unique @map("organization_id")
+  /// Execuções AUTOMÁTICAS ligadas? (o disparo manual independe disto)
+  autoEnabled    Boolean  @default(true) @map("auto_enabled")
+  /// Horários (HH:MM, fuso São Paulo). Ex.: ["08:30","12:30","16:30"].
+  times          String[] @default(["08:30", "12:30", "16:30"])
+  /// Dias da semana (0=Dom .. 6=Sáb). Ex.: [1,2,3,4,5,6] = seg–sáb.
+  weekdays       Int[]    @default([1, 2, 3, 4, 5, 6])
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("funnel_audit_configs")
 }
 
 /// Sugestão de mudança de etapa para UM card (revisão manual).

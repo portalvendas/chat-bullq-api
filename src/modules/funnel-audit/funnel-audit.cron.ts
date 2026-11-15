@@ -4,18 +4,16 @@ import type { Queue } from 'bullmq';
 import { FUNNEL_AUDIT_QUEUE, FUNNEL_AUDIT_SCHEDULE_JOB } from './funnel-audit.constants';
 
 /**
- * AGENDA da Auditoria de Funil: seg a sáb, 08:30, 12:30 e 16:30 (São Paulo).
+ * TICK da Auditoria de Funil: dispara a cada 5 min (BullMQ repeatable). O tick
+ * NÃO roda a auditoria — ele chama `scheduleAll()`, que para CADA empresa
+ * respeita a config dela (FunnelAuditConfig: liga/desliga, horários e dias, no
+ * fuso São Paulo) e só dispara quando bate o horário. Assim cada org tem o
+ * próprio agendamento, sem um cron por org.
  *
- *  - 08:30 → começo do expediente: o que ficou da noite/véspera (clientes que
- *    escreveram fora do horário, orçamentos sem retorno, cards parados).
- *  - 12:30 → antes do almoço terminar: leads da manhã sem contato.
- *  - 16:30 → dá tempo de agir antes de fechar o dia.
- *
- * Brasil não tem horário de verão (UTC-3 fixo) → no cron (UTC) fica 11:30,
- * 15:30, 19:30. Ajustável por env FUNNEL_AUDIT_CRON. BullMQ repeatable (padrão
- * do projeto), idempotente entre réplicas pelo jobId.
+ * Ajustável por env FUNNEL_AUDIT_CRON (ex.: afrouxar/apertar o tick).
+ * Idempotente entre réplicas pelo jobId.
  */
-const REPEAT_PATTERN = process.env.FUNNEL_AUDIT_CRON || '30 11,15,19 * * 1-6';
+const REPEAT_PATTERN = process.env.FUNNEL_AUDIT_CRON || '*/5 * * * *';
 const REPEAT_JOB_ID = 'funnel-audit-schedule-cron';
 
 @Injectable()

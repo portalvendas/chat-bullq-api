@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -12,6 +13,7 @@ import { OrgRole } from '@prisma/client';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
 import { CurrentOrg, CurrentUser, Roles } from '../../common/decorators';
 import { FunnelAuditService } from './funnel-audit.service';
+import { FunnelAuditConfigDto } from './dto/funnel-audit-config.dto';
 
 /** Auditoria de Funil — só admin/owner. Sugestões de mudança de etapa por card. */
 @ApiTags('Funnel Audit')
@@ -30,6 +32,21 @@ export class FunnelAuditController {
     @Body() dto: { pipelineIds?: string[] },
   ) {
     return this.service.startRun(orgId, userId, dto?.pipelineIds);
+  }
+
+  @Get('config')
+  @ApiOperation({ summary: 'Config do agendamento automático (ou defaults)' })
+  getConfig(@CurrentOrg('id') orgId: string) {
+    return this.service.getConfig(orgId);
+  }
+
+  @Put('config')
+  @ApiOperation({ summary: 'Atualiza o agendamento automático da auditoria' })
+  setConfig(
+    @CurrentOrg('id') orgId: string,
+    @Body() dto: FunnelAuditConfigDto,
+  ) {
+    return this.service.upsertConfig(orgId, dto);
   }
 
   @Get('latest')

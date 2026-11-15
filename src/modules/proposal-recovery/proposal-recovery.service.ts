@@ -28,7 +28,7 @@ interface Candidate {
 
 type KickoffResult =
   | { kicked: true; recoveryId: string }
-  | { kicked: false; reason: string };
+  | { kicked: false; reason: string; error?: string };
 
 /**
  * Orquestra a recuperação de orçamentos:
@@ -89,7 +89,10 @@ export class ProposalRecoveryService {
       try {
         const r = await this.kickoff(c);
         if (r.kicked) kicked++;
-        else skipped[r.reason] = (skipped[r.reason] ?? 0) + 1;
+        else {
+          skipped[r.reason] = (skipped[r.reason] ?? 0) + 1;
+          if (r.error && errors.length < 5) errors.push({ conversationId: c.id, error: r.error });
+        }
       } catch (err: any) {
         skipped.error = (skipped.error ?? 0) + 1;
         if (errors.length < 5) {
@@ -298,9 +301,14 @@ export class ProposalRecoveryService {
     this.logger.log(
       `proposal_recovery_kickoff conv=${c.id} doc=${doc.id} vendor=${vendor.name ?? '-'} review=${cfg.reviewMode}`,
     );
-    // Fire-and-forget como os demais disparos do runner; erro só loga.
-    this.runner
-      .run({
+    // Aguarda o run (o scan já é um job em background, concorrência 1) pra
+    // detectar falha do agente (ex.: LLM sem crédito). Em falha: desfaz a
+    // abordagem — devolve a IA da conversa e apaga o registro, pra que a
+    // proposta possa ser abordada de novo no próximo scan (ainda na janela).
+    const startedAt = new Date();
+    let runError: string | null = null;
+    try {
+      await this.runner.run({
         conversation: updated,
         triggerMessage: trigger,
         operatorDirective: kickoffDirective({
@@ -308,10 +316,29 @@ export class ProposalRecoveryService {
           numero: snapshot.numero,
           validadeTexto: this.offers.formatDeadline(expiresAt),
         }),
-      })
-      .catch((err) =>
-        this.logger.error(`proposal_recovery_run_failed conv=${c.id}: ${err?.message ?? err}`),
-      );
+      });
+      const run = await this.prisma.aiAgentRun.findFirst({
+        where: { conversationId: c.id, agentId: agent.id, startedAt: { gte: new Date(startedAt.getTime() - 1000) } },
+        orderBy: { startedAt: 'desc' },
+        select: { status: true, errorMessage: true },
+      });
+      if (!run) runError = 'agent_run_not_recorded';
+      else if (run.status === 'FAILED') runError = run.errorMessage ?? 'agent_run_failed';
+    } catch (err: any) {
+      runError = String(err?.message ?? err);
+    }
+    if (runError) {
+      this.logger.error(`proposal_recovery_run_failed conv=${c.id}: ${runError}`);
+      await this.offers.releaseConversation({
+        conversationId: c.id,
+        agentId: agent.id,
+        previousAiState,
+      });
+      await this.prisma.proposalRecovery
+        .delete({ where: { id: recovery.id } })
+        .catch(() => undefined);
+      return { kicked: false, reason: 'agent_run_failed', error: runError.slice(0, 500) };
+    }
     return { kicked: true, recoveryId: recovery.id };
   }
 

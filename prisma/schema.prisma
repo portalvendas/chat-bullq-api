@@ -2756,3 +2756,52 @@ model CommissionGoal {
   @@unique([organizationId, vendedor, month], name: "uq_commission_goal_org_vend_month", map: "uq_commission_goal_org_vend_month")
   @@map("commission_goals")
 }
+
+// ─── Recuperação de orçamentos (agente de IA) ────────────────
+//
+// 1 linha por orçamento do Tiny abordado pelo agente de recuperação
+// (unique tinyDocumentId = idempotência: nunca aborda a mesma proposta 2x).
+// `offer` é o SNAPSHOT do cálculo do motor de oferta no momento da abordagem;
+// `offerExpiresAt` é a validade real da condição (escassez imposta pelo sistema).
+enum ProposalRecoveryStatus {
+  CONTACTED // agente abordou, cliente ainda não respondeu
+  ENGAGED // cliente respondeu / em negociação
+  HANDED_OFF // cliente aceitou → conversa passada pro vendedor fechar
+  WON // pedido do contato apareceu no Tiny após a abordagem
+  LOST // cliente recusou
+  EXPIRED // condição venceu sem fechamento
+  OPTED_OUT // cliente pediu pra não receber mais
+  SKIPPED // elegível mas sem condição a oferecer (ex.: vendedor já deu o teto)
+}
+
+model ProposalRecovery {
+  id                    String                 @id @default(cuid())
+  organizationId        String                 @map("organization_id")
+  tinyDocumentId        String                 @unique @map("tiny_document_id")
+  contactId             String                 @map("contact_id")
+  conversationId        String                 @map("conversation_id")
+  agentId               String?                @map("agent_id")
+  vendorName            String?                @map("vendor_name")
+  vendorUserId          String?                @map("vendor_user_id")
+  status                ProposalRecoveryStatus @default(CONTACTED)
+  offer                 Json
+  offerExpiresAt        DateTime               @map("offer_expires_at")
+  chosenOption          String?                @map("chosen_option") // PIX | CARD
+  objection             String?
+  lostReason            String?                @map("lost_reason")
+  notes                 String?
+  /// Estado de IA da conversa antes da abordagem — restaurado ao encerrar.
+  previousAiState       Json?                  @map("previous_ai_state")
+  wonPedidoId           String?                @map("won_pedido_id")
+  wonValue              Decimal?               @map("won_value") @db.Decimal(14, 2)
+  lastCustomerMessageAt DateTime               @map("last_customer_message_at")
+  kickedOffAt           DateTime               @default(now()) @map("kicked_off_at")
+  closedAt              DateTime?              @map("closed_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  @@index([organizationId, status], name: "idx_prec_org_status")
+  @@index([conversationId], name: "idx_prec_conv")
+  @@index([contactId], name: "idx_prec_contact")
+  @@map("proposal_recoveries")
+}

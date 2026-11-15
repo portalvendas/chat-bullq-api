@@ -17,6 +17,9 @@ import { ConsultarN8nClienteTool } from './builtin/consultar-n8n-cliente.tool';
 import { ListarReunioesClienteTool } from './builtin/listar-reunioes-cliente.tool';
 import { LerTranscricaoReuniaoTool } from './builtin/ler-transcricao-reuniao.tool';
 import { AgendarReuniaoTool } from './builtin/agendar-reuniao.tool';
+import { GetRecoveryOfferTool } from './builtin/get-recovery-offer.tool';
+import { RegisterRecoveryOutcomeTool } from './builtin/register-recovery-outcome.tool';
+import { PROPOSAL_RECOVERY_AGENT_CATEGORY } from '../../proposal-recovery/proposal-recovery.constants';
 
 /**
  * Registry of BUILT-IN skills (named "tools" in the code for legacy reasons).
@@ -36,6 +39,8 @@ export class ToolRegistry {
   private readonly scope = new Map<string, Set<AiAgentKind>>();
   /** Tool name → agentIds permitidos. Ausente = liberado pro kind inteiro. */
   private readonly agentAllowlist = new Map<string, Set<string>>();
+  /** Tool name → categorias de agente permitidas (AiAgent.category). */
+  private readonly categoryAllowlist = new Map<string, Set<string>>();
 
   constructor(
     config: ConfigService,
@@ -53,6 +58,8 @@ export class ToolRegistry {
     listarReunioesCliente: ListarReunioesClienteTool,
     lerTranscricaoReuniao: LerTranscricaoReuniaoTool,
     agendarReuniao: AgendarReuniaoTool,
+    getRecoveryOffer: GetRecoveryOfferTool,
+    registerRecoveryOutcome: RegisterRecoveryOutcomeTool,
   ) {
     this.register(reply, ['ORCHESTRATOR', 'WORKER']);
     this.register(transfer, ['ORCHESTRATOR', 'WORKER']);
@@ -86,6 +93,11 @@ export class ToolRegistry {
     this.register(lerTranscricaoReuniao, ['WORKER'], clientOpsAgents);
     this.register(agendarReuniao, ['WORKER'], clientOpsAgents);
 
+    // Recuperação de orçamentos: só pro agente de categoria proposal-recovery.
+    const recovery = [PROPOSAL_RECOVERY_AGENT_CATEGORY];
+    this.register(getRecoveryOffer, ['WORKER', 'ORCHESTRATOR'], undefined, recovery);
+    this.register(registerRecoveryOutcome, ['WORKER', 'ORCHESTRATOR'], undefined, recovery);
+
     this.logger.log(
       `Built-in skills loaded: ${[...this.tools.keys()].join(', ')} (client-ops → ${clientOpsAgents.join(', ')})`,
     );
@@ -95,6 +107,7 @@ export class ToolRegistry {
     tool: BuiltInSkillImpl,
     kinds: AiAgentKind[],
     agentIds?: string[],
+    categories?: string[],
   ): void {
     if (this.tools.has(tool.name)) {
       throw new Error(`Duplicate built-in skill: ${tool.name}`);
@@ -104,6 +117,15 @@ export class ToolRegistry {
     if (agentIds && agentIds.length > 0) {
       this.agentAllowlist.set(tool.name, new Set(agentIds));
     }
+    if (categories && categories.length > 0) {
+      this.categoryAllowlist.set(tool.name, new Set(categories));
+    }
+  }
+
+  /** Gate por categoria: tools com allowlist só pra agentes da categoria. */
+  private categoryAllows(toolName: string, agentCategory?: string | null): boolean {
+    const allowed = this.categoryAllowlist.get(toolName);
+    return !allowed || (!!agentCategory && allowed.has(agentCategory));
   }
 
   get(name: string): BuiltInSkillImpl {
@@ -125,6 +147,7 @@ export class ToolRegistry {
   getLlmDefinitionsForKind(
     kind: AiAgentKind,
     agentId?: string,
+    agentCategory?: string | null,
   ): LlmToolDefinition[] {
     return [...this.tools.values()]
       .filter((t) => this.scope.get(t.name)?.has(kind) ?? false)
@@ -132,6 +155,7 @@ export class ToolRegistry {
         const allowlist = this.agentAllowlist.get(t.name);
         return !allowlist || (!!agentId && allowlist.has(agentId));
       })
+      .filter((t) => this.categoryAllows(t.name, agentCategory))
       .map(toLlmDefinition);
   }
 
@@ -144,8 +168,10 @@ export class ToolRegistry {
     toolName: string,
     kind: AiAgentKind,
     agentId: string,
+    agentCategory?: string | null,
   ): boolean {
     if (!this.isAllowedForKind(toolName, kind)) return false;
+    if (!this.categoryAllows(toolName, agentCategory)) return false;
     const allowlist = this.agentAllowlist.get(toolName);
     return !allowlist || allowlist.has(agentId);
   }

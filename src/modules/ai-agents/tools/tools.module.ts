@@ -28,6 +28,10 @@ import { HttpToolExecutorService } from './http-tool-executor.service';
 import { SqlToolExecutorService } from './sql-tool-executor.service';
 import { ConfigModule } from '@nestjs/config';
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
+import { ProposalRecoveryCoreModule } from '../../proposal-recovery/core/proposal-recovery-core.module';
+import { GetRecoveryOfferTool } from './builtin/get-recovery-offer.tool';
+import { RegisterRecoveryOutcomeTool } from './builtin/register-recovery-outcome.tool';
 
 @Module({
   imports: [
@@ -35,6 +39,8 @@ import { ConfirmationsModule } from '../confirmations/confirmations.module';
     PrismaModule,
     RealtimeModule,
     ConfirmationsModule,
+    NotificationsModule,
+    ProposalRecoveryCoreModule,
     BullModule.registerQueue({ name: 'outbound-messages' }),
   ],
   providers: [
@@ -59,6 +65,8 @@ import { ConfirmationsModule } from '../confirmations/confirmations.module';
     ListarReunioesClienteTool,
     LerTranscricaoReuniaoTool,
     AgendarReuniaoTool,
+    GetRecoveryOfferTool,
+    RegisterRecoveryOutcomeTool,
     ToolRegistry,
     HttpToolExecutorService,
     SqlToolExecutorService,

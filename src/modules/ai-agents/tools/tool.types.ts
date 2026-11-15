@@ -14,6 +14,8 @@ export interface ToolContext {
   runId: string;
   /** ID of the inbound message that triggered the run. */
   triggerMessageId?: string;
+  /** AiAgent.category — usado no gate de tools restritas por categoria. */
+  agentCategory?: string | null;
 }
 
 export interface ToolResult {

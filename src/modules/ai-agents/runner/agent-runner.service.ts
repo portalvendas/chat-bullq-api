@@ -228,7 +228,7 @@ export class AiAgentRunnerService {
     // Custom HTTP tools live in the DB; we keep their rows here so the
     // runner can hand them to HttpToolExecutor on tool-call time.
     const { llmTools, customSkillsByName, skillInstructions } =
-      await this.resolveToolsAndSkills(agent.id, agent.kind);
+      await this.resolveToolsAndSkills(agent.id, agent.kind, agent.category);
 
     const startedAt = Date.now();
 
@@ -465,6 +465,7 @@ export class AiAgentRunnerService {
             agentId: agent.id,
             runId: run.id,
             triggerMessageId: triggerMessage.id,
+            agentCategory: agent.category,
           },
           customSkillsByName,
           replyAlreadySuccessful,
@@ -777,7 +778,12 @@ export class AiAgentRunnerService {
             finalAction = result.finalAction;
           } else if (
             this.registry.has(call.name) &&
-            this.registry.isAllowedForAgent(call.name, agentKind, ctx.agentId)
+            this.registry.isAllowedForAgent(
+              call.name,
+              agentKind,
+              ctx.agentId,
+              ctx.agentCategory,
+            )
           ) {
             // Built-in (gate de kind + allowlist por agente, ex.: client-ops).
             const tool = this.registry.get(call.name);
@@ -918,6 +924,7 @@ export class AiAgentRunnerService {
   private async resolveToolsAndSkills(
     agentId: string,
     kind: 'ORCHESTRATOR' | 'WORKER',
+    agentCategory?: string | null,
   ): Promise<{
     llmTools: LlmToolDefinition[];
     customSkillsByName: Map<string, AiSkill & { tool: AiTool | null }>;
@@ -957,7 +964,11 @@ export class AiAgentRunnerService {
 
     // Built-in defaults — always available based on agent kind (tools com
     // allowlist de agentes só entram pro agente listado, ex.: client-ops).
-    const defaultLlm = this.registry.getLlmDefinitionsForKind(kind, agentId);
+    const defaultLlm = this.registry.getLlmDefinitionsForKind(
+      kind,
+      agentId,
+      agentCategory,
+    );
 
     const seen = new Set<string>();
     const llmTools: LlmToolDefinition[] = [];

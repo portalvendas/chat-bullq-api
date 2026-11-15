@@ -176,11 +176,19 @@ export class LeadAdsService {
       // Roteamento por origem: tipo FACEBOOK_LEADADS + exceção por página.
       { leadSource: 'facebook_leadads', leadAdsPageId: page.pageId },
     );
-    // Cards criados ANTES do parser pt-BR entraram só com e-mail no título.
-    // Ao reprocessar (reimportação/novo evento) com nome em mãos, corrige o
-    // título do card aberto que ainda está "cru" (um e-mail).
-    if (!card && name) {
-      await this.fixOpenCardTitle(page.organizationId, contact.id, name);
+    if (!card) {
+      // Contato já tinha card aberto: a regra do funil é 1 card aberto por
+      // contato, então NÃO criamos outro (senão duplica). Em vez de perder o
+      // lead, registramos o contexto do formulário na descrição do card
+      // existente (idempotente por leadgenId) e corrigimos o título se ainda
+      // estiver "cru" (um e-mail de card antigo).
+      await this.enrichOpenCardFromForm(page.organizationId, contact.id, {
+        leadgenId: ids.leadgenId,
+        fields: fields.raw,
+      });
+      if (name) {
+        await this.fixOpenCardTitle(page.organizationId, contact.id, name);
+      }
     }
     return { created: !!card };
   }
@@ -209,6 +217,66 @@ export class LeadAdsService {
     } catch (err: any) {
       this.logger.warn(
         `Lead Ads: falha ao ajustar título do card (contato ${contactId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Resumo legível do formulário pro vendedor, com marcador idempotente
+   * `[fb-lead:<leadgenId>]` pra não anexar duas vezes o mesmo lead.
+   */
+  private formLeadSummary(
+    leadgenId: string,
+    fields: Record<string, string>,
+  ): string {
+    const g = (k: string) =>
+      fields?.[k] ? String(fields[k]).replace(/_/g, ' ').trim() : '';
+    const parts: string[] = [];
+    const full = g('nome_completo');
+    if (full) parts.push(`Nome: ${full}`);
+    const quer =
+      g('o_que_você_quer_organizar?') || g('o_que_voce_quer_organizar?');
+    if (quer) parts.push(`Quer organizar: ${quer}`);
+    const quando = g('quando_pretende_fazer_o_pedido?');
+    if (quando) parts.push(`Quando: ${quando}`);
+    const loc = [g('cidade'), g('estado')].filter(Boolean).join('/');
+    if (loc) parts.push(`Cidade: ${loc}`);
+    const header = `📋 Lead Facebook (formulário) [fb-lead:${leadgenId}]`;
+    return parts.length
+      ? `${header}\n${parts.map((x) => `• ${x}`).join('\n')}`
+      : header;
+  }
+
+  /**
+   * Quando o lead casa com um contato que JÁ tem card aberto, não criamos outro
+   * card (1 card aberto por contato). Pra não perder o contexto do formulário,
+   * anexamos um resumo na descrição do card aberto. Idempotente: não duplica se
+   * o mesmo leadgenId já foi anexado. Best-effort (não quebra o fluxo).
+   */
+  private async enrichOpenCardFromForm(
+    organizationId: string,
+    contactId: string,
+    data: { leadgenId: string; fields: Record<string, string> },
+  ): Promise<void> {
+    try {
+      const card = await this.prisma.card.findFirst({
+        where: { organizationId, contactId, status: 'OPEN' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, description: true },
+      });
+      if (!card) return;
+      const marker = `[fb-lead:${data.leadgenId}]`;
+      if ((card.description ?? '').includes(marker)) return;
+      const summary = this.formLeadSummary(data.leadgenId, data.fields);
+      const base = (card.description ?? '').trim();
+      const description = base ? `${base}\n\n${summary}` : summary;
+      await this.prisma.card.update({
+        where: { id: card.id },
+        data: { description },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Lead Ads: falha ao enriquecer card do contato ${contactId}: ${err?.message ?? err}`,
       );
     }
   }

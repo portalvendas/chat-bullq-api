@@ -147,7 +147,71 @@ export class ProposalRecoveryService {
 
   // ─── Kickoff ─────────────────────────────────────────────────────
 
-  async kickoff(c: Candidate): Promise<KickoffResult> {
+  /**
+   * Teste manual (admin): aborda UMA conversa escolhida, ignorando a janela de
+   * silêncio, o expediente e a trava de mensagem recente. Mantém opt-out,
+   * agente obrigatório e modo revisão. `reset` apaga uma recuperação anterior
+   * (não-WON) da mesma proposta pra permitir repetir o teste.
+   */
+  async testKickoff(
+    organizationId: string,
+    conversationId: string,
+    opts: { tinyDocumentId?: string; reset?: boolean } = {},
+  ): Promise<KickoffResult & { proposal?: { id: string; numero: string | null } }> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId, deletedAt: null },
+      select: { id: true, organizationId: true, contactId: true, assignedToId: true },
+    });
+    if (!conv) return { kicked: false, reason: 'conversation_not_found' };
+
+    const lastInbound = await this.prisma.message.findFirst({
+      where: { conversationId, direction: 'INBOUND' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (!lastInbound) return { kicked: false, reason: 'no_inbound' };
+
+    const docWhere = opts.tinyDocumentId
+      ? { id: opts.tinyDocumentId, organizationId, kind: 'ORCAMENTO' }
+      : { organizationId, contactId: conv.contactId, kind: 'ORCAMENTO' };
+    const doc = await this.prisma.tinyDocument.findFirst({
+      where: docWhere,
+      orderBy: [{ data: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, numero: true, situacao: true, data: true, createdAt: true, vendedor: true },
+    });
+    if (!doc) return { kicked: false, reason: 'no_proposal_for_contact' };
+
+    // Encerra recuperação viva da conversa e, se pedido, libera a proposta.
+    await this.prisma.proposalRecovery.updateMany({
+      where: { conversationId, status: { in: [...ACTIVE_RECOVERY_STATUSES] } },
+      data: { status: 'EXPIRED', closedAt: new Date(), notes: 'encerrada por teste manual' },
+    });
+    if (opts.reset) {
+      await this.prisma.proposalRecovery.deleteMany({
+        where: { tinyDocumentId: doc.id, status: { not: 'WON' } },
+      });
+    }
+
+    const r = await this.kickoff(
+      {
+        id: conv.id,
+        organization_id: conv.organizationId,
+        contact_id: conv.contactId,
+        assigned_to_id: conv.assignedToId,
+        last_inbound_at: lastInbound.createdAt,
+      },
+      { ignoreBusinessHours: true, doc },
+    );
+    return { ...r, proposal: { id: doc.id, numero: doc.numero } };
+  }
+
+  async kickoff(
+    c: Candidate,
+    opts: {
+      ignoreBusinessHours?: boolean;
+      doc?: { id: string; vendedor: string | null };
+    } = {},
+  ): Promise<KickoffResult> {
     const [org, contact, agent] = await Promise.all([
       this.prisma.organization.findUnique({ where: { id: c.organization_id } }),
       this.prisma.contact.findUnique({
@@ -160,9 +224,12 @@ export class ProposalRecoveryService {
     if (contact.broadcastOptedOutAt) return { kicked: false, reason: 'opted_out' };
     if (!agent) return { kicked: false, reason: 'no_recovery_agent' };
     // Não manda mensagem de madrugada: só no expediente da org.
-    if (!isOpenAt(org)) return { kicked: false, reason: 'outside_business_hours' };
+    if (!opts.ignoreBusinessHours && !isOpenAt(org)) {
+      return { kicked: false, reason: 'outside_business_hours' };
+    }
 
-    const doc = await this.findEligibleProposal(c.organization_id, c.contact_id);
+    const doc =
+      opts.doc ?? (await this.findEligibleProposal(c.organization_id, c.contact_id));
     if (!doc) return { kicked: false, reason: 'no_eligible_proposal' };
 
     let snapshot;

@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OrgRole } from '@prisma/client';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
 import { CurrentOrg, Roles } from '../../common/decorators';
 import { ProposalRecoveryService } from './proposal-recovery.service';
+import { TestKickoffDto } from './test-kickoff.dto';
 
 @ApiTags('proposal-recovery')
 @ApiBearerAuth()
@@ -38,6 +39,23 @@ export class ProposalRecoveryController {
   @ApiOperation({ summary: 'Cria o agente de recuperação da org (idempotente)' })
   ensureAgent(@CurrentOrg('id') orgId: string) {
     return this.service.ensureAgent(orgId);
+  }
+
+  @Post('test/:conversationId')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Teste: aborda uma conversa específica agora (ignora janela de 23h e expediente; mantém modo revisão)',
+  })
+  test(
+    @CurrentOrg('id') orgId: string,
+    @Param('conversationId') conversationId: string,
+    @Body() body: TestKickoffDto,
+  ) {
+    return this.service.testKickoff(orgId, conversationId, {
+      tinyDocumentId: body?.tinyDocumentId,
+      reset: body?.reset === true,
+    });
   }
 
   @Post('scan')

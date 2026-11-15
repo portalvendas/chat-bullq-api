@@ -49,6 +49,8 @@ export const recoveryConfig = () => ({
   maxProposalAgeDays: num(process.env.PROPOSAL_RECOVERY_MAX_PROPOSAL_AGE_DAYS, 45),
   /** Teto de abordagens por varredura (proteção anti-pico de envio). */
   maxKickoffsPerScan: num(process.env.PROPOSAL_RECOVERY_MAX_KICKOFFS_PER_SCAN, 20),
+  /** Alerta se o vendedor não responder o cliente em N min após o aceite. */
+  handoffAlertMinutes: num(process.env.PROPOSAL_RECOVERY_HANDOFF_ALERT_MINUTES, 15),
   channelTypes: (
     process.env.PROPOSAL_RECOVERY_CHANNEL_TYPES ??
     'WHATSAPP_OFFICIAL,WHATSAPP_ZAPI,WHATSAPP_ZAPPFY,WHATSAPP_BAILEYS'

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AiAgentRunnerService } from '../ai-agents/runner/agent-runner.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { isOpenAt } from '../../common/business-hours/business-hours.util';
 import { RecoveryOfferService } from './core/recovery-offer.service';
 import {
@@ -49,6 +50,7 @@ export class ProposalRecoveryService {
     private readonly prisma: PrismaService,
     private readonly offers: RecoveryOfferService,
     private readonly runner: AiAgentRunnerService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ─── Scan ────────────────────────────────────────────────────────
@@ -79,7 +81,7 @@ export class ProposalRecoveryService {
   private async runKickoffs(
     cfg: ReturnType<typeof recoveryConfig>,
     candidates: Candidate[],
-    swept: { won: number; expired: number },
+    swept: { won: number; expired: number; handoffAlerts: number },
   ) {
     let kicked = 0;
     const skipped: Record<string, number> = {};
@@ -104,7 +106,7 @@ export class ProposalRecoveryService {
       }
     }
     this.logger.log(
-      `proposal_recovery_scan candidates=${candidates.length} kicked=${kicked} won=${swept.won} expired=${swept.expired} skipped=${JSON.stringify(skipped)}`,
+      `proposal_recovery_scan candidates=${candidates.length} kicked=${kicked} won=${swept.won} expired=${swept.expired} handoffAlerts=${swept.handoffAlerts} skipped=${JSON.stringify(skipped)}`,
     );
     return { ok: true, enabled: cfg.enabled, ...swept, candidates: candidates.length, kicked, skipped, errors };
   }
@@ -431,9 +433,10 @@ export class ProposalRecoveryService {
 
   // ─── Sweep: ganhos e expirações ──────────────────────────────────
 
-  async sweep(): Promise<{ won: number; expired: number }> {
+  async sweep(): Promise<{ won: number; expired: number; handoffAlerts: number }> {
     let won = 0;
     let expired = 0;
+    const handoffAlerts = await this.alertStaleHandoffs();
     const open = await this.prisma.proposalRecovery.findMany({
       where: { status: { in: [...ACTIVE_RECOVERY_STATUSES, 'HANDED_OFF'] } },
       take: 1000,
@@ -473,7 +476,63 @@ export class ProposalRecoveryService {
         this.logger.warn(`proposal_recovery_sweep_failed id=${r.id}: ${err?.message ?? err}`);
       }
     }
-    return { won, expired };
+    return { won, expired, handoffAlerts };
+  }
+
+  /**
+   * Cliente aceitou, conversa foi pro vendedor, e ninguém da equipe respondeu
+   * em N min → avisa o vendedor + gestores (OWNER/ADMIN). Dispara 1x por
+   * recuperação (handoffAlertedAt). "Resposta humana" = OUTBOUND com senderId
+   * (usuário) depois do aceite; mensagens da IA e notas internas não contam.
+   */
+  private async alertStaleHandoffs(): Promise<number> {
+    const { handoffAlertMinutes } = recoveryConfig();
+    const limit = new Date(Date.now() - handoffAlertMinutes * 60_000);
+    const stale = await this.prisma.proposalRecovery.findMany({
+      where: { status: 'HANDED_OFF', handoffAlertedAt: null, handedOffAt: { lte: limit } },
+      take: 200,
+    });
+    let sent = 0;
+    for (const r of stale) {
+      try {
+        const humanReply = await this.prisma.message.findFirst({
+          where: {
+            conversationId: r.conversationId,
+            direction: 'OUTBOUND',
+            senderId: { not: null },
+            type: { not: 'SYSTEM' },
+            createdAt: { gt: r.handedOffAt! },
+          },
+          select: { id: true },
+        });
+        if (!humanReply) {
+          const conv = await this.prisma.conversation.findUnique({
+            where: { id: r.conversationId },
+            select: { assignedToId: true, contact: { select: { name: true, phone: true } } },
+          });
+          const mins = Math.round((Date.now() - r.handedOffAt!.getTime()) / 60_000);
+          const who = conv?.contact?.name || conv?.contact?.phone || 'Cliente';
+          const numero = (r.offer as any)?.numero ?? '?';
+          await this.notifications.notifyManagersAndUser({
+            organizationId: r.organizationId,
+            responsibleUserId: r.vendorUserId ?? conv?.assignedToId ?? null,
+            type: 'SLA_WARNING',
+            title: `⏰ ${who} aceitou a proposta #${numero} e está esperando há ${mins} min`,
+            body: `Ninguém respondeu desde o aceite. Envie o pagamento (${r.chosenOption === 'PIX' ? 'Pix' : 'cartão'}) antes que o cliente esfrie.`,
+            data: { kind: 'proposal_recovery_handoff_stale', conversationId: r.conversationId, recoveryId: r.id },
+          });
+          sent++;
+        }
+        // Marca de qualquer jeito: com resposta humana, não há o que alertar depois.
+        await this.prisma.proposalRecovery.update({
+          where: { id: r.id },
+          data: { handoffAlertedAt: new Date() },
+        });
+      } catch (err: any) {
+        this.logger.warn(`handoff_alert_failed id=${r.id}: ${err?.message ?? err}`);
+      }
+    }
+    return sent;
   }
 
   // ─── Setup / leitura ─────────────────────────────────────────────

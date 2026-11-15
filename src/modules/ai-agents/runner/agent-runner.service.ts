@@ -181,7 +181,8 @@ export class AiAgentRunnerService {
           where: { id: conversation.contactId },
         }),
         this.prisma.message.findMany({
-          where: { conversationId: conversation.id },
+          // SYSTEM = nota interna da equipe (nunca enviada ao cliente) — fora do prompt.
+          where: { conversationId: conversation.id, type: { not: 'SYSTEM' } },
           orderBy: { createdAt: 'desc' },
           take: MAX_RECENT_MESSAGES,
         }),

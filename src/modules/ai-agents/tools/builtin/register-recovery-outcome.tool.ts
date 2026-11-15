@@ -138,7 +138,14 @@ export class RegisterRecoveryOutcomeTool implements AiTool {
   }
 
   private async handoffToVendor(
-    recovery: { id: string; vendorUserId: string | null; vendorName: string | null; offer: unknown; previousAiState: unknown },
+    recovery: {
+      id: string;
+      vendorUserId: string | null;
+      vendorName: string | null;
+      offer: unknown;
+      previousAiState: unknown;
+      offerExpiresAt: Date;
+    },
     method: 'PIX' | 'CARD',
     notes: string | null,
     ctx: ToolContext,
@@ -146,7 +153,7 @@ export class RegisterRecoveryOutcomeTool implements AiTool {
     const prev = (recovery.previousAiState ?? {}) as { aiReviewMode?: boolean | null };
     await this.prisma.proposalRecovery.update({
       where: { id: recovery.id },
-      data: { status: 'HANDED_OFF', chosenOption: method, notes },
+      data: { status: 'HANDED_OFF', chosenOption: method, notes, handedOffAt: new Date() },
     });
     const conv = await this.prisma.conversation.update({
       where: { id: ctx.conversationId },
@@ -158,7 +165,7 @@ export class RegisterRecoveryOutcomeTool implements AiTool {
         aiReviewMode: prev.aiReviewMode ?? null,
         ...(recovery.vendorUserId ? { assignedToId: recovery.vendorUserId } : {}),
       },
-      select: { assignedToId: true },
+      select: { assignedToId: true, channelId: true },
     });
 
     this.realtime.emitToConversation(ctx.conversationId, 'conversation:ai-toggle', {
@@ -184,6 +191,24 @@ export class RegisterRecoveryOutcomeTool implements AiTool {
       body: `${cond}.${notes ? ` ${notes}` : ''} Envie o pagamento e atualize o orçamento no Tiny.`,
       data: { kind: 'proposal_recovery_accepted', conversationId: ctx.conversationId, recoveryId: recovery.id },
     };
+    // Nota interna visível no chat (não vai pro cliente) + tag pra filtrar no inbox.
+    const validade = this.offers.formatDeadline(recovery.offerExpiresAt);
+    await this.offers.postInternalNote({
+      conversationId: ctx.conversationId,
+      channelId: conv.channelId,
+      contactId: ctx.contactId,
+      text: [
+        `✅ Cliente ACEITOU a condição — proposta #${snap?.numero ?? '?'}`,
+        `Condição: ${cond}`,
+        `Válida até: ${validade}`,
+        notes ? `Observações: ${notes}` : null,
+        `Próximo passo: ${method === 'PIX' ? 'enviar a chave/QR Code do Pix' : 'enviar o link de pagamento do cartão'}, confirmar os dados de entrega e atualizar o orçamento no Tiny.`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
+    await this.offers.tagConversation(ctx.organizationId, ctx.conversationId, 'proposta-aceita');
+
     const recipient = recovery.vendorUserId ?? conv.assignedToId;
     if (recipient) {
       await this.notifications.notify({ recipientId: recipient, ...payload });

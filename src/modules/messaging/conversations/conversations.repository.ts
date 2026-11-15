@@ -247,6 +247,8 @@ export class ConversationsRepository {
             select: { id: true, name: true, avatarUrl: true },
           },
           messages: {
+            // Nota interna (SYSTEM) não vira prévia da conversa na lista.
+            where: { type: { not: 'SYSTEM' } },
             orderBy: { createdAt: 'desc' },
             take: 1,
             select: {

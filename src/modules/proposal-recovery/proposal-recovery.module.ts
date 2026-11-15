@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from '../../database/prisma.module';
 import { AiAgentsModule } from '../ai-agents/ai-agents.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ProposalRecoveryCoreModule } from './core/proposal-recovery-core.module';
 import { ProposalRecoveryService } from './proposal-recovery.service';
 import { ProposalRecoveryController } from './proposal-recovery.controller';
@@ -12,6 +13,7 @@ import { PROPOSAL_RECOVERY_QUEUE } from './proposal-recovery.constants';
   imports: [
     PrismaModule,
     AiAgentsModule,
+    NotificationsModule,
     ProposalRecoveryCoreModule,
     BullModule.registerQueue({ name: PROPOSAL_RECOVERY_QUEUE }),
   ],

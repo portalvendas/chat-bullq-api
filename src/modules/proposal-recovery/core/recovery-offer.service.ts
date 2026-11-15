@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { TinyService } from '../../tiny-erp/tiny.service';
+import { RealtimeGateway } from '../../realtime/realtime.gateway';
 import {
   computeRecoveryOffer,
   DEFAULT_RECOVERY_POLICY,
@@ -29,7 +30,62 @@ export class RecoveryOfferService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tiny: TinyService,
+    private readonly realtime: RealtimeGateway,
   ) {}
+
+  /**
+   * Nota interna na conversa: Message type SYSTEM, gravada direto (NÃO entra
+   * na fila de envio → nunca chega ao cliente). O inbox renderiza como
+   * destaque amarelo; o agente e a prévia da lista ignoram SYSTEM.
+   * Best-effort: falha só loga.
+   */
+  async postInternalNote(args: {
+    conversationId: string;
+    channelId?: string | null;
+    contactId?: string | null;
+    text: string;
+  }): Promise<void> {
+    try {
+      const message = await this.prisma.message.create({
+        data: {
+          conversationId: args.conversationId,
+          direction: 'OUTBOUND',
+          type: 'SYSTEM',
+          content: { text: args.text },
+          status: 'SENT',
+          senderName: 'Nota interna',
+          metadata: { internalNote: true, source: 'proposal-recovery' },
+        },
+      });
+      if (args.channelId) {
+        this.realtime.emitToChannel(args.channelId, 'message:new', {
+          message,
+          conversationId: args.conversationId,
+          contactId: args.contactId,
+        });
+      }
+      this.realtime.emitToConversation(args.conversationId, 'message:new', { message });
+    } catch (err: any) {
+      this.logger.warn(`postInternalNote falhou (conv ${args.conversationId}): ${err?.message ?? err}`);
+    }
+  }
+
+  /** Aplica uma tag na conversa (cria a tag na org se não existir). Best-effort. */
+  async tagConversation(organizationId: string, conversationId: string, name: string, color = '#16a34a') {
+    try {
+      const tag = await this.prisma.tag.upsert({
+        where: { organizationId_name: { organizationId, name } },
+        create: { organizationId, name, color },
+        update: {},
+      });
+      await this.prisma.conversationTag.createMany({
+        data: [{ conversationId, tagId: tag.id }],
+        skipDuplicates: true,
+      });
+    } catch (err: any) {
+      this.logger.warn(`tagConversation falhou (conv ${conversationId}, ${name}): ${err?.message ?? err}`);
+    }
+  }
 
   /**
    * Busca o detalhe do orçamento no Tiny e calcula a oferta.

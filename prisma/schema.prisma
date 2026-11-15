@@ -2812,6 +2812,10 @@ model ProposalRecovery {
   notes                 String?
   /// Estado de IA da conversa antes da abordagem — restaurado ao encerrar.
   previousAiState       Json?                  @map("previous_ai_state")
+  /// Quando o cliente aceitou e a conversa foi passada ao vendedor.
+  handedOffAt           DateTime?              @map("handed_off_at")
+  /// Quando o alerta "vendedor ainda não respondeu" foi disparado (1x).
+  handoffAlertedAt      DateTime?              @map("handoff_alerted_at")
   wonPedidoId           String?                @map("won_pedido_id")
   wonValue              Decimal?               @map("won_value") @db.Decimal(14, 2)
   lastCustomerMessageAt DateTime               @map("last_customer_message_at")

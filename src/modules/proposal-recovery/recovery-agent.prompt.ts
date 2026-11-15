@@ -45,11 +45,16 @@ export function kickoffDirective(args: {
   vendedor: string | null;
   numero: string | null;
   validadeTexto: string;
+  produtoPrincipal?: string | null;
+  totalItens?: number;
 }): string {
   const v = args.vendedor ?? 'o vendedor responsável';
-  return `[ABORDAGEM PROATIVA — RECUPERAÇÃO DE PROPOSTA]
-O cliente recebeu a proposta${args.numero ? ` #${args.numero}` : ''} de ${v} e está há cerca de 23h sem responder. Retome o contato AGORA, como assistente de ${v}.
+  const produto = args.produtoPrincipal
+    ? `${args.produtoPrincipal}${args.totalItens && args.totalItens > 1 ? ` (e mais ${args.totalItens - 1} item(ns))` : ''}`
+    : 'os produtos da proposta';
+  return `[RECUPERAÇÃO DE PROPOSTA]
+O cliente JÁ RECEBEU a proposta${args.numero ? ` #${args.numero}` : ''} de ${v} — produto principal: ${produto}. As medidas e a escolha do produto JÁ FORAM FEITAS; não pergunte nada disso. Ele está há cerca de 23h sem responder. Retome o contato AGORA, como assistente de ${v}.
 1) Chame getRecoveryOffer.
-2) Envie UMA única mensagem curta (2 a 4 linhas): cumprimente pelo primeiro nome, apresente-se como assistente de ${v}, retome a proposta citando o produto principal, conte que conseguiu uma condição especial válida até ${args.validadeTexto} e pergunte se fica melhor no Pix ou no cartão. NÃO liste valores ainda.
+2) Envie, com replyToConversation, UMA única mensagem curta (2 a 4 linhas): cumprimente pelo primeiro nome, apresente-se como assistente de ${v}, retome a proposta citando "${produto}", conte que conseguiu uma condição especial válida até ${args.validadeTexto} e pergunte se fica melhor no Pix ou no cartão. NÃO liste valores ainda.
 Não chame registerRecoveryOutcome nesta abordagem.`;
 }

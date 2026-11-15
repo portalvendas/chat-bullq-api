@@ -30,6 +30,8 @@ export interface PromptContext {
    *  "Regerar com info"). Comando de COMO refazer a resposta — entra num bloco
    *  volátil de prioridade máxima, fora do cache, só quando presente. */
   operatorDirective?: string;
+  /** 'proactive' = contato iniciado pela loja (histórico é só contexto). */
+  directiveMode?: 'regenerate' | 'proactive';
   /** Compact product catalog for sales agents — name + slug + 1 line each.
    *  Full pitch is fetched on demand via the getProductPitch skill. */
   catalog?: Array<{
@@ -514,7 +516,19 @@ export class PromptBuilderService {
     // pra máxima saliência. É uma ORDEM de COMO refazer — tem prioridade sobre
     // regras de estilo/brevidade. Ausente = system idêntico ao normal (cache ok).
     const directive = (ctx.operatorDirective ?? '').trim();
-    if (directive) {
+    const proactive = !!directive && ctx.directiveMode === 'proactive';
+    if (proactive) {
+      const sys = messages[0];
+      if (Array.isArray(sys.content)) {
+        sys.content.push({
+          type: 'text',
+          text: `═══ CONTATO PROATIVO DA LOJA (ordem prioritária para ESTA mensagem) ═══
+Você NÃO está respondendo a uma pergunta. A loja está INICIANDO/RETOMANDO o contato agora, por iniciativa própria. As mensagens do histórico são apenas CONTEXTO antigo: não responda a elas, não retome dúvidas antigas, não peça medidas nem dados que já foram resolvidos. Siga exatamente a orientação abaixo, que tem prioridade sobre qualquer outra regra de estilo ou de produto:
+
+${directive}`,
+        });
+      }
+    } else if (directive) {
       const sys = messages[0];
       if (Array.isArray(sys.content)) {
         sys.content.push({
@@ -550,6 +564,22 @@ Refaça a resposta AGORA aplicando essa orientação. Se ela pedir os links dos 
         last.content = mergeContentParts(last.content, parts);
       } else {
         messages.push({ role, content: parts });
+      }
+    }
+
+    // Contato proativo: a última mensagem do cliente é antiga e NÃO é a
+    // pergunta a responder. Fecha o histórico com uma nota interna explícita
+    // (também garante que a conversa termina em turno 'user').
+    if (proactive) {
+      const note = {
+        type: 'text' as const,
+        text: '[NOTA INTERNA DA LOJA — não é mensagem do cliente] As mensagens acima são antigas. Agora é um contato proativo: siga o bloco "CONTATO PROATIVO DA LOJA" do sistema e não responda às mensagens antigas.',
+      };
+      const last = messages[messages.length - 1];
+      if (last && last.role === 'user') {
+        last.content = mergeContentParts(last.content, [note]);
+      } else {
+        messages.push({ role: 'user', content: [note] });
       }
     }
 

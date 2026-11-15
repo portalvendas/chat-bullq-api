@@ -76,6 +76,13 @@ interface RunInput {
    * prompt e vale só neste run.
    */
   operatorDirective?: string;
+  /**
+   * Como enquadrar `operatorDirective`:
+   *  - 'regenerate' (default): operador mandou REFAZER a resposta anterior.
+   *  - 'proactive': a LOJA está iniciando o contato (ex.: recuperação de
+   *    proposta) — o histórico é só contexto, não há pergunta a responder.
+   */
+  directiveMode?: 'regenerate' | 'proactive';
 }
 
 const MAX_CHAIN_DEPTH = 3;
@@ -122,6 +129,7 @@ export class AiAgentRunnerService {
     chainDepth = 0,
     extraKnowledge = [],
     operatorDirective,
+    directiveMode = 'regenerate',
   }: RunInput): Promise<void> {
     // Fase 2: usa o agentRouter (com IntentClassifier) pra escolher o agent.
     // Auto-chains (chainDepth > 0) NÃO classificam de novo — já tem activeAgentId.
@@ -282,6 +290,7 @@ export class AiAgentRunnerService {
       catalog,
       knowledgeNotes,
       operatorDirective,
+      directiveMode,
     });
 
     // Fase 2.5: augmenta o system message com Security Layer (prepend)

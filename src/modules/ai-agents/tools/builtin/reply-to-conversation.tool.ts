@@ -12,6 +12,7 @@ import { RealtimeGateway } from '../../../realtime/realtime.gateway';
 import { AiTool, ToolContext, ToolResult } from '../tool.types';
 import { containsMetaTalk, findForbiddenUrlHosts } from '../../runner/text-guards';
 import { PendingActionService } from '../../confirmations/pending-action.service';
+import { PROPOSAL_RECOVERY_AGENT_CATEGORY } from '../../../proposal-recovery/proposal-recovery.constants';
 
 /**
  * Domínios de permalink dos marketplaces suportados. Um link de anúncio do
@@ -102,7 +103,7 @@ export class ReplyToConversationTool implements AiTool {
     const [agent, contactChannel, conversation, channel] = await Promise.all([
       this.prisma.aiAgent.findUnique({
         where: { id: ctx.agentId },
-        select: { name: true },
+        select: { name: true, category: true },
       }),
       this.prisma.contactChannel.findFirst({
         where: { contactId: ctx.contactId, channelId: ctx.channelId },
@@ -134,7 +135,10 @@ export class ReplyToConversationTool implements AiTool {
     const signature = (
       (conversation?.organization as any)?.aiSignature ?? ''
     ).trim();
-    if (signature && !text.replace(/\s+$/, '').endsWith(signature)) {
+    // Agente de recuperação fala como assistente do VENDEDOR: a assinatura
+    // genérica da loja ("Aguardamos sua compra…") soa robótica ali.
+    const skipSignature = agent?.category === PROPOSAL_RECOVERY_AGENT_CATEGORY;
+    if (signature && !skipSignature && !text.replace(/\s+$/, '').endsWith(signature)) {
       text = `${text}\n\n${signature}`;
     }
 

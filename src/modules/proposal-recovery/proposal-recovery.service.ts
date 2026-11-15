@@ -315,7 +315,10 @@ export class ProposalRecoveryService {
           vendedor: vendor.name,
           numero: snapshot.numero,
           validadeTexto: this.offers.formatDeadline(expiresAt),
+          produtoPrincipal: snapshot.items[0]?.descricao ?? null,
+          totalItens: snapshot.items.length,
         }),
+        directiveMode: 'proactive',
       });
       const run = await this.prisma.aiAgentRun.findFirst({
         where: { conversationId: c.id, agentId: agent.id, startedAt: { gte: new Date(startedAt.getTime() - 1000) } },

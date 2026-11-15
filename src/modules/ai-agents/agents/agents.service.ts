@@ -8,6 +8,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { AssignAgentChannelDto } from './dto/assign-channel.dto';
+import { PROPOSAL_RECOVERY_AGENT_CATEGORY } from '../../proposal-recovery/proposal-recovery.constants';
 
 @Injectable()
 export class AgentsService {
@@ -17,6 +18,11 @@ export class AgentsService {
     if (dto.parentAgentId) {
       await this.assertParentExists(organizationId, dto.parentAgentId);
     }
+    // Agente de recuperação de orçamentos: categoria normalizada (é ela que
+    // libera as tools e que o scan procura) e SEM vínculo a canais — ele só
+    // entra fixado (activeAgentId) nas conversas que o scan abordar.
+    const isRecoveryAgent =
+      dto.category?.trim().toLowerCase() === PROPOSAL_RECOVERY_AGENT_CATEGORY;
     const agent = await this.prisma.aiAgent.create({
       data: {
         organizationId,
@@ -24,7 +30,7 @@ export class AgentsService {
         description: dto.description,
         avatarUrl: dto.avatarUrl,
         kind: dto.kind ?? 'WORKER',
-        category: dto.category,
+        category: isRecoveryAgent ? PROPOSAL_RECOVERY_AGENT_CATEGORY : dto.category,
         capabilities: dto.capabilities ?? [],
         modelId: dto.modelId,
         modelParams: dto.modelParams as object | undefined,
@@ -50,7 +56,7 @@ export class AgentsService {
       where: { organizationId, isActive: true, deletedAt: null },
       select: { id: true },
     });
-    if (channels.length > 0) {
+    if (channels.length > 0 && !isRecoveryAgent) {
       await this.prisma.aiAgentChannel.createMany({
         data: channels.map((c) => ({
           agentId: agent.id,

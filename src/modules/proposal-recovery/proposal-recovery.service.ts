@@ -55,14 +55,35 @@ export class ProposalRecoveryService {
 
   async scan(opts: { force?: boolean } = {}) {
     const cfg = recoveryConfig();
-    const swept = await this.sweep();
-    if (!cfg.enabled && !opts.force) {
-      return { enabled: false, ...swept, candidates: 0, kicked: 0 };
+    let stage = 'sweep';
+    try {
+      const swept = await this.sweep();
+      if (!cfg.enabled && !opts.force) {
+        return { ok: true, enabled: false, ...swept, candidates: 0, kicked: 0 };
+      }
+      stage = 'find_candidates';
+      const candidates = await this.findCandidates(cfg);
+      stage = 'kickoff';
+      return await this.runKickoffs(cfg, candidates, swept);
+    } catch (err: any) {
+      this.logger.error(
+        `proposal_recovery_scan_failed stage=${stage}: ${err?.message ?? err}`,
+        err?.stack,
+      );
+      if (!opts.force) throw err; // job do BullMQ: deixa falhar e registrar
+      // Execução manual (admin): devolve o diagnóstico em vez de 500 opaco.
+      return { ok: false, stage, error: String(err?.message ?? err).slice(0, 1000) };
     }
+  }
 
-    const candidates = await this.findCandidates(cfg);
+  private async runKickoffs(
+    cfg: ReturnType<typeof recoveryConfig>,
+    candidates: Candidate[],
+    swept: { won: number; expired: number },
+  ) {
     let kicked = 0;
     const skipped: Record<string, number> = {};
+    const errors: Array<{ conversationId: string; error: string }> = [];
     for (const c of candidates) {
       if (kicked >= cfg.maxKickoffsPerScan) break;
       try {
@@ -71,6 +92,9 @@ export class ProposalRecoveryService {
         else skipped[r.reason] = (skipped[r.reason] ?? 0) + 1;
       } catch (err: any) {
         skipped.error = (skipped.error ?? 0) + 1;
+        if (errors.length < 5) {
+          errors.push({ conversationId: c.id, error: String(err?.message ?? err).slice(0, 300) });
+        }
         this.logger.error(
           `proposal_recovery_kickoff_failed conv=${c.id}: ${err?.message ?? err}`,
         );
@@ -79,7 +103,7 @@ export class ProposalRecoveryService {
     this.logger.log(
       `proposal_recovery_scan candidates=${candidates.length} kicked=${kicked} won=${swept.won} expired=${swept.expired} skipped=${JSON.stringify(skipped)}`,
     );
-    return { enabled: cfg.enabled, ...swept, candidates: candidates.length, kicked, skipped };
+    return { ok: true, enabled: cfg.enabled, ...swept, candidates: candidates.length, kicked, skipped, errors };
   }
 
   private async findCandidates(cfg: ReturnType<typeof recoveryConfig>): Promise<Candidate[]> {
@@ -92,20 +116,20 @@ export class ProposalRecoveryService {
         SELECT m.conversation_id, MAX(m.created_at) AS at
         FROM messages m
         WHERE m.direction = 'INBOUND'
-          AND m.created_at > NOW() - make_interval(mins => ${maxMin + 120})
+          AND m.created_at > NOW() - make_interval(mins => ${maxMin + 120}::int)
         GROUP BY m.conversation_id
       ) li
       JOIN conversations c ON c.id = li.conversation_id
       JOIN channels ch ON ch.id = c.channel_id
-      WHERE li.at <= NOW() - make_interval(mins => ${minMin})
-        AND li.at >= NOW() - make_interval(mins => ${maxMin})
+      WHERE li.at <= NOW() - make_interval(mins => ${minMin}::int)
+        AND li.at >= NOW() - make_interval(mins => ${maxMin}::int)
         AND c.deleted_at IS NULL
         AND c.is_group = false
         AND ch.type::text = ANY(${cfg.channelTypes}::text[])
         AND NOT EXISTS (
           SELECT 1 FROM messages o
           WHERE o.conversation_id = c.id AND o.direction = 'OUTBOUND'
-            AND o.created_at > NOW() - make_interval(mins => ${outMin})
+            AND o.created_at > NOW() - make_interval(mins => ${outMin}::int)
         )
         AND EXISTS (
           SELECT 1 FROM tiny_documents d

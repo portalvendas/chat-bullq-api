@@ -27,8 +27,15 @@ import {
  * - Aceita modelId já no formato Anthropic (`claude-sonnet-4-6`) ou com
  *   prefix `anthropic/` por retrocompat — o prefix é despido antes da
  *   chamada.
- * - Prompt caching ephemeral nativo: `system` em blocks com cache_control,
- *   tools com cache no último elemento.
+ * - Prompt caching (3 camadas):
+ *     1. tools  → breakpoint explícito no último tool (TTL 1h)
+ *     2. system → breakpoint explícito nos blocks `cache: true` (TTL 1h)
+ *     3. histórico → cache AUTOMÁTICO (`cache_control` top-level, TTL 5m):
+ *        a API põe o breakpoint no último bloco cacheável e o move pra
+ *        frente a cada turno/iteração de tool-use. Desligável com
+ *        LLM_AUTO_CACHE=false.
+ *   Limite da API: 4 breakpoints/request (o automático ocupa 1) — ver
+ *   `applyCacheBudget()`.
  * - Custo calculado client-side (Anthropic não retorna `cost` no response).
  */
 type OrgClientCache = {
@@ -40,6 +47,9 @@ type OrgClientCache = {
 
 /** TTL do cache de client por org — evita read no banco a cada chamada. */
 const ORG_CLIENT_TTL_MS = 30_000;
+
+/** Máximo de breakpoints `cache_control` por request (limite da API). */
+const MAX_CACHE_BREAKPOINTS = 4;
 
 @Injectable()
 export class LlmService {
@@ -54,6 +64,11 @@ export class LlmService {
   private readonly allowPlatformFallback: boolean;
   /** Cache de client Anthropic por org (evita rebuild + read a cada chamada). */
   private readonly orgClients = new Map<string, OrgClientCache>();
+  /**
+   * Cache automático do histórico (top-level `cache_control`). Default ON.
+   * LLM_AUTO_CACHE=false desliga (rollback sem deploy de código).
+   */
+  private readonly autoCacheEnabled: boolean;
 
   constructor(
     private readonly config: ConfigService,
@@ -64,6 +79,9 @@ export class LlmService {
     this.allowPlatformFallback =
       (this.config.get<string>('LLM_ALLOW_PLATFORM_FALLBACK') ?? 'true')
         .toLowerCase() !== 'false';
+    this.autoCacheEnabled =
+      (this.config.get<string>('LLM_AUTO_CACHE') ?? 'true').toLowerCase() !==
+      'false';
     if (!this.globalApiKey) {
       this.logger.warn(
         'ANTHROPIC_API_KEY (global) não setada — orgs sem chave própria falharão',
@@ -160,6 +178,7 @@ export class LlmService {
     const supportsTemperature = !this.isOpus47(modelId);
 
     const client = await this.resolveClient(req.organizationId);
+    const useAutoCache = this.applyCacheBudget(tools, system, messages);
 
     let response: Anthropic.Message;
     try {
@@ -169,6 +188,7 @@ export class LlmService {
         ...(supportsTemperature
           ? { temperature: req.temperature ?? 0.7 }
           : {}),
+        ...(useAutoCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
         ...(system ? { system } : {}),
         messages,
         ...(tools && tools.length > 0 ? { tools } : {}),
@@ -184,6 +204,7 @@ export class LlmService {
     const message = this.fromAnthropicMessage(response);
     const stopReason = this.normalizeStopReason(response.stop_reason);
     const usage = this.extractUsage(response.usage, modelId);
+    this.logCacheUsage(modelId, response.usage, useAutoCache);
 
     return {
       message,
@@ -191,6 +212,86 @@ export class LlmService {
       usage,
       rawModelId: response.model ?? modelId,
     };
+  }
+
+  // ─── prompt caching ──────────────────────────────────────────────
+
+  /**
+   * Garante que o request respeita o limite de 4 breakpoints e decide se
+   * o cache automático do histórico entra.
+   *
+   * Ordem do prefixo: tools → system → messages. Breakpoints explícitos
+   * hoje: 1 (tools) + até 2 (system: security layer + prompt do agente).
+   * O automático ocupa 1 slot → total 4 no caso comum.
+   *
+   * Regras:
+   *  - Se os explícitos estouram 4, remove os excedentes de trás pra frente
+   *    (messages primeiro — são os menos reaproveitados) e loga warn.
+   *  - Automático só entra se sobrar slot E o último bloco das messages
+   *    não tiver `cache_control` próprio (TTL divergente = 400 na API).
+   *
+   * Muta `system`/`messages` in-place (são objetos recém-criados por
+   * `toAnthropicMessages`, não vazam pro caller).
+   */
+  private applyCacheBudget(
+    tools: Anthropic.ToolUnion[] | undefined,
+    system: Anthropic.TextBlockParam[] | undefined,
+    messages: Anthropic.MessageParam[],
+  ): boolean {
+    type Cacheable = { cache_control?: Anthropic.CacheControlEphemeral | null };
+    const marked: Cacheable[] = [];
+    for (const t of tools ?? []) {
+      if ((t as Cacheable).cache_control) marked.push(t as Cacheable);
+    }
+    for (const b of system ?? []) {
+      if (b.cache_control) marked.push(b);
+    }
+    for (const m of messages) {
+      if (typeof m.content === 'string') continue;
+      for (const b of m.content) {
+        if ((b as Cacheable).cache_control) marked.push(b as Cacheable);
+      }
+    }
+
+    if (marked.length > MAX_CACHE_BREAKPOINTS) {
+      const excess = marked.splice(MAX_CACHE_BREAKPOINTS);
+      for (const b of excess) delete b.cache_control;
+      this.logger.warn(
+        `cache_control: ${excess.length} breakpoint(s) excedente(s) removido(s) (limite ${MAX_CACHE_BREAKPOINTS})`,
+      );
+    }
+
+    if (!this.autoCacheEnabled) return false;
+    if (marked.length >= MAX_CACHE_BREAKPOINTS) return false;
+
+    const last = messages[messages.length - 1];
+    if (last && typeof last.content !== 'string') {
+      const lastBlock = last.content[last.content.length - 1] as
+        | Cacheable
+        | undefined;
+      if (lastBlock?.cache_control) return false;
+    }
+    return messages.length > 0;
+  }
+
+  /**
+   * Log de hit/miss do cache por chamada (debug). Se read=0 e write=0 o
+   * prefixo ficou abaixo do mínimo cacheável do modelo (ex.: Haiku 4.5 =
+   * 4096 tokens, Sonnet 4.6 = 1024) — não é erro, só não cacheou.
+   */
+  private logCacheUsage(
+    modelId: string,
+    usage: Anthropic.Usage,
+    autoCache: boolean,
+  ): void {
+    const read = usage.cache_read_input_tokens ?? 0;
+    const write = usage.cache_creation_input_tokens ?? 0;
+    const fresh = usage.input_tokens ?? 0;
+    const total = read + write + fresh;
+    const hitPct = total > 0 ? Math.round((read / total) * 100) : 0;
+    this.logger.debug(
+      `cache [${modelId}] auto=${autoCache} read=${read} write=${write} uncached=${fresh} hit=${hitPct}%`,
+    );
   }
 
   // ─── conversão: nossos tipos → Anthropic SDK ─────────────────────
@@ -574,6 +675,10 @@ export class LlmService {
     const output = usage.output_tokens ?? 0;
     const cacheRead = usage.cache_read_input_tokens ?? 0;
     const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+    // Escrita 1h custa 2x o input; 5m custa 1.25x. Sem o breakdown
+    // (resposta antiga), assume tudo 5m.
+    const cacheWrite1h = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+    const cacheWrite5m = Math.max(0, cacheWrite - cacheWrite1h);
     return {
       inputTokens: input,
       outputTokens: output,
@@ -583,7 +688,8 @@ export class LlmService {
         input,
         output,
         cacheRead,
-        cacheWrite,
+        cacheWrite5m,
+        cacheWrite1h,
       }),
     };
   }
@@ -598,7 +704,8 @@ export class LlmService {
       input: number;
       output: number;
       cacheRead: number;
-      cacheWrite: number;
+      cacheWrite5m: number;
+      cacheWrite1h: number;
     },
   ): number {
     const p =
@@ -608,7 +715,8 @@ export class LlmService {
       (tokens.input * p.input +
         tokens.output * p.output +
         tokens.cacheRead * p.cacheRead +
-        tokens.cacheWrite * p.cacheWrite) /
+        tokens.cacheWrite5m * p.cacheWrite +
+        tokens.cacheWrite1h * p.input * 2) /
       1_000_000
     );
   }
@@ -656,6 +764,8 @@ export class LlmService {
 /**
  * Tabela de preços (USD por 1M tokens) por modelo. Espelha a tabela
  * pública da Anthropic em platform.claude.com/docs/en/pricing.
+ * `cacheWrite` = escrita 5m (1.25x input). Escrita 1h = 2x input
+ * (calculada em `calculateCost`).
  */
 const MODEL_PRICING_USD_PER_MTOK: Record<
   string,

@@ -337,6 +337,34 @@ export class LeadDistributionService {
    * Best-effort: nunca lança. Retorna o userId escolhido ou null (sem regra /
    * sem membros elegíveis / lead já tinha dono e nada a fazer).
    */
+  /**
+   * Fixa o agente de IA do vendedor virtual numa conversa recem-atribuida.
+   * Idempotente: so grava onde activeAgentId esta null (nunca rouba a conversa
+   * de um agente ja ativo, ex.: recuperacao de orcamento). Liga a IA e o modo
+   * revisao (copiloto). Best-effort: nunca lanca.
+   */
+  private async pinVirtualAgent(
+    conversationId: string,
+    organizationId: string,
+    agentId: string,
+  ): Promise<void> {
+    try {
+      const res = await this.prisma.conversation.updateMany({
+        where: { id: conversationId, organizationId, activeAgentId: null },
+        data: { activeAgentId: agentId, aiEnabled: true, aiReviewMode: true },
+      });
+      if (res.count > 0) {
+        this.logger.log(
+          `vendedor_virtual: agente ${agentId} fixado na conv ${conversationId} (copiloto)`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `pinVirtualAgent falhou (conv=${conversationId} agent=${agentId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
   async assignEntry(params: {
     organizationId: string;
     contactId?: string | null;
@@ -387,6 +415,19 @@ export class LeadDistributionService {
       return null;
     }
 
+    // Vendedor virtual (IA): se o lead caiu num vendedor virtual com agente,
+    // fixamos o agente na conversa pra ele atender (copiloto). So na ENTRADA.
+    let pinAgentId: string | null = null;
+    try {
+      const vmember = await this.prisma.userOrganization.findUnique({
+        where: { userId_organizationId: { userId, organizationId } },
+        select: { isVirtual: true, aiAgentId: true },
+      });
+      if (vmember?.isVirtual && vmember.aiAgentId) pinAgentId = vmember.aiAgentId;
+    } catch {
+      // best-effort: nunca trava a distribuicao por causa do pin.
+    }
+
     try {
       if (conversationId) {
         const res = await this.prisma.conversation.updateMany({
@@ -409,6 +450,9 @@ export class LeadDistributionService {
               },
             })
             .catch(() => undefined);
+        }
+        if (pinAgentId && res.count > 0) {
+          await this.pinVirtualAgent(conversationId, organizationId, pinAgentId);
         }
       }
 
@@ -465,6 +509,9 @@ export class LeadDistributionService {
                 },
               })
               .catch(() => undefined);
+          }
+          if (pinAgentId && res.count > 0) {
+            await this.pinVirtualAgent(cv.id, organizationId, pinAgentId);
           }
         }
       }

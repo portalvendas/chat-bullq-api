@@ -106,15 +106,15 @@ enum NotificationType {
 // ─── Core: Auth + Multi-tenancy ──────────────────
 
 model User {
-  id        String    @id @default(cuid())
-  name      String
-  email     String    @unique
-  password  String
-  avatarUrl String?   @map("avatar_url")
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  password          String
+  avatarUrl         String?   @map("avatar_url")
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
   /// Momento da última troca de senha. JWTs emitidos antes disso são
   /// invalidados (força re-login em todos os dispositivos após um reset).
   passwordChangedAt DateTime? @map("password_changed_at")
@@ -124,22 +124,22 @@ model User {
   platformRole PlatformRole? @map("platform_role")
 
   organizations         UserOrganization[]
-  assignedConversations Conversation[]     @relation("AssignedAgent")
-  sentMessages          Message[]          @relation("MessageSender")
-  revokedMessages       Message[]          @relation("MessageRevoker")
+  assignedConversations Conversation[]       @relation("AssignedAgent")
+  sentMessages          Message[]            @relation("MessageSender")
+  revokedMessages       Message[]            @relation("MessageRevoker")
   notifications         Notification[]
   pushSubscriptions     PushSubscription[]
   sentInvitations       Invitation[]
   apiKeys               ApiKey[]
   inboxViews            InboxView[]
   conversationReads     ConversationRead[]
-  assignedCards         Card[]             @relation("CardAssignee")
+  assignedCards         Card[]               @relation("CardAssignee")
   routineDailyChecks    RoutineDailyCheck[]
   activityMinutes       UserActivityMinute[]
   cardEvents            CardEvent[]
   platformAuditLogs     PlatformAuditLog[]
   passwordResets        PasswordResetToken[]
-  quickReplies          QuickReply[]        @relation("UserQuickReplies")
+  quickReplies          QuickReply[]         @relation("UserQuickReplies")
 
   @@map("users")
 }
@@ -180,38 +180,38 @@ model Organization {
   suspendedReason String?   @map("suspended_reason") @db.Text
 
   // ─── AI settings ────────────────────────────────
-  aiEnabled            Boolean @default(true) @map("ai_enabled")
+  aiEnabled             Boolean  @default(true) @map("ai_enabled")
   // Modo revisão global: quando true, TODA resposta da IA fica pendente de
   // aprovação humana (Aprovar/Rejeitar) no inbox antes de ir pro cliente.
   // Pode ser sobrescrito por conversa (Conversation.aiReviewMode).
-  aiReviewMode         Boolean @default(false) @map("ai_review_mode")
-  aiTimezone           String  @default("America/Sao_Paulo") @map("ai_timezone")
-  aiBusinessHours      Json?   @map("ai_business_hours")
-  aiOutOfHoursMessage  String? @map("ai_out_of_hours_message")
-  aiAutoDisableOnHuman Boolean @default(true) @map("ai_auto_disable_on_human")
-  aiMonthlyTokenCap    Int?    @map("ai_monthly_token_cap")
+  aiReviewMode          Boolean  @default(false) @map("ai_review_mode")
+  aiTimezone            String   @default("America/Sao_Paulo") @map("ai_timezone")
+  aiBusinessHours       Json?    @map("ai_business_hours")
+  aiOutOfHoursMessage   String?  @map("ai_out_of_hours_message")
+  aiAutoDisableOnHuman  Boolean  @default(true) @map("ai_auto_disable_on_human")
+  aiMonthlyTokenCap     Int?     @map("ai_monthly_token_cap")
   /// Chave da API da Anthropic (Claude) DESTA empresa, cifrada em repouso
   /// via secret-cipher (AES-256-GCM, env ENCRYPTION_KEY). BYOK: cada
   /// empresa usa a própria chave/consumo. NULL = não configurada.
-  aiAnthropicKeyEnc    String? @map("ai_anthropic_key_enc") @db.Text
+  aiAnthropicKeyEnc     String?  @map("ai_anthropic_key_enc") @db.Text
   /// Chave da API da OpenAI DESTA empresa (BYOK), cifrada em repouso. Usada na
   /// transcrição de áudio (Whisper). NULL = usa a chave global do servidor
   /// (env OPENAI_API_KEY), se houver.
-  aiOpenaiKeyEnc       String? @map("ai_openai_key_enc") @db.Text
+  aiOpenaiKeyEnc        String?  @map("ai_openai_key_enc") @db.Text
   /// Assinatura fixa anexada ao FINAL de toda resposta enviada pela IA
   /// (determinístico, no envio — não depende do modelo lembrar). NULL/vazio
   /// = sem assinatura. Ex: "Aguardamos sua compra e ficamos à disposição, Armazém Decora."
-  aiSignature          String? @map("ai_signature") @db.Text
+  aiSignature           String?  @map("ai_signature") @db.Text
   /// Notas livres do negócio injetadas no system prompt de TODOS os
   /// agentes da org. Use pra info que muda com frequência e que vale
   /// pra qualquer fluxo (vendas/suporte/CS): regras de entrega, horários
   /// de live, política de reembolso, talking points atuais, etc.
-  aiBusinessNotes      String? @map("ai_business_notes") @db.Text
+  aiBusinessNotes       String?  @map("ai_business_notes") @db.Text
   /// Regras de segurança (imutáveis) injetadas na Layer 1 do prompt composer.
   /// Shape: { noPriceCommitment, noDeadlineCommitment, noResultPromise,
   /// noCrossClientDataLeak, forbiddenEmojis: string[], language: 'pt-BR'|'en-US',
   /// customRules: string[] }. NULL = usa defaults do código.
-  aiSecurityRules      Json?   @map("ai_security_rules")
+  aiSecurityRules       Json?    @map("ai_security_rules")
   /// Threshold de confiança do IntentClassifier pra pular o orchestrator.
   /// Default 0.85. Abaixo disso cai no Augusto.
   aiClassifierThreshold Decimal? @default(0.85) @map("ai_classifier_threshold") @db.Decimal(3, 2)
@@ -221,7 +221,7 @@ model Organization {
   /// "trivapp.com.br"), o runtime guard rejeita qualquer URL fora da
   /// lista — IA tem que reescrever sem o link inventado. NULL ou
   /// array vazio = permissivo (só loga warning, não bloqueia).
-  allowedUrlDomains    Json?   @map("allowed_url_domains")
+  allowedUrlDomains Json? @map("allowed_url_domains")
 
   // ─── Watchdog (conversas presas) ────────────────
   /// Liga/desliga o watchdog que detecta conversas onde a IA travou ou
@@ -256,75 +256,75 @@ model Organization {
   /// salesbots/regras. NULL/vazio = sem mensagem automática.
   businessOutOfHoursMessage String? @map("business_out_of_hours_message") @db.Text
 
-  members          UserOrganization[]
-  permissionGroups PermissionGroup[]
-  channels      Channel[]
-  contacts      Contact[]
-  conversations Conversation[]
-  departments   Department[]
-  chatbotFlows  ChatbotFlow[]
-  quickReplies  QuickReply[]
-  tags          Tag[]
-  notifications Notification[]
-  invitations   Invitation[]
-  apiKeys       ApiKey[]
-  customFields  CustomField[]
-  aiAgents      AiAgent[]
-  funnelAuditConfig FunnelAuditConfig?
-  aiTools       AiTool[]
-  aiSkills      AiSkill[]
-  inboxViews    InboxView[]
-  pipelines     Pipeline[]
-  cards         Card[]
-  products      Product[]
-  knowledgeNotes AgentKnowledgeNote[]
-  knowledgeItems KnowledgeItem[]
-  cadences       Cadence[]
-  whatsappTemplates WhatsappTemplate[]
-  leadAdsPages   LeadAdsPage[]
-  instagramComments InstagramComment[]
-  tinyIntegration TinyIntegration?
-  tinyDocuments   TinyDocument[]
-  metaCapiConfig  MetaCapiConfig?
-  metaCapiEvents  MetaCapiEvent[]
-  metaCapiLeadEvents MetaCapiLeadEvent[]
-  leadDistributionConfig LeadDistributionConfig?
+  members                 UserOrganization[]
+  permissionGroups        PermissionGroup[]
+  channels                Channel[]
+  contacts                Contact[]
+  conversations           Conversation[]
+  departments             Department[]
+  chatbotFlows            ChatbotFlow[]
+  quickReplies            QuickReply[]
+  tags                    Tag[]
+  notifications           Notification[]
+  invitations             Invitation[]
+  apiKeys                 ApiKey[]
+  customFields            CustomField[]
+  aiAgents                AiAgent[]
+  funnelAuditConfig       FunnelAuditConfig?
+  aiTools                 AiTool[]
+  aiSkills                AiSkill[]
+  inboxViews              InboxView[]
+  pipelines               Pipeline[]
+  cards                   Card[]
+  products                Product[]
+  knowledgeNotes          AgentKnowledgeNote[]
+  knowledgeItems          KnowledgeItem[]
+  cadences                Cadence[]
+  whatsappTemplates       WhatsappTemplate[]
+  leadAdsPages            LeadAdsPage[]
+  instagramComments       InstagramComment[]
+  tinyIntegration         TinyIntegration?
+  tinyDocuments           TinyDocument[]
+  metaCapiConfig          MetaCapiConfig?
+  metaCapiEvents          MetaCapiEvent[]
+  metaCapiLeadEvents      MetaCapiLeadEvent[]
+  leadDistributionConfig  LeadDistributionConfig?
   commercialRoutineConfig CommercialRoutineConfig?
-  leadRotationCounters   LeadRotationCounter[]
-  routineDailyChecks     RoutineDailyCheck[]
-  userActivityMinutes    UserActivityMinute[]
-  cardEvents             CardEvent[]
-  platformAuditLogs      PlatformAuditLog[]
-  funnelAuditRuns        FunnelAuditRun[]
-  funnelAuditSuggestions FunnelAuditSuggestion[]
-  broadcasts             Broadcast[]
-  broadcastBudget        OrganizationBroadcastBudget?
-  broadcastLedger        BroadcastLedgerEntry[]
-  contactImports         ContactImport[]
+  leadRotationCounters    LeadRotationCounter[]
+  routineDailyChecks      RoutineDailyCheck[]
+  userActivityMinutes     UserActivityMinute[]
+  cardEvents              CardEvent[]
+  platformAuditLogs       PlatformAuditLog[]
+  funnelAuditRuns         FunnelAuditRun[]
+  funnelAuditSuggestions  FunnelAuditSuggestion[]
+  broadcasts              Broadcast[]
+  broadcastBudget         OrganizationBroadcastBudget?
+  broadcastLedger         BroadcastLedgerEntry[]
+  contactImports          ContactImport[]
+  funnelAuditFindings     FunnelAuditFinding[]
+  commissionPlans         CommissionPlan[]
+  commissionGoals         CommissionGoal[]
 
   @@map("organizations")
-  funnelAuditFindings FunnelAuditFinding[]
-  commissionPlans     CommissionPlan[]
-  commissionGoals     CommissionGoal[]
 }
 
 /// Orquestrador de leads: distribui cada lead novo (conversa sem responsável)
 /// entre vendedores por SORTEIO PONDERADO conforme os pesos (percentuais).
 model LeadDistributionConfig {
-  id             String   @id @default(cuid())
-  organizationId String   @unique @map("organization_id")
-  enabled        Boolean  @default(false)
+  id              String   @id @default(cuid())
+  organizationId  String   @unique @map("organization_id")
+  enabled         Boolean  @default(false)
   /// LEGADO — pesos globais [{ userId, weight }]. Migrado para uma regra "*"
   /// em pipelineWeights (padrão pros demais funis). Mantido por compat.
-  weights        Json     @default("[]")
+  weights         Json     @default("[]")
   /// LEGADO — funis em que a distribuição sorteava (escopo global).
-  pipelineIds    Json     @default("[]") @map("pipeline_ids")
+  pipelineIds     Json     @default("[]") @map("pipeline_ids")
   /// Regras POR FUNIL: [{ pipelineId, weights: [{ userId, weight }] }].
   /// pipelineId = "*" é o padrão aplicado aos demais funis. Cada funil tem sua
   /// própria classificação de pesos (ex.: ML 100% p/ um; Vendas 70/30).
-  pipelineWeights Json    @default("[]") @map("pipeline_weights")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  pipelineWeights Json     @default("[]") @map("pipeline_weights")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -350,21 +350,21 @@ model LeadRotationCounter {
 }
 
 model CommercialRoutineConfig {
-  id             String   @id @default(cuid())
-  organizationId String   @unique @map("organization_id")
-  enabled        Boolean  @default(true)
+  id               String   @id @default(cuid())
+  organizationId   String   @unique @map("organization_id")
+  enabled          Boolean  @default(true)
   /// A quem a rotina se aplica: "ALL" = todos os membros; "SELECTED" = só os
   /// usuários listados em userIds.
-  userMode       String   @default("ALL") @map("user_mode")
+  userMode         String   @default("ALL") @map("user_mode")
   /// userIds ativos quando userMode = "SELECTED".
-  userIds        Json     @default("[]") @map("user_ids")
+  userIds          Json     @default("[]") @map("user_ids")
   /// Conta leads das etapas IGNORANDO o responsável (útil p/ validação e p/
   /// operações sem atribuição). false = só conta os leads atribuídos ao vendedor.
-  ignoreAssignment Boolean @default(false) @map("ignore_assignment")
+  ignoreAssignment Boolean  @default(false) @map("ignore_assignment")
   /// [{ key, label, stageIds: string[], thresholdHours?: number, requireCheck?: bool }]
-  steps          Json     @default("[]")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  steps            Json     @default("[]")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -436,26 +436,34 @@ model CardEvent {
 }
 
 model UserOrganization {
-  id             String      @id @default(cuid())
-  userId         String      @map("user_id")
-  organizationId String      @map("organization_id")
-  role           OrgRole     @default(AGENT)
-  agentStatus    AgentStatus @default(OFFLINE) @map("agent_status")
-  maxConcurrent  Int         @default(5) @map("max_concurrent")
-  preferences    Json        @default("{}")
+  id                String      @id @default(cuid())
+  userId            String      @map("user_id")
+  organizationId    String      @map("organization_id")
+  role              OrgRole     @default(AGENT)
+  agentStatus       AgentStatus @default(OFFLINE) @map("agent_status")
+  maxConcurrent     Int         @default(5) @map("max_concurrent")
+  preferences       Json        @default("{}")
   /// Grupo de permissões (RBAC). NULL = sem grupo (usa defaults do papel).
   /// Ignorado para OWNER/ADMIN, que têm acesso total.
-  permissionGroupId String?  @map("permission_group_id")
-  joinedAt       DateTime    @default(now()) @map("joined_at")
+  permissionGroupId String?     @map("permission_group_id")
+  joinedAt          DateTime    @default(now()) @map("joined_at")
+  /// Vendedor VIRTUAL: membro atendido por um agente de IA (sem humano).
+  /// Entra no sorteio como qualquer vendedor; ao receber um lead, o agente
+  /// (aiAgentId) é fixado na conversa em modo revisão (copiloto).
+  isVirtual         Boolean     @default(false) @map("is_virtual")
+  /// Agente de IA que atua como este vendedor virtual. NULL = sem agente.
+  aiAgentId         String?     @map("ai_agent_id")
 
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   permissionGroup PermissionGroup? @relation(fields: [permissionGroupId], references: [id], onDelete: SetNull)
+  aiAgent         AiAgent?         @relation("VirtualSellerAgent", fields: [aiAgentId], references: [id], onDelete: SetNull)
 
   departmentAgents DepartmentAgent[]
   channelAgents    ChannelAgent[]
 
   @@unique([userId, organizationId])
+  @@index([aiAgentId], name: "idx_user_org_ai_agent")
   @@map("user_organizations")
 }
 
@@ -516,37 +524,37 @@ model Invitation {
 // ─── Channel Hub ─────────────────────────────────
 
 model Channel {
-  id             String      @id @default(cuid())
-  organizationId String      @map("organization_id")
-  type           ChannelType
-  name           String
-  config         Json
-  webhookSecret  String?     @map("webhook_secret")
-  isActive       Boolean     @default(true) @map("is_active")
-  visibility     ChannelVisibility @default(ORG)
+  id                String            @id @default(cuid())
+  organizationId    String            @map("organization_id")
+  type              ChannelType
+  name              String
+  config            Json
+  webhookSecret     String?           @map("webhook_secret")
+  isActive          Boolean           @default(true) @map("is_active")
+  visibility        ChannelVisibility @default(ORG)
   // Tri-state override: NULL=segue org.aiEnabled, true=força ON, false=força OFF.
   // Permite o operador desligar a IA num canal específico (ex: 1581 produção)
   // sem precisar mexer no toggle global da org.
-  aiEnabled      Boolean?    @map("ai_enabled")
+  aiEnabled         Boolean?          @map("ai_enabled")
   // Janela de debounce (em segundos) entre a chegada de uma mensagem e o
   // disparo da IA. Durante essa janela, novas mensagens do mesmo cliente na
   // mesma conversa são agrupadas numa resposta só (cada nova mensagem
   // reinicia a contagem). NULL = usa o default do sistema (10s). No ML,
   // configuramos maior (ex: 120s) pra dar tempo do comprador mandar todas
   // as perguntas do anúncio antes de responder.
-  aiDebounceSeconds Int?     @map("ai_debounce_seconds")
+  aiDebounceSeconds Int?              @map("ai_debounce_seconds")
   // Trava de follow-up por canal. true = este número NÃO dispara follow-up
   // (cadências/Salesbots) — usado pra números WhatsApp Business (QR/Z-API)
   // onde há restrição de disparo automático. default false = follow-up normal.
-  followUpBlocked Boolean   @default(false) @map("follow_up_blocked")
+  followUpBlocked   Boolean           @default(false) @map("follow_up_blocked")
   // Vendedor DONO deste número. Quando setado, leads que entram por este
   // número (inbound no canal OU lead da LP com numero_whatsapp = este número)
   // são atribuídos a ele na distribuição, antes do sorteio ponderado. Escalar
   // (sem relação) de propósito, pra não exigir back-relation em User.
-  ownerUserId    String?     @map("owner_user_id")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
-  deletedAt      DateTime?   @map("deleted_at")
+  ownerUserId       String?           @map("owner_user_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
 
   organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contactChannels ContactChannel[]
@@ -674,13 +682,13 @@ model Contact {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  channels      ContactChannel[]
-  conversations Conversation[]
-  tags          ContactTag[]
-  aiMemories    AiAgentMemory[]
-  cards         Card[]           @relation("CardContact")
-  tinyDocuments TinyDocument[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channels            ContactChannel[]
+  conversations       Conversation[]
+  tags                ContactTag[]
+  aiMemories          AiAgentMemory[]
+  cards               Card[]               @relation("CardContact")
+  tinyDocuments       TinyDocument[]
   broadcastRecipients BroadcastRecipient[]
 
   /// Supressão de disparos em massa (opt-out LGPD). null = pode receber.
@@ -731,12 +739,12 @@ model Conversation {
   // Orthogonal to `status` — archived conversations are hidden from the
   // main inbox but their status (OPEN/PENDING/etc.) is preserved so they
   // re-appear in the right place when unarchived.
-  isArchived     Boolean   @default(false) @map("is_archived")
-  archivedAt     DateTime? @map("archived_at")
-  archivedById   String?   @map("archived_by_id")
-  metadata        Json               @default("{}")
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  isArchived   Boolean   @default(false) @map("is_archived")
+  archivedAt   DateTime? @map("archived_at")
+  archivedById String?   @map("archived_by_id")
+  metadata     Json      @default("{}")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // ─── AI state (tri-state override) ──────────────
   // null  = segue regras globais (org.aiEnabled, business hours, agent)
@@ -754,15 +762,15 @@ model Conversation {
   /// Tentativas de reativação. Cada vez que o watchdog reaciona a IA na
   /// conversa, +1. Resetado pra 0 quando IA/humano responde com sucesso.
   /// Quando atinge `maxAttempts`, a conversa é marcada `isStuck=true`.
-  stuckAttempts        Int       @default(0) @map("stuck_attempts")
+  stuckAttempts       Int       @default(0) @map("stuck_attempts")
   /// Última vez que o watchdog avaliou a conversa.
-  lastWatchdogCheckAt  DateTime? @map("last_watchdog_check_at")
+  lastWatchdogCheckAt DateTime? @map("last_watchdog_check_at")
   /// ID do job reativo (BullMQ) atualmente agendado pra essa conversa.
   /// Permite cancelar/substituir o job quando algo muda na conversa.
-  watchdogJobId        String?   @map("watchdog_job_id")
+  watchdogJobId       String?   @map("watchdog_job_id")
   /// Bandeira "presa pra valer". Setada quando `stuckAttempts >= maxAttempts`.
   /// Frontend filtra por isso na inbox e no dashboard.
-  isStuck              Boolean   @default(false) @map("is_stuck")
+  isStuck             Boolean   @default(false) @map("is_stuck")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   channel      Channel      @relation(fields: [channelId], references: [id])
@@ -771,16 +779,16 @@ model Conversation {
   department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   activeAgent  AiAgent?     @relation("ActiveAgent", fields: [activeAgentId], references: [id], onDelete: SetNull)
 
-  messages      Message[]
-  tags          ConversationTag[]
-  internalNotes InternalNote[]
-  auditLogs     ConversationAuditLog[]
-  rating        ConversationRating?
+  messages         Message[]
+  tags             ConversationTag[]
+  internalNotes    InternalNote[]
+  auditLogs        ConversationAuditLog[]
+  rating           ConversationRating?
   aiRuns           AiAgentRun[]
   aiHandoffs       AiAgentHandoff[]
   aiPendingActions AiPendingAction[]
-  reads         ConversationRead[]
-  cards         Card[]                 @relation("CardConversation")
+  reads            ConversationRead[]
+  cards            Card[]                 @relation("CardConversation")
 
   @@index([organizationId, status], name: "idx_conv_org_status")
   @@index([organizationId, assignedToId], name: "idx_conv_org_agent")
@@ -862,15 +870,15 @@ model Message {
   /// Quando setado, a mensagem foi marcada como deletada. UI renderiza
   /// placeholder em vez do conteúdo. Não removemos a row pra preservar
   /// auditoria + histórico (audit-log mantém o conteúdo original).
-  revokedAt              DateTime? @map("revoked_at")
-  revokedBy              String?   @map("revoked_by")
+  revokedAt             DateTime? @map("revoked_at")
+  revokedBy             String?   @map("revoked_by")
   /// Se conseguimos propagar o delete pro provider (Zappfy/Meta).
   /// - true  = chamada na API do provider funcionou (some no app do cliente)
   /// - false = provider não suportou ou erro (mensagem ficou no app do cliente,
   ///           só sumiu no nosso inbox)
   /// - null  = ainda não foi revogada
-  revokeSucceededRemote  Boolean?  @map("revoke_succeeded_remote")
-  revoker                User?     @relation("MessageRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
+  revokeSucceededRemote Boolean?  @map("revoke_succeeded_remote")
+  revoker               User?     @relation("MessageRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User?        @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
@@ -1162,19 +1170,19 @@ model AiAgent {
   department    String?
   squad         String?
 
-  modelId      String @map("model_id")
-  modelParams  Json?  @map("model_params")
-  systemPrompt String @map("system_prompt")
+  modelId                     String    @map("model_id")
+  modelParams                 Json?     @map("model_params")
+  systemPrompt                String    @map("system_prompt")
   // Contexto vivo da operação — atualizado quase diariamente pelo
   // operador. Ex: "Hoje teve aula sobre Skills. Ofereça Dominando
   // Claude Code R$ 1.497 (link X) pra quem responder feedback positivo."
   // Injetado no system prompt em todo run, marcado como cache_control
   // ephemeral pra não inflar token cost — quando o JP edita, o cache
   // é invalidado naturalmente pela mudança de hash.
-  operationalContext String?   @map("operational_context")
+  operationalContext          String?   @map("operational_context")
   operationalContextUpdatedAt DateTime? @map("operational_context_updated_at")
-  temperature  Float  @default(0.7)
-  maxTokens    Int    @default(2048) @map("max_tokens")
+  temperature                 Float     @default(0.7)
+  maxTokens                   Int       @default(2048) @map("max_tokens")
 
   canRespondDirectly Boolean @default(true) @map("can_respond_directly")
   isActive           Boolean @default(true) @map("is_active")
@@ -1193,14 +1201,15 @@ model AiAgent {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  channels     AiAgentChannel[]
+  channels       AiAgentChannel[]
   memories       AiAgentMemory[]
   runs           AiAgentRun[]
-  handoffsFrom   AiAgentHandoff[]  @relation("HandoffFrom")
-  handoffsTo     AiAgentHandoff[]  @relation("HandoffTo")
+  handoffsFrom   AiAgentHandoff[]   @relation("HandoffFrom")
+  handoffsTo     AiAgentHandoff[]   @relation("HandoffTo")
   pendingActions AiPendingAction[]
-  activeOn     Conversation[]   @relation("ActiveAgent")
-  skills       AiAgentSkill[]
+  activeOn       Conversation[]     @relation("ActiveAgent")
+  skills         AiAgentSkill[]
+  virtualSellers UserOrganization[] @relation("VirtualSellerAgent")
 
   @@index([organizationId], name: "idx_ai_agent_org")
   @@index([organizationId, kind], name: "idx_ai_agent_org_kind")
@@ -1422,10 +1431,10 @@ model AiAgentRun {
   startedAt  DateTime  @default(now()) @map("started_at")
   finishedAt DateTime? @map("finished_at")
 
-  conversation    Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  agent           AiAgent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  toolCalls       AiToolCall[]
-  pendingActions  AiPendingAction[]
+  conversation   Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent          AiAgent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  toolCalls      AiToolCall[]
+  pendingActions AiPendingAction[]
 
   @@index([organizationId, startedAt], name: "idx_ai_run_org_time")
   @@index([conversationId], name: "idx_ai_run_conv")
@@ -1665,19 +1674,19 @@ model InstagramComment {
 }
 
 model Pipeline {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  name           String
-  description    String?
-  icon           String? // lucide-react icon name
-  color          String? // tailwind color hint
-  isDefault      Boolean  @default(false) @map("is_default")
-  archived       Boolean  @default(false)
-  order          Int      @default(0)
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  name              String
+  description       String?
+  icon              String? // lucide-react icon name
+  color             String? // tailwind color hint
+  isDefault         Boolean  @default(false) @map("is_default")
+  archived          Boolean  @default(false)
+  order             Int      @default(0)
   // Prazo (MINUTOS) sem interação p/ notificar cards deste funil. NULL = desligado.
-  inactivityMinutes Int?  @map("inactivity_minutes")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  inactivityMinutes Int?     @map("inactivity_minutes")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stages       PipelineStage[]
@@ -1688,15 +1697,15 @@ model Pipeline {
 }
 
 model PipelineStage {
-  id         String            @id @default(cuid())
-  pipelineId String            @map("pipeline_id")
-  name       String
-  color      String?
-  type       PipelineStageType @default(NORMAL)
-  order      Int               @default(0)
+  id                String            @id @default(cuid())
+  pipelineId        String            @map("pipeline_id")
+  name              String
+  color             String?
+  type              PipelineStageType @default(NORMAL)
+  order             Int               @default(0)
   // Override do prazo de inatividade (MINUTOS) desta etapa. NULL = herda do funil.
-  inactivityMinutes Int?       @map("inactivity_minutes")
-  createdAt  DateTime          @default(now()) @map("created_at")
+  inactivityMinutes Int?              @map("inactivity_minutes")
+  createdAt         DateTime          @default(now()) @map("created_at")
 
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   cards    Card[]
@@ -1728,12 +1737,12 @@ model Card {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  pipeline     Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  stage        PipelineStage @relation(fields: [stageId], references: [id])
-  contact      Contact?      @relation("CardContact", fields: [contactId], references: [id], onDelete: SetNull)
-  conversation Conversation? @relation("CardConversation", fields: [conversationId], references: [id], onDelete: SetNull)
-  assignedTo   User?         @relation("CardAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline               Pipeline                @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage                  PipelineStage           @relation(fields: [stageId], references: [id])
+  contact                Contact?                @relation("CardContact", fields: [contactId], references: [id], onDelete: SetNull)
+  conversation           Conversation?           @relation("CardConversation", fields: [conversationId], references: [id], onDelete: SetNull)
+  assignedTo             User?                   @relation("CardAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   funnelAuditSuggestions FunnelAuditSuggestion[]
 
   @@index([pipelineId, stageId, order])
@@ -1771,26 +1780,26 @@ model AgentKnowledgeNote {
 // informações a validar". A recuperação injeta itens de escopo casado
 // (anúncio/geral) e, futuramente, via RAG (kind='knowledge').
 enum KnowledgeType {
-  FACT        // fato/afirmação livre ("material é MDF")
-  FAQ         // pergunta→resposta
-  POLICY      // política/regra da loja
+  FACT // fato/afirmação livre ("material é MDF")
+  FAQ // pergunta→resposta
+  POLICY // política/regra da loja
   VARIANT_MAP // faixa/medida → anúncio (organizadores sob medida)
-  AD_SPEC     // spec extraída de um anúncio (varredura)
-  LINK        // link de referência
+  AD_SPEC // spec extraída de um anúncio (varredura)
+  LINK // link de referência
 }
 
 enum KnowledgeStatus {
   DRAFT
-  PENDING    // aguardando validação humana (fila)
-  VALIDATED  // ativo — alimenta as respostas
+  PENDING // aguardando validação humana (fila)
+  VALIDATED // ativo — alimenta as respostas
   ARCHIVED
 }
 
 enum KnowledgeSource {
   MANUAL
   OPERATOR_COMPLEMENT // complemento durante a revisão de uma resposta
-  AD_SCAN             // varredura de anúncios da conta
-  FILE_IMPORT         // import de arquivo (ex: .txt de links)
+  AD_SCAN // varredura de anúncios da conta
+  FILE_IMPORT // import de arquivo (ex: .txt de links)
 }
 
 model KnowledgeItem {
@@ -2023,17 +2032,17 @@ model Automation {
 
   // schemaVersion: bumped when conditions/actions JSON shape changes.
   // Workers refuse to run automations with unknown schemaVersion.
-  schemaVersion  Int               @default(1) @map("schema_version")
+  schemaVersion Int @default(1) @map("schema_version")
 
   // Estado operacional
-  enabled        Boolean           @default(false)
+  enabled  Boolean @default(false)
   // actorId: snapshot do criador. Se este user perder permissão / sair do
   // workspace, o run é bloqueado e a automation pausada.
-  actorId        String            @map("actor_id")
-  priority       Int               @default(0)
+  actorId  String  @map("actor_id")
+  priority Int     @default(0)
 
   // Auto-disable em falhas consecutivas
-  consecutiveFailures Int     @default(0) @map("consecutive_failures")
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
   autoPausedAt        DateTime? @map("auto_paused_at")
   autoPausedReason    String?   @map("auto_paused_reason")
 
@@ -2041,10 +2050,10 @@ model Automation {
   rateLimitPerMinute Int @default(10) @map("rate_limit_per_minute")
 
   // Telemetria
-  lastRunAt   DateTime? @map("last_run_at")
-  runCount    Int       @default(0) @map("run_count")
-  successCount Int      @default(0) @map("success_count")
-  failureCount Int      @default(0) @map("failure_count")
+  lastRunAt    DateTime? @map("last_run_at")
+  runCount     Int       @default(0) @map("run_count")
+  successCount Int       @default(0) @map("success_count")
+  failureCount Int       @default(0) @map("failure_count")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -2058,28 +2067,28 @@ model Automation {
 }
 
 model AutomationRun {
-  id             String              @id @default(cuid())
-  automationId   String              @map("automation_id")
-  organizationId String              @map("organization_id")
+  id             String @id @default(cuid())
+  automationId   String @map("automation_id")
+  organizationId String @map("organization_id")
   // outboxEventId: liga o run ao evento que disparou (debug + tracing)
-  outboxEventId  String              @map("outbox_event_id")
-  traceId        String              @map("trace_id")
+  outboxEventId  String @map("outbox_event_id")
+  traceId        String @map("trace_id")
 
-  status         AutomationRunStatus
+  status       AutomationRunStatus
   // errorCode: enum-ish curto pra UI agrupar. Ex:
   //   condition_not_matched | rate_limited | invalid_ref | external_api_error
   //   timeout | actor_unauthorized | kill_switch | cascade_max_depth | loop_detected
-  errorCode      String?             @map("error_code")
-  errorMessage   String?             @map("error_message") @db.Text
+  errorCode    String?             @map("error_code")
+  errorMessage String?             @map("error_message") @db.Text
 
   // Snapshot do payload do evento (debug)
-  triggerPayload Json                @map("trigger_payload")
+  triggerPayload Json @map("trigger_payload")
   // actionsLog: array de { index, type, status, durationMs, error?, output? }
-  actionsLog     Json                @default("[]") @map("actions_log")
+  actionsLog     Json @default("[]") @map("actions_log")
 
-  durationMs     Int?                @map("duration_ms")
-  startedAt      DateTime            @default(now()) @map("started_at")
-  finishedAt     DateTime?           @map("finished_at")
+  durationMs Int?      @map("duration_ms")
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
 
   automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
 
@@ -2094,32 +2103,32 @@ model AutomationRun {
 /// Espelha os "Modelos de chat" do Kommo. Populados via sync na Graph API
 /// (GET /{waba}/message_templates) ou seed dos aprovados.
 model WhatsappTemplate {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
+  id              String   @id @default(cuid())
+  organizationId  String   @map("organization_id")
   /// Canal de origem (WHATSAPP_OFFICIAL) quando veio de sync. Null p/ seed.
-  channelId      String?  @map("channel_id")
+  channelId       String?  @map("channel_id")
   /// ID do template na Meta (quando sincronizado).
-  externalId     String?  @map("external_id")
+  externalId      String?  @map("external_id")
   /// Nome normalizado (snake_case) usado na Meta ao submeter/enviar.
-  metaName       String?  @map("meta_name")
+  metaName        String?  @map("meta_name")
   /// Motivo de rejeição, quando a Meta reprova.
-  rejectionReason String? @map("rejection_reason")
-  name           String
+  rejectionReason String?  @map("rejection_reason")
+  name            String
   /// APPROVED | PENDING | REJECTED | PAUSED | DISABLED
-  status         String   @default("APPROVED")
+  status          String   @default("APPROVED")
   /// MARKETING | UTILITY | AUTHENTICATION
-  category       String   @default("MARKETING")
-  language       String   @default("pt_BR")
+  category        String   @default("MARKETING")
+  language        String   @default("pt_BR")
   /// ID da conta WhatsApp Business (businessAccountId).
-  waba           String?  @map("waba")
+  waba            String?  @map("waba")
   /// Texto do corpo (componente BODY).
-  bodyText       String   @db.Text @map("body_text")
+  bodyText        String   @map("body_text") @db.Text
   /// Componentes crus da Meta: [{type:HEADER|BODY|FOOTER|BUTTONS, ...}]
-  components     Json     @default("[]")
+  components      Json     @default("[]")
   /// Origem: META_SYNC | MANUAL | SEED
-  source         String   @default("SEED")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  source          String   @default("SEED")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -2153,24 +2162,24 @@ model LeadAdsPage {
 /// Conexão OAuth com o ERP Olist Tiny (uma por organização). Guarda os tokens
 /// e o estado do sync incremental de pedidos/orçamentos.
 model TinyIntegration {
-  id             String    @id @default(cuid())
-  organizationId String    @unique @map("organization_id")
+  id                   String    @id @default(cuid())
+  organizationId       String    @unique @map("organization_id")
   /// pending (aguardando OAuth) | active | error | revoked
-  status         String    @default("pending")
-  accessToken    String?   @map("access_token") @db.Text
-  refreshToken   String?   @map("refresh_token") @db.Text
+  status               String    @default("pending")
+  accessToken          String?   @map("access_token") @db.Text
+  refreshToken         String?   @map("refresh_token") @db.Text
   /// Expiração do access_token (refresh automático quando faltam <60s).
-  tokenExpiresAt   DateTime? @map("token_expires_at")
-  refreshExpiresAt DateTime? @map("refresh_expires_at")
+  tokenExpiresAt       DateTime? @map("token_expires_at")
+  refreshExpiresAt     DateTime? @map("refresh_expires_at")
   /// Nome/identificação da conta Tiny conectada (best-effort).
-  accountName    String?   @map("account_name")
+  accountName          String?   @map("account_name")
   /// Marca d'água do sync incremental (dataAtualizacao dos pedidos).
   lastPedidosSyncAt    DateTime? @map("last_pedidos_sync_at")
   /// Marca d'água do sync de orçamentos (por data de criação).
   lastOrcamentosSyncAt DateTime? @map("last_orcamentos_sync_at")
-  lastError      String?   @map("last_error") @db.Text
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  lastError            String?   @map("last_error") @db.Text
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -2180,57 +2189,57 @@ model TinyIntegration {
 /// Pedido ou orçamento (proposta comercial) trazido do Tiny e vinculado — quando
 /// casou — a um Contact do CRM. Fonte de verdade pro painel no lead.
 model TinyDocument {
-  id             String    @id @default(cuid())
-  organizationId String    @map("organization_id")
+  id              String    @id @default(cuid())
+  organizationId  String    @map("organization_id")
   /// PEDIDO | ORCAMENTO
-  kind           String
+  kind            String
   /// id do recurso no Tiny (pedido.id ou orcamento.id).
-  tinyId         String    @map("tiny_id")
+  tinyId          String    @map("tiny_id")
   /// numeroPedido / numeroProposta.
-  numero         String?
+  numero          String?
   /// Situação textual normalizada (ex.: "Aprovada", "Pendente").
-  situacao       String?
+  situacao        String?
   /// Data do documento (criação/proposta).
-  data           DateTime?
-  valor          Decimal?  @db.Decimal(14, 2)
+  data            DateTime?
+  valor           Decimal?  @db.Decimal(14, 2)
   /// Dados do cliente do documento (pra exibir mesmo sem match).
-  clienteNome     String?  @map("cliente_nome")
-  clienteCpfCnpj  String?  @map("cliente_cpf_cnpj")
-  clienteTelefone String?  @map("cliente_telefone")
-  clienteEmail    String?  @map("cliente_email")
+  clienteNome     String?   @map("cliente_nome")
+  clienteCpfCnpj  String?   @map("cliente_cpf_cnpj")
+  clienteTelefone String?   @map("cliente_telefone")
+  clienteEmail    String?   @map("cliente_email")
   /// Origem em marketplace (ML/Shopee/Magalu/Amazon…) — derivado de ecommerce.
-  isMarketplace   Boolean  @default(false) @map("is_marketplace")
+  isMarketplace   Boolean   @default(false) @map("is_marketplace")
   /// Natureza da operação (só no detalhe do pedido) — ex.: "Venda". Preenchido
   /// pelo enriquecimento assíncrono; null = ainda não resolvido.
   natureza        String?
   /// Vendedor responsável (pedido: vem na listagem; orçamento: no detalhe).
   vendedor        String?
   /// Vendedor definido manualmente na tela — o sync NÃO sobrescreve.
-  vendedorManual  Boolean  @default(false) @map("vendedor_manual")
+  vendedorManual  Boolean   @default(false) @map("vendedor_manual")
   /// id do contato no Tiny (chave pra resolver orçamentos).
-  tinyContatoId   String?  @map("tiny_contato_id")
+  tinyContatoId   String?   @map("tiny_contato_id")
   /// Contact do CRM vinculado (null = ainda não casou com lead).
-  contactId      String?   @map("contact_id")
+  contactId       String?   @map("contact_id")
   /// Como casou: cpf_cnpj | phone | email | name | null.
-  matchedBy      String?   @map("matched_by")
+  matchedBy       String?   @map("matched_by")
   /// Vínculo de lead definido manualmente na tela — o sync NÃO sobrescreve.
-  matchManual    Boolean   @default(false) @map("match_manual")
+  matchManual     Boolean   @default(false) @map("match_manual")
   /// Payload cru do Tiny (auditoria / campos extras).
-  raw            Json?
+  raw             Json?
   /// Frete do pedido (só no detalhe do Tiny). null = ainda não apurado.
-  valorFrete     Decimal?  @map("valor_frete") @db.Decimal(14, 2)
+  valorFrete      Decimal?  @map("valor_frete") @db.Decimal(14, 2)
   /// Produtos LÍQUIDOS (total de produtos − desconto), do detalhe do Tiny.
   /// Base da comissão = valorProdutos − valorFrete.
-  valorProdutos  Decimal?  @map("valor_produtos") @db.Decimal(14, 2)
+  valorProdutos   Decimal?  @map("valor_produtos") @db.Decimal(14, 2)
   /// Quando o frete foi lido do Tiny (re-lê se o valor do pedido mudar).
-  freteCheckedAt DateTime? @map("frete_checked_at")
+  freteCheckedAt  DateTime? @map("frete_checked_at")
   /// Valor do pedido no momento em que o frete foi lido.
-  freteValorRef  Decimal?  @map("frete_valor_ref") @db.Decimal(14, 2)
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  freteValorRef   Decimal?  @map("frete_valor_ref") @db.Decimal(14, 2)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
   capiEvents   MetaCapiEvent[]
   receipts     TinyReceipt[]
 
@@ -2281,40 +2290,40 @@ model TinyReceipt {
 /// Nasce DESLIGADA (enabled=false): nenhum evento sai até ligar. O token fica
 /// aqui (não é exposto no read) — o service mascara na resposta.
 model MetaCapiConfig {
-  id             String   @id @default(cuid())
-  organizationId String   @unique @map("organization_id")
-  enabled        Boolean  @default(false)
+  id                     String   @id @default(cuid())
+  organizationId         String   @unique @map("organization_id")
+  enabled                Boolean  @default(false)
   /// Pixel/Dataset ID da Meta.
-  pixelId        String?  @map("pixel_id")
+  pixelId                String?  @map("pixel_id")
   /// Access token da CAPI (System User) — nunca retornado ao frontend.
-  accessToken    String?  @map("access_token") @db.Text
-  apiVersion     String   @default("v21.0") @map("api_version")
+  accessToken            String?  @map("access_token") @db.Text
+  apiVersion             String   @default("v21.0") @map("api_version")
   /// Código do Test Events (opcional) — valida no painel da Meta sem impactar.
-  testEventCode  String?  @map("test_event_code")
-  currency       String   @default("BRL")
+  testEventCode          String?  @map("test_event_code")
+  currency               String   @default("BRL")
   /// Situações de PEDIDO (texto) que disparam `Purchase`. Configurável.
-  purchaseSituacoes Json  @default("[\"Faturada\",\"Aprovada\"]") @map("purchase_situacoes")
+  purchaseSituacoes      Json     @default("[\"Faturada\",\"Aprovada\"]") @map("purchase_situacoes")
   /// Dispara `AddToCart` para orçamentos/propostas.
-  addToCartEnabled  Boolean @default(true) @map("add_to_cart_enabled")
+  addToCartEnabled       Boolean  @default(true) @map("add_to_cart_enabled")
   /// Situações de ORÇAMENTO que disparam `AddToCart`. Vazio = qualquer.
-  addToCartSituacoes Json @default("[]") @map("add_to_cart_situacoes")
+  addToCartSituacoes     Json     @default("[]") @map("add_to_cart_situacoes")
   /// Envia o evento de LEAD QUALIFICADO (mesmo critério do dashboard comercial).
-  qualifiedLeadEnabled   Boolean @default(false) @map("qualified_lead_enabled")
+  qualifiedLeadEnabled   Boolean  @default(false) @map("qualified_lead_enabled")
   /// Nome do evento (custom) — usado pra criar a conversão personalizada na Meta.
-  qualifiedLeadEventName String  @default("QualifiedLead") @map("qualified_lead_event_name")
+  qualifiedLeadEventName String   @default("QualifiedLead") @map("qualified_lead_event_name")
   /// Etapas do funil que contam como "qualificado" (ids). Vazio = nenhuma etapa
   /// (só ganho / orçamento / pedido / lead score). NÃO usa "avançou qualquer
   /// etapa": follow-ups automáticos e "Perdido" inflariam o sinal.
-  qualifiedLeadStageIds  Json    @default("[]") @map("qualified_lead_stage_ids")
+  qualifiedLeadStageIds  Json     @default("[]") @map("qualified_lead_stage_ids")
   /// Lead score (vindo da LP) mínimo pra contar como qualificado. Dados reais:
   /// 40-59 converte igual a lead sem score (~15%); 60+ converte 23-30%.
-  qualifiedLeadMinScore  Int     @default(60) @map("qualified_lead_min_score")
+  qualifiedLeadMinScore  Int      @default(60) @map("qualified_lead_min_score")
   /// URL padrão do site/LP — usada como event_source_url quando o lead tem
   /// dados de navegador (UA + IP/fbp) mas a LP não mandou a URL da página.
-  websiteUrl             String? @map("website_url")
-  lastError      String?  @map("last_error") @db.Text
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  websiteUrl             String?  @map("website_url")
+  lastError              String?  @map("last_error") @db.Text
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -2375,7 +2384,6 @@ model MetaCapiLeadEvent {
   @@map("meta_capi_lead_events")
 }
 
-
 enum PlatformRole {
   SUPER_ADMIN
 }
@@ -2401,7 +2409,6 @@ model PlatformAuditLog {
   @@index([createdAt])
   @@map("platform_audit_logs")
 }
-
 
 enum FunnelAuditStatus {
   RUNNING
@@ -2432,7 +2439,7 @@ model FunnelAuditRun {
   startedAt      DateTime          @default(now()) @map("started_at")
   finishedAt     DateTime?         @map("finished_at")
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   suggestionsList FunnelAuditSuggestion[]
   findingsList    FunnelAuditFinding[]
 
@@ -2629,7 +2636,7 @@ model OrganizationBroadcastBudget {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("organization_broadcast_budgets")
 }
@@ -2645,8 +2652,8 @@ model BroadcastLedgerEntry {
   note           String?
   createdAt      DateTime   @default(now()) @map("created_at")
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  broadcast      Broadcast    @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  broadcast    Broadcast    @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
   @@index([broadcastId])
@@ -2666,9 +2673,9 @@ model Broadcast {
   status              BroadcastStatus @default(DRAFT)
   scheduledAt         DateTime?       @map("scheduled_at")
   throttlePerMinute   Int             @default(600) @map("throttle_per_minute")
-  estimatedRecipients Int             @default(0)   @map("estimated_recipients")
-  estimatedCostMicros BigInt          @default(0)   @map("estimated_cost_micros")
-  actualCostMicros    BigInt          @default(0)   @map("actual_cost_micros")
+  estimatedRecipients Int             @default(0) @map("estimated_recipients")
+  estimatedCostMicros BigInt          @default(0) @map("estimated_cost_micros")
+  actualCostMicros    BigInt          @default(0) @map("actual_cost_micros")
   currency            String          @default("BRL")
   createdByUserId     String          @map("created_by_user_id")
   createdAt           DateTime        @default(now()) @map("created_at")
@@ -2724,7 +2731,7 @@ model ContactImport {
   createdAt       DateTime     @default(now()) @map("created_at")
   completedAt     DateTime?    @map("completed_at")
 
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
   @@map("contact_imports")

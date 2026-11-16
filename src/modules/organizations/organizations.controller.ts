@@ -19,6 +19,8 @@ import { SetAiKeyDto } from './dto/set-ai-key.dto';
 import { LlmKeyService } from '../ai-agents/llm/llm-key.service';
 import { OpenaiKeyService } from '../ai-agents/llm/openai-key.service';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { CreateVirtualSellerDto } from './dto/create-virtual-seller.dto';
+import { UpdateVirtualSellerDto } from './dto/update-virtual-seller.dto';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
 import { CurrentUser, CurrentOrg, Roles, Public } from '../../common/decorators';
 
@@ -169,4 +171,44 @@ export class OrganizationsController {
   ) {
     return this.service.removeMember(orgId, memberId, actorId);
   }
+
+  // -- Vendedores virtuais (IA) --------------------------------------
+
+  @Get('virtual-sellers')
+  @ApiOperation({ summary: 'Lista os vendedores virtuais (IA) da organizacao' })
+  listVirtualSellers(@CurrentOrg('id') orgId: string) {
+    return this.service.listVirtualSellers(orgId);
+  }
+
+  @Post('virtual-sellers')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Cria um vendedor virtual (IA) ligado a um agente' })
+  createVirtualSeller(
+    @CurrentOrg('id') orgId: string,
+    @Body() dto: CreateVirtualSellerDto,
+  ) {
+    return this.service.createVirtualSeller(orgId, dto);
+  }
+
+  @Patch('virtual-sellers/:membershipId')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Atualiza um vendedor virtual (nome, agente, ativo)' })
+  updateVirtualSeller(
+    @CurrentOrg('id') orgId: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: UpdateVirtualSellerDto,
+  ) {
+    return this.service.updateVirtualSeller(orgId, membershipId, dto);
+  }
+
+  @Delete('virtual-sellers/:membershipId')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Remove um vendedor virtual' })
+  removeVirtualSeller(
+    @CurrentOrg('id') orgId: string,
+    @Param('membershipId') membershipId: string,
+  ) {
+    return this.service.removeVirtualSeller(orgId, membershipId);
+  }
+
 }

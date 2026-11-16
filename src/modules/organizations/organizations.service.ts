@@ -11,6 +11,8 @@ import { OrganizationsRepository } from './organizations.repository';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
+import { CreateVirtualSellerDto } from './dto/create-virtual-seller.dto';
+import { UpdateVirtualSellerDto } from './dto/update-virtual-seller.dto';
 import { MailService } from '../mail/mail.service';
 
 const DEFAULT_LOSS_REASONS = [
@@ -230,4 +232,60 @@ export class OrganizationsService {
     await this.repository.removeMember(membership.id);
     this.logger.log(`Member ${memberId} removed from org ${orgId} by ${actorId}`);
   }
+
+  // -- Vendedores virtuais (IA) --------------------------------------
+
+  /** Lista os vendedores virtuais da org. */
+  async listVirtualSellers(orgId: string) {
+    return this.repository.listVirtualSellers(orgId);
+  }
+
+  /** Cria um vendedor virtual ligado a um agente de IA da propria org. */
+  async createVirtualSeller(orgId: string, dto: CreateVirtualSellerDto) {
+    const agent = await this.repository.findAiAgentInOrg(orgId, dto.aiAgentId);
+    if (!agent) {
+      throw new NotFoundException('Agente de IA nao encontrado nesta organizacao');
+    }
+    const seller = await this.repository.createVirtualSeller(orgId, {
+      name: dto.name.trim(),
+      aiAgentId: dto.aiAgentId,
+      avatarUrl: dto.avatarUrl ?? null,
+    });
+    this.logger.log(
+      `Vendedor virtual criado (org=${orgId} membership=${seller.id} agent=${dto.aiAgentId})`,
+    );
+    return seller;
+  }
+
+  /** Atualiza um vendedor virtual (nome, avatar, ativo, agente vinculado). */
+  async updateVirtualSeller(orgId: string, membershipId: string, dto: UpdateVirtualSellerDto) {
+    const membership = await this.repository.findVirtualSeller(membershipId, orgId);
+    if (!membership) {
+      throw new NotFoundException('Vendedor virtual nao encontrado nesta organizacao');
+    }
+    if (dto.aiAgentId !== undefined) {
+      const agent = await this.repository.findAiAgentInOrg(orgId, dto.aiAgentId);
+      if (!agent) {
+        throw new NotFoundException('Agente de IA nao encontrado nesta organizacao');
+      }
+    }
+    return this.repository.updateVirtualSeller(membershipId, membership.userId, {
+      name: dto.name?.trim(),
+      aiAgentId: dto.aiAgentId,
+      avatarUrl: dto.avatarUrl,
+      active: dto.active,
+    });
+  }
+
+  /** Remove um vendedor virtual da org. */
+  async removeVirtualSeller(orgId: string, membershipId: string) {
+    const membership = await this.repository.findVirtualSeller(membershipId, orgId);
+    if (!membership) {
+      throw new NotFoundException('Vendedor virtual nao encontrado nesta organizacao');
+    }
+    await this.repository.deleteVirtualSeller(membershipId, membership.userId);
+    this.logger.log(`Vendedor virtual removido (org=${orgId} membership=${membershipId})`);
+    return { ok: true };
+  }
+
 }

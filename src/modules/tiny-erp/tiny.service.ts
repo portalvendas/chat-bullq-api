@@ -53,6 +53,19 @@ const RECONCILE_THROTTLE_MS = 2 * 3600 * 1000;
 const SEM_VENDEDOR = '__sem__';
 /** Linha do "Origem dos leads" para propostas/pedidos sem lead (card) vinculado. */
 const SEM_LEAD_CANAL = 'Sem lead vinculado';
+
+/** Origens (canais) possíveis — saída de leadChannel() + sem-lead. Usada no
+ *  filtro por canal do dashboard (multi-seleção; vazio = todas). */
+export const LEAD_ORIGEM_CHANNELS = [
+  'Google', 'Meta Ads', 'Facebook', 'Facebook (formulário)',
+  'Anúncio Meta → WhatsApp', 'Instagram', 'Instagram (direct)', 'TikTok',
+  'ChatGPT / IA', 'WhatsApp direto', 'Landing page (sem origem)', 'Marketplace',
+  'Outros', 'Outros / manual', SEM_LEAD_CANAL,
+] as const;
+
+/** Conjunto de contatos cuja origem ∈ canais selecionados (filtro por canal).
+ *  includeNullContact = canais inclui 'Sem lead vinculado' (docs sem contato). */
+type ChannelMatch = { contactIds: string[]; includeNullContact: boolean };
 const reconcileLastRunAt = new Map<string, number>();
 
 export interface DateRange {
@@ -1115,7 +1128,8 @@ export class TinyService {
     return { vendedor };
   }
 
-  private pedidoWhere(organizationId: string, range?: DateRange, vendedor?: string) {
+  private pedidoWhere(organizationId: string, range?: DateRange, vendedor?: string, match?: ChannelMatch | null) {
+    const chan = this.channelDocConds(match);
     return {
       organizationId,
       kind: 'PEDIDO',
@@ -1124,18 +1138,105 @@ export class TinyService {
       natureza: { contains: 'venda', mode: 'insensitive' as const },
       ...(range ? { data: range } : {}),
       ...this.vendedorClause(vendedor),
+      ...(chan.length ? { AND: chan } : {}),
     };
   }
 
-  private orcamentoWhere(organizationId: string, range?: DateRange, vendedor?: string) {
+  private orcamentoWhere(organizationId: string, range?: DateRange, vendedor?: string, match?: ChannelMatch | null) {
     return {
       organizationId,
       kind: 'ORCAMENTO',
       // Excluído no Tiny (situacao NULL é o normal do orçamento → mantém).
-      AND: [{ OR: [{ situacao: null }, { situacao: { not: 'Removido' } }] }],
+      AND: [
+        { OR: [{ situacao: null }, { situacao: { not: 'Removido' } }] },
+        ...this.channelDocConds(match),
+      ],
       ...(range ? { data: range } : {}),
       ...this.vendedorClause(vendedor),
     };
+  }
+
+  // ── Filtro por CANAL (origem do lead) ────────────────────────────────
+  // "Canal" aqui = origem/tráfego (Google, Meta, WhatsApp direto, LP…), a MESMA
+  // classificação de leadChannel() usada no modal "origem dos leads por canal".
+  // Como origem é derivada (UTM/source/tipo de conversa), resolvemos o conjunto
+  // de contatos cuja origem ∈ canais e filtramos as consultas por contato.
+
+  /** Cláusula Prisma p/ documentos: contato ∈ match (OU sem contato, se o canal
+   *  'Sem lead vinculado' estiver selecionado). Vazio quando não há filtro. */
+  private channelDocConds(match?: ChannelMatch | null): any[] {
+    if (!match) return [];
+    const or: any[] = [{ contactId: { in: match.contactIds } }];
+    if (match.includeNullContact) or.push({ contactId: null });
+    return [{ OR: or }];
+  }
+
+  /** Cláusula SQL p/ leads (cards sempre têm origem; 'Sem lead vinculado' não se
+   *  aplica a lead). Vazio quando não há filtro. */
+  private leadContactSql(match?: ChannelMatch | null): Prisma.Sql {
+    if (!match) return Prisma.empty;
+    return Prisma.sql`AND k.contact_id = ANY(${match.contactIds}::text[])`;
+  }
+
+  /**
+   * Resolve o conjunto de contatos cuja origem ∈ canais selecionados. Deriva a
+   * origem por contato (card representativo + metadados + tipo da conversa) com
+   * a MESMA leadChannel() do modal. Retorna null quando não há filtro (vazio =
+   * todos). Universo = contatos com card OU documento no período.
+   */
+  private async resolveChannelMatch(
+    organizationId: string,
+    range: DateRange | undefined,
+    channels?: string[],
+  ): Promise<ChannelMatch | null> {
+    const sel = (channels ?? []).map((c) => c.trim()).filter(Boolean);
+    if (!sel.length) return null;
+    const selSet = new Set(sel);
+    const includeNullContact = selSet.has(SEM_LEAD_CANAL);
+
+    const rows = await this.prisma.$queryRaw<
+      { contactId: string; hasCard: boolean; src: string | null; ktr: any; ctr: any; chan: string | null }[]
+    >`
+      WITH universe AS (
+        SELECT DISTINCT contact_id AS id FROM cards
+          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
+            AND ${this.rangeSql('created_at', range)}
+        UNION
+        SELECT DISTINCT contact_id AS id FROM tiny_documents
+          WHERE organization_id = ${organizationId} AND contact_id IS NOT NULL
+            AND ${this.rangeSql('data', range)}
+      )
+      SELECT u.id AS "contactId",
+             (k.id IS NOT NULL) AS "hasCard",
+             k.metadata->>'source' AS src,
+             k.metadata->'tracking' AS ktr,
+             ct.metadata->'tracking' AS ctr,
+             (SELECT ch.type::text FROM conversations cv JOIN channels ch ON ch.id = cv.channel_id
+               WHERE cv.contact_id = u.id
+               ORDER BY (cv.id = k.conversation_id) DESC, cv.created_at ASC LIMIT 1) AS chan
+      FROM universe u
+      LEFT JOIN contacts ct ON ct.id = u.id
+      LEFT JOIN LATERAL (
+        SELECT k.id, k.metadata, k.conversation_id
+        FROM cards k
+        WHERE k.contact_id = u.id AND k.organization_id = ${organizationId}
+        ORDER BY (k.assigned_to_id IS NULL), k.created_at DESC
+        LIMIT 1
+      ) k ON true`;
+
+    const contactIds: string[] = [];
+    for (const r of rows) {
+      const canal = r.hasCard
+        ? leadChannel(r.src, { ...(r.ctr ?? {}), ...(r.ktr ?? {}) }, r.chan)
+        : SEM_LEAD_CANAL;
+      if (selSet.has(canal)) contactIds.push(r.contactId);
+    }
+    return { contactIds, includeNullContact };
+  }
+
+  /** Lista as origens possíveis (para o dropdown do filtro). */
+  leadChannelsList(): string[] {
+    return [...LEAD_ORIGEM_CHANNELS];
   }
 
   /**
@@ -1452,10 +1553,11 @@ export class TinyService {
    * de venda efetiva. @example { pedidos:{count,total}, orcamentos:{...},
    * porVendedor:[{ vendedor, pedidosCount, pedidosTotal, propostasCount, propostasTotal }] }
    */
-  async summary(organizationId: string, from?: string, to?: string, vendedor?: string) {
+  async summary(organizationId: string, from?: string, to?: string, vendedor?: string, channels?: string[]) {
     const range = this.buildRange(from, to);
-    const pw = this.pedidoWhere(organizationId, range, vendedor);
-    const ow = this.orcamentoWhere(organizationId, range, vendedor);
+    const match = await this.resolveChannelMatch(organizationId, range, channels);
+    const pw = this.pedidoWhere(organizationId, range, vendedor, match);
+    const ow = this.orcamentoWhere(organizationId, range, vendedor, match);
 
     // Leads do período = PESSOAS únicas (countUniqueLeads), não cards — base
     // das taxas de conversão do funil. Não filtra por vendedor.
@@ -1487,8 +1589,8 @@ export class TinyService {
           _count: { _all: true },
           _sum: { valor: true },
         }),
-        this.countUniqueLeads(organizationId, range),
-        this.countLeadsNoResponse(organizationId, range),
+        this.countUniqueLeads(organizationId, range, match),
+        this.countLeadsNoResponse(organizationId, range, match),
       ]);
 
     const leadsNoResponse = leadsNoResponseCount;
@@ -1512,18 +1614,19 @@ export class TinyService {
         gte: new Date(range.gte.getTime() - lenMs),
         lte: new Date(range.gte.getTime() - 1),
       };
+      const prevMatch = await this.resolveChannelMatch(organizationId, prevRange, channels);
       const [pedPrev, orcPrev, leadsPrev] = await Promise.all([
         this.prisma.tinyDocument.aggregate({
-          where: this.pedidoWhere(organizationId, prevRange, vendedor),
+          where: this.pedidoWhere(organizationId, prevRange, vendedor, prevMatch),
           _count: { _all: true },
           _sum: { valor: true },
         }),
         this.prisma.tinyDocument.aggregate({
-          where: this.orcamentoWhere(organizationId, prevRange, vendedor),
+          where: this.orcamentoWhere(organizationId, prevRange, vendedor, prevMatch),
           _count: { _all: true },
           _sum: { valor: true },
         }),
-        this.countUniqueLeads(organizationId, prevRange),
+        this.countUniqueLeads(organizationId, prevRange, prevMatch),
       ]);
       previous = {
         pedidos: {
@@ -1572,7 +1675,7 @@ export class TinyService {
     // Leads do período por vendedor (responsável do card) — best-effort: se
     // falhar, a tabela segue sem a coluna preenchida.
     try {
-      await this.attachLeadsPerVendor(organizationId, range, byVend, row, vendedor);
+      await this.attachLeadsPerVendor(organizationId, range, byVend, row, vendedor, match);
     } catch (err: any) {
       this.logger.warn(`leads por vendedor falhou (org=${organizationId}): ${err?.message ?? err}`);
     }
@@ -1745,6 +1848,7 @@ export class TinyService {
     byVend: Map<string, R>,
     row: (k: string) => R,
     vendedorFilter?: string,
+    match?: ChannelMatch | null,
   ): Promise<void> {
     // Vendedor EFETIVO do lead: o do card; se o card estiver sem, o da
     // conversa do contato (a vinculada ao card primeiro). Lead que já tem
@@ -1763,6 +1867,7 @@ export class TinyService {
           FROM cards k
           LEFT JOIN contacts ct ON ct.id = k.contact_id
           WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+            ${this.leadContactSql(match)}
         ),
         -- 1 lead = 1 pessoa: se a mesma pessoa tem mais de um card no período,
         -- conta uma vez, pro vendedor do card mais recente que tem vendedor.
@@ -2075,6 +2180,7 @@ export class TinyService {
     organizationId: string,
     range?: DateRange,
     scopeUserId?: string | null,
+    match?: ChannelMatch | null,
   ): Prisma.Sql {
     // Vendedora: só os leads DELA (vendedor do card; sem, o da conversa).
     const scope = scopeUserId
@@ -2091,6 +2197,7 @@ export class TinyService {
         FROM cards k LEFT JOIN contacts ct ON ct.id = k.contact_id
         WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
           ${scope}
+          ${this.leadContactSql(match)}
       ),
       w AS (
         ${waitingConversationsSql(Prisma.sql`c.organization_id = ${organizationId}
@@ -2125,18 +2232,19 @@ export class TinyService {
    * Leads ÚNICOS do período: pessoas distintas, não cards. A mesma pessoa com
    * card da LP + card do WhatsApp (ou 2 contatos com o mesmo telefone) conta 1.
    */
-  private async countUniqueLeads(organizationId: string, range?: DateRange): Promise<number> {
+  private async countUniqueLeads(organizationId: string, range?: DateRange, match?: ChannelMatch | null): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ n: number }[]>`
       SELECT COUNT(DISTINCT ${LEAD_PERSON_KEY})::int AS n
       FROM cards k LEFT JOIN contacts ct ON ct.id = k.contact_id
-      WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}`;
+      WHERE k.organization_id = ${organizationId} AND ${this.rangeSql('k.created_at', range)}
+        ${this.leadContactSql(match)}`;
     return rows[0]?.n ?? 0;
   }
 
-  private async countLeadsNoResponse(organizationId: string, range?: DateRange): Promise<number> {
+  private async countLeadsNoResponse(organizationId: string, range?: DateRange, match?: ChannelMatch | null): Promise<number> {
     const me = await this.leadScope.restrictedUserId(organizationId);
     const rows = await this.prisma.$queryRaw<{ n: number }[]>`
-      SELECT COUNT(*)::int AS n FROM (${this.leadsNoResponseSql(organizationId, range, me)}) x`;
+      SELECT COUNT(*)::int AS n FROM (${this.leadsNoResponseSql(organizationId, range, me, match)}) x`;
     return rows[0]?.n ?? 0;
   }
 
@@ -2165,16 +2273,19 @@ export class TinyService {
     to?: string,
     page = 1,
     limit = 50,
+    channels?: string[],
   ) {
     const range = this.buildRange(from, to);
     const take = Math.min(Math.max(limit, 1), 200);
     const skip = (Math.max(page, 1) - 1) * take;
 
+    const match = await this.resolveChannelMatch(organizationId, range, channels);
     // Mesma regra do contador (summary) — total e página saem do mesmo SQL.
     const base = this.leadsNoResponseSql(
       organizationId,
       range,
       await this.leadScope.restrictedUserId(organizationId),
+      match,
     );
     const [countRows, pageRows] = await Promise.all([
       this.prisma.$queryRaw<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM (${base}) x`,
@@ -2529,12 +2640,14 @@ export class TinyService {
     to?: string,
     vendedor?: string,
     comprovanteStatus?: string,
+    channels?: string[],
   ) {
     const range = this.buildRange(from, to);
+    const match = await this.resolveChannelMatch(organizationId, range, channels);
     const baseWhere =
       kind === 'PEDIDO'
-        ? this.pedidoWhere(organizationId, range, vendedor)
-        : this.orcamentoWhere(organizationId, range, vendedor);
+        ? this.pedidoWhere(organizationId, range, vendedor, match)
+        : this.orcamentoWhere(organizationId, range, vendedor, match);
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = (Math.max(page, 1) - 1) * take;
     const orderBy = [

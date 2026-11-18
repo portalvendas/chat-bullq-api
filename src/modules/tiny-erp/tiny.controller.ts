@@ -30,6 +30,14 @@ import { TinyReceiptsService } from './tiny-receipts.service';
 import { UploadsService } from '../messaging/messages/uploads.service';
 import { MetaCapiService, MetaCapiConfigInput } from './meta-capi/meta-capi.service';
 
+/** Normaliza query param repetível (?channel=a&channel=b) em array. */
+function toArray(v?: string | string[]): string[] | undefined {
+  if (v == null) return undefined;
+  const arr = Array.isArray(v) ? v : v.split(',');
+  const out = arr.map((x) => x.trim()).filter(Boolean);
+  return out.length ? out : undefined;
+}
+
 /**
  * Integração com o ERP Olist Tiny (rotas autenticadas).
  *  - GET /tiny/oauth/start      → URL de consentimento
@@ -193,6 +201,12 @@ export class TinyController {
     return this.service.listForContact(orgId, contactId);
   }
 
+  @Get('lead-channels')
+  @ApiOperation({ summary: 'Origens (canais) possíveis para o filtro por canal' })
+  leadChannels() {
+    return this.service.leadChannelsList();
+  }
+
   @Get('summary')
   @ApiOperation({ summary: 'Totais de pedidos e propostas + por vendedor (cards do topo)' })
   summary(
@@ -200,8 +214,9 @@ export class TinyController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('vendedor') vendedor?: string,
+    @Query('channel') channel?: string | string[],
   ) {
-    return this.service.summary(orgId, from, to, vendedor);
+    return this.service.summary(orgId, from, to, vendedor, toArray(channel));
   }
 
   @Get('leads-no-response')
@@ -215,6 +230,7 @@ export class TinyController {
     @Query('limit') limit = '50',
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('channel') channel?: string | string[],
   ) {
     return this.service.leadsNoResponseList(
       orgId,
@@ -222,6 +238,7 @@ export class TinyController {
       to,
       Number(page) || 1,
       Number(limit) || 50,
+      toArray(channel),
     );
   }
 
@@ -302,6 +319,7 @@ export class TinyController {
     @Query('to') to?: string,
     @Query('vendedor') vendedor?: string,
     @Query('comprovante') comprovante?: string,
+    @Query('channel') channel?: string | string[],
   ) {
     const k = kind === 'ORCAMENTO' ? 'ORCAMENTO' : 'PEDIDO';
     return this.service.listDocuments(
@@ -313,6 +331,7 @@ export class TinyController {
       to,
       vendedor,
       comprovante,
+      toArray(channel),
     );
   }
 

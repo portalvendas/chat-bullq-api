@@ -1271,11 +1271,16 @@ export class DashboardService {
       return v.includes('@') ? v : '';
     };
     // Telefone em E.164 BR (+55DDDNUMERO) antes do hash — padrão do Google p/ ECL.
+    // Classifica pelo TAMANHO (não por "começa com 55"): um nacional de DDD 55
+    // (ex.: Santa Maria/RS) também começa com 55 e, pela regra antiga, não
+    // recebia o DDI — gerando hash divergente do enviado pela LP.
     const normPhoneE164 = (ph?: string | null) => {
-      let d = String(ph ?? '').replace(/\D/g, '');
-      if (d.length < 10) return '';
-      if (!d.startsWith('55')) d = '55' + d;
-      return '+' + d;
+      let d = String(ph ?? '').replace(/\D/g, '').replace(/^0+/, '');
+      // Nacional BR: DDD(2) + número(8 fixo | 9 móvel) = 10 ou 11 dígitos → + DDI.
+      if (d.length === 10 || d.length === 11) d = '55' + d;
+      // Com DDI 55: 12 (fixo) ou 13 (móvel) dígitos. Fora disso = inválido.
+      if ((d.length === 12 || d.length === 13) && d.startsWith('55')) return '+' + d;
+      return '';
     };
     const convName = (kind: string) => (kind === 'PEDIDO' ? 'Pedido Pago' : 'Orçamento');
     const orderId = (kind: string, numero?: string | null, fallback?: string) =>

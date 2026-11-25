@@ -205,16 +205,14 @@ export class LeadAdsService {
   }
 
   // ── Qualificação pelas respostas do formulário (Quente/Morno/Frio) ──────
-  // Regra decidida em 25/11/2026: o PRAZO define a base e o item-chave dá
-  // bônus. Grava leadScore/leadTemperature no card (mesmos campos da LP), que
-  // alimentam o QualifiedLead da Meta (score >= 60), o dashboard e os públicos.
-  //   Esta semana = 85 · Este mês = 60 · Só pesquisando = 25 · +10 item-chave.
-  //   Cortes: >=70 Quente · >=40 Morno · <40 Frio.
+  // Regra decidida em 25/11/2026: a temperatura vem do PRAZO declarado.
+  //   Esta semana = 85 (Quente) · Este mês = 60 (Morno) · Só pesquisando = 25 (Frio).
+  //   Cortes: >=70 Quente · >=40 Morno · <40 Frio. "Este mês" = 60 conta como
+  //   QualifiedLead na Meta (corte >= 60). O item ("o que quer organizar") fica
+  //   só registrado no card — 92% dos leads escolhem gaveta/talheres, então não
+  //   diferencia. Grava leadScore/leadTemperature (mesmos campos da LP).
 
   private static readonly FORM_SCORE_PRAZO = { semana: 85, mes: 60, pesquisando: 25 };
-  private static readonly FORM_ITEM_BONUS = 10;
-  /** Itens prioritários (produto principal) — casam por trecho no texto. */
-  private static readonly FORM_ITEM_CHAVE = ['gaveta', 'talher'];
 
   private normalizeAnswer(v: unknown): string {
     return String(v ?? '')
@@ -256,10 +254,6 @@ export class LeadAdsService {
     else if (prazo.includes('mes')) score = P.mes;
     else if (prazo.includes('pesquis')) score = P.pesquisando;
     if (score == null) return null;
-    if (item && LeadAdsService.FORM_ITEM_CHAVE.some((x) => item!.includes(x))) {
-      score += LeadAdsService.FORM_ITEM_BONUS;
-    }
-    score = Math.min(100, score);
     return { score, temperature: this.temperatureFromScore(score), prazo, item };
   }
 

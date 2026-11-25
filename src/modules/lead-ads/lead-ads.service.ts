@@ -154,6 +154,7 @@ export class LeadAdsService {
     const name = fields.name ?? null;
     const phone = this.normalizePhone(fields.phone);
     const email = fields.email ?? null;
+    const qual = this.qualifyFromForm(fields.raw);
 
     const contact = await this.findOrCreateContact(page.organizationId, {
       name,
@@ -172,6 +173,13 @@ export class LeadAdsService {
         adId: lead?.ad_id ?? ids.adId,
         campaignName: lead?.campaign_name,
         fields: fields.raw,
+        ...(qual
+          ? {
+              leadScore: qual.score,
+              leadTemperature: qual.temperature,
+              qualificacao: { origem: 'facebook_form', prazo: qual.prazo, item: qual.item },
+            }
+          : {}),
       },
       // Roteamento por origem: tipo FACEBOOK_LEADADS + exceção por página.
       { leadSource: 'facebook_leadads', leadAdsPageId: page.pageId },
@@ -190,7 +198,132 @@ export class LeadAdsService {
         await this.fixOpenCardTitle(page.organizationId, contact.id, name);
       }
     }
+    if (qual) {
+      await this.applyFormQualification(page.organizationId, contact.id, qual, !card);
+    }
     return { created: !!card };
+  }
+
+  // ── Qualificação pelas respostas do formulário (Quente/Morno/Frio) ──────
+  // Regra decidida em 25/11/2026: o PRAZO define a base e o item-chave dá
+  // bônus. Grava leadScore/leadTemperature no card (mesmos campos da LP), que
+  // alimentam o QualifiedLead da Meta (score >= 60), o dashboard e os públicos.
+  //   Esta semana = 85 · Este mês = 60 · Só pesquisando = 25 · +10 item-chave.
+  //   Cortes: >=70 Quente · >=40 Morno · <40 Frio.
+
+  private static readonly FORM_SCORE_PRAZO = { semana: 85, mes: 60, pesquisando: 25 };
+  private static readonly FORM_ITEM_BONUS = 10;
+  /** Itens prioritários (produto principal) — casam por trecho no texto. */
+  private static readonly FORM_ITEM_CHAVE = ['gaveta', 'talher'];
+
+  private normalizeAnswer(v: unknown): string {
+    return String(v ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[_/]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private temperatureFromScore(score: number): 'Quente' | 'Morno' | 'Frio' {
+    if (score >= 70) return 'Quente';
+    if (score >= 40) return 'Morno';
+    return 'Frio';
+  }
+
+  /** Score/temperatura a partir das respostas. null = sem resposta de prazo. */
+  qualifyFromForm(raw?: Record<string, any> | null): {
+    score: number;
+    temperature: 'Quente' | 'Morno' | 'Frio';
+    prazo: string;
+    item: string | null;
+  } | null {
+    if (!raw || typeof raw !== 'object') return null;
+    let prazo: string | null = null;
+    let item: string | null = null;
+    for (const [rk, rv] of Object.entries(raw)) {
+      const k = this.normalizeAnswer(rk);
+      const v = this.normalizeAnswer(rv);
+      if (!v) continue;
+      if (!prazo && (k.includes('quando') || k.includes('pretende') || k.includes('prazo'))) prazo = v;
+      else if (!item && (k.includes('organizar') || k.includes('o que') || k.includes('item'))) item = v;
+    }
+    if (!prazo) return null;
+    const P = LeadAdsService.FORM_SCORE_PRAZO;
+    let score: number | null = null;
+    if (prazo.includes('semana')) score = P.semana;
+    else if (prazo.includes('mes')) score = P.mes;
+    else if (prazo.includes('pesquis')) score = P.pesquisando;
+    if (score == null) return null;
+    if (item && LeadAdsService.FORM_ITEM_CHAVE.some((x) => item!.includes(x))) {
+      score += LeadAdsService.FORM_ITEM_BONUS;
+    }
+    score = Math.min(100, score);
+    return { score, temperature: this.temperatureFromScore(score), prazo, item };
+  }
+
+  /**
+   * Aplica a qualificação: no card aberto existente (quando o lead já tinha
+   * card), mantém o MAIOR score (a maior intenção declarada); e troca a
+   * etiqueta de temperatura do contato (remove as outras Lead Quente/Morno/Frio).
+   */
+  private async applyFormQualification(
+    organizationId: string,
+    contactId: string,
+    qual: { score: number; temperature: string; prazo: string; item: string | null },
+    existingCard: boolean,
+  ): Promise<void> {
+    try {
+      let finalScore = qual.score;
+      if (existingCard) {
+        const open = await this.prisma.card.findFirst({
+          where: { organizationId, contactId, status: 'OPEN' },
+          select: { id: true, metadata: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (open) {
+          const meta = (open.metadata ?? {}) as Record<string, any>;
+          const prev = Number(meta.leadScore);
+          if (Number.isFinite(prev) && prev > finalScore) finalScore = prev;
+          await this.prisma.card.update({
+            where: { id: open.id },
+            data: {
+              metadata: {
+                ...meta,
+                leadScore: finalScore,
+                leadTemperature: this.temperatureFromScore(finalScore),
+                qualificacao: { origem: 'facebook_form', prazo: qual.prazo, item: qual.item },
+              },
+            },
+          });
+        }
+      }
+      await this.setTemperatureTag(organizationId, contactId, this.temperatureFromScore(finalScore));
+    } catch (err: any) {
+      this.logger.warn(
+        `Lead Ads: falha ao aplicar qualificação (contato ${contactId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /** Etiqueta "Lead <temp>" no contato, removendo as outras temperaturas. */
+  private async setTemperatureTag(organizationId: string, contactId: string, temperature: string) {
+    const name = `Lead ${temperature}`;
+    const others = ['Lead Quente', 'Lead Morno', 'Lead Frio'].filter((n) => n !== name);
+    await this.prisma.contactTag.deleteMany({
+      where: { contactId, tag: { organizationId, name: { in: others } } },
+    });
+    const tag = await this.prisma.tag.upsert({
+      where: { organizationId_name: { organizationId, name } },
+      update: {},
+      create: { organizationId, name },
+    });
+    await this.prisma.contactTag.upsert({
+      where: { contactId_tagId: { contactId, tagId: tag.id } },
+      update: {},
+      create: { contactId, tagId: tag.id },
+    });
   }
 
   /** Troca o título de um card aberto quando ele é só um e-mail e já temos o nome. */
@@ -206,9 +339,8 @@ export class LeadAdsService {
       });
       if (!open) return;
       const title = (open.title ?? '').trim();
-      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(title);
       const nextName = name.trim();
-      if (looksLikeEmail && nextName && nextName !== title) {
+      if (nextName && nextName !== title && this.isBadName(title, null)) {
         await this.prisma.card.update({
           where: { id: open.id },
           data: { title: nextName },
@@ -422,6 +554,85 @@ export class LeadAdsService {
     return pages[0];
   }
 
+  /**
+   * Nome "ruim" = não é um nome de verdade: vazio, e-mail, telefone (ou igual ao
+   * telefone do contato) ou placeholder conhecido. Só nesses casos o nome do
+   * formulário sobrescreve (decisão: "só preenche se estiver ruim").
+   */
+  private isBadName(name?: string | null, phone?: string | null): boolean {
+    const n = String(name ?? '').trim();
+    if (!n) return true;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(n)) return true; // e-mail
+    const digits = n.replace(/\D/g, '');
+    if (digits.length >= 8 && /^[\d\s()+-]+$/.test(n)) return true; // telefone
+    if (phone) {
+      const pd = String(phone).replace(/\D/g, '');
+      if (pd && digits && (digits === pd || (pd.length >= 8 && digits.endsWith(pd.slice(-8))))) return true;
+    }
+    const PLACEHOLDERS = ['lead do facebook', 'novo lead', 'desconhecido', 'sem nome', 'lead'];
+    if (PLACEHOLDERS.includes(n.toLowerCase())) return true;
+    return false;
+  }
+
+  /** Extrai o nome dos campos crus do formulário (mesmas palavras-chave do parse). */
+  private nameFromRawFields(raw?: Record<string, any> | null): string | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const has = (k: string, ...ns: string[]) => ns.some((x) => k.includes(x));
+    let full: string | null = null, first: string | null = null, last: string | null = null;
+    for (const [rk, rv] of Object.entries(raw)) {
+      const k = String(rk).toLowerCase().trim();
+      const v = String(rv ?? '').trim();
+      if (!v) continue;
+      if (!full && (has(k, 'full_name', 'full name', 'nome_completo', 'nome completo') || k === 'name' || k === 'nome')) full = v;
+      else if (!first && has(k, 'first_name', 'first name', 'primeiro_nome')) first = v;
+      else if (!last && has(k, 'last_name', 'last name', 'sobrenome', 'ultimo_nome')) last = v;
+    }
+    if (full) return full;
+    const combo = [first, last].filter(Boolean).join(' ').trim();
+    return combo || null;
+  }
+
+  /**
+   * Backfill único: corrige o nome (contato e/ou card) dos leads de formulário
+   * já existentes quando o nome atual está "ruim", relendo o nome do formulário
+   * guardado em card.metadata.fields. Idempotente.
+   */
+  async backfillLeadNames(
+    organizationId: string,
+  ): Promise<{ scanned: number; contactsFixed: number; cardsFixed: number }> {
+    const cards = await this.prisma.card.findMany({
+      where: { organizationId, metadata: { path: ['source'], equals: 'facebook_leadads' } },
+      select: {
+        id: true, title: true,
+        metadata: true,
+        contact: { select: { id: true, name: true, phone: true } },
+      },
+    });
+    let contactsFixed = 0;
+    let cardsFixed = 0;
+    for (const c of cards) {
+      const meta = (c.metadata ?? {}) as any;
+      const formName = this.nameFromRawFields(meta?.fields);
+      if (!formName) continue;
+      if (c.contact && this.isBadName(c.contact.name, c.contact.phone)) {
+        const ok = await this.prisma.contact
+          .update({ where: { id: c.contact.id }, data: { name: formName } })
+          .then(() => true).catch(() => false);
+        if (ok) contactsFixed++;
+      }
+      if (this.isBadName(c.title, c.contact?.phone ?? null)) {
+        const ok = await this.prisma.card
+          .update({ where: { id: c.id }, data: { title: formName } })
+          .then(() => true).catch(() => false);
+        if (ok) cardsFixed++;
+      }
+    }
+    this.logger.log(
+      `backfillLeadNames(org=${organizationId}): scanned=${cards.length} contatos=${contactsFixed} cards=${cardsFixed}`,
+    );
+    return { scanned: cards.length, contactsFixed, cardsFixed };
+  }
+
   private parseFieldData(fieldData: any[]): {
     name?: string;
     phone?: string;
@@ -533,7 +744,7 @@ export class LeadAdsService {
     }
     if (contact) {
       const patch: Record<string, any> = {};
-      if (!contact.name && data.name) patch.name = data.name;
+      if (data.name && this.isBadName(contact.name, contact.phone ?? data.phone)) patch.name = data.name;
       if (!contact.email && data.email) patch.email = data.email;
       if (!contact.phone && data.phone) patch.phone = data.phone;
       if (Object.keys(patch).length) {

@@ -94,6 +94,15 @@ export class LeadAdsController {
     return this.service.savePage(orgId, dto);
   }
 
+  @Post('lead-ads/backfill-names')
+  @ApiOperation({
+    summary:
+      'Backfill único: corrige o nome (contato/card) dos leads de formulário com nome ruim, usando o nome do form. Idempotente.',
+  })
+  backfillNames(@CurrentOrg('id') orgId: string) {
+    return this.service.backfillLeadNames(orgId);
+  }
+
   @Post('lead-ads/import')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, OrgGuard)

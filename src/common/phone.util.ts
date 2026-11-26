@@ -107,3 +107,47 @@ export function canonicalizePhoneField<T extends Record<string, any>>(data: T): 
   }
   return { ...data, phone: canonicalPhone(v) };
 }
+
+/** DDDs válidos no Brasil (Anatel). Usado para barrar telefone inventado. */
+const BR_DDDS = new Set([
+  11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38,
+  41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 53, 54, 55, 61, 62, 63, 64, 65, 66, 67, 68,
+  69, 71, 73, 74, 75, 77, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95,
+  96, 97, 98, 99,
+]);
+
+/**
+ * Classifica um telefone JÁ canônico (ver canonicalPhone) como número BR que
+ * pode ter WhatsApp:
+ *  - 'mobile'   = 55 + DDD + 9 + 8 dígitos;
+ *  - 'landline' = 55 + DDD + 8 dígitos começando de 2 a 5 (fixo — empresas
+ *    usam WhatsApp Business em fixo).
+ * DDD precisa existir. Retorna null se for inválido/incompleto.
+ *
+ *   '5562996762444' → 'mobile'   · '551933772900' → 'landline'
+ *   '552012345678'  → null (DDD 20 não existe)
+ */
+export function brWhatsappPhoneKind(phone: unknown): 'mobile' | 'landline' | null {
+  const d = phoneDigits(phone);
+  const m = /^55(\d{2})(\d{8,9})$/.exec(d);
+  if (!m || !BR_DDDS.has(Number(m[1]))) return null;
+  const sub = m[2];
+  if (sub.length === 9 && sub[0] === '9') return 'mobile';
+  if (sub.length === 8 && /^[2-5]/.test(sub)) return 'landline';
+  return null;
+}
+
+/**
+ * Telefone BR pronto para WhatsApp (55 + DDD + número), celular OU fixo, com
+ * DDD válido. Completa o DDI de número nacional (10/11 dígitos) — inclusive
+ * fixo e DDD 55. Retorna null se for inválido/incompleto.
+ *
+ *   '(19) 3377-2900' → '551933772900' · '(62) 9676-2444' → '5562996762444'
+ *   '552012345678'   → null
+ */
+export function brWhatsappPhone(raw: unknown): string | null {
+  let c = canonicalPhone(raw);
+  if (!c) return null;
+  if (c.length === 10 || c.length === 11) c = '55' + c; // nacional sem DDI
+  return brWhatsappPhoneKind(c) ? c : null;
+}

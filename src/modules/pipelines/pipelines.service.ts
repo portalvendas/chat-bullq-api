@@ -14,7 +14,7 @@ import {
 } from '@prisma/client';
 import { BaileysSessionManager } from '../channel-hub/adapters/baileys/baileys-session.manager';
 import { SWITCHABLE_WHATSAPP_TYPES } from '../../common/constants/whatsapp.constants';
-import { canonicalPhone } from '../../common/phone.util';
+import { brWhatsappPhone } from '../../common/phone.util';
 import { syncConversationsWithCard } from '../../common/card-owner.util';
 import { PrismaService } from '../../database/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -1158,10 +1158,13 @@ export class PipelinesService {
     // como externalId e o provider "aceitava" o envio (1 check) mas NUNCA
     // entregava — e no Baileys ficava preso em "enviado". Melhor recusar com
     // mensagem clara do que criar uma conversa que não entrega.
-    const phone = canonicalPhone(card.contact.phone);
-    if (!phone || !/^55\d{2}9\d{8}$/.test(phone)) {
+    // Aceita celular (DDD + 9 dígitos) e FIXO (DDD + 8 dígitos, 2-5 — empresas
+    // têm WhatsApp Business em fixo). DDD precisa existir (Anatel). No Baileys o
+    // lookupJid abaixo ainda recusa número que não tem WhatsApp.
+    const phone = brWhatsappPhone(card.contact.phone);
+    if (!phone) {
       throw new BadRequestException(
-        'O telefone do lead parece incompleto ou inválido (esperado DDD + número com 9 dígitos). ' +
+        'O telefone do lead parece incompleto ou inválido (esperado DDD válido + celular com 9 dígitos ou fixo com 8). ' +
           'Corrija o contato antes de iniciar a conversa.',
       );
     }

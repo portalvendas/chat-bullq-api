@@ -6,6 +6,7 @@ import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
 import { CurrentOrg, CurrentUser, Roles } from '../../common/decorators';
 import { MobileDashboardService } from './mobile-dashboard.service';
+import { AdsPerformanceService } from './ads-performance.service';
 import {
   GoogleAudiencesService,
   GOOGLE_AUDIENCES,
@@ -21,6 +22,7 @@ export class DashboardController {
     private readonly service: DashboardService,
     private readonly audiences: GoogleAudiencesService,
     private readonly mobile: MobileDashboardService,
+    private readonly adsPerformance: AdsPerformanceService,
   ) {}
 
   private parseRange(from?: string, to?: string) {
@@ -60,6 +62,24 @@ export class DashboardController {
     @Query('origem') origem?: string,
   ) {
     return this.service.getCommercial(orgId, this.parseRange(from, to), { origem });
+  }
+
+  @Get('ads-performance')
+  @ApiOperation({
+    summary:
+      'Desempenho por anúncio (campanha › conjunto › anúncio): gasto da Meta × leads, orçamentos e vendas — crédito ao 1º anúncio do cliente',
+  })
+  @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
+  getAdsPerformance(
+    @CurrentOrg('id') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const range = this.parseRange(from, to);
+    if (isNaN(range.from.getTime()) || isNaN(range.to.getTime()) || range.from > range.to) {
+      throw new BadRequestException('Período inválido (from/to)');
+    }
+    return this.adsPerformance.getReport(orgId, range);
   }
 
   @Get('commercial/export')

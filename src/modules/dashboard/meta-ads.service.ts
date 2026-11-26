@@ -224,6 +224,82 @@ export class MetaAdsService {
     return { total: Math.round(total * 100) / 100, byCampaign };
   }
 
+  /** Cache curto dos insights por anúncio (org+período) — poupa rate limit da Meta. */
+  private readonly insightsCache = new Map<string, { at: number; v: AdInsightRow[] }>();
+
+  /**
+   * Insights NO NÍVEL DE ANÚNCIO no período (todas as contas da org): ids e
+   * nomes de campanha/conjunto/anúncio + gasto, impressões e cliques no link.
+   * É a base da visão "Desempenho por anúncio" (casa com o lead por id ou nome).
+   * null = não configurado ou nenhuma conta respondeu. Cache de 10 min.
+   *
+   * Exemplo de linha:
+   *   { campaignId: "1202…", campaignName: "[LP] Cooktops", adsetId: "1202…",
+   *     adsetName: "Aberto 25-55", adId: "1202…", adName: "Video 01",
+   *     spend: 152.3, impressions: 18400, clicks: 312 }
+   */
+  async getAdInsights(
+    organizationId: string,
+    range: { from: Date; to: Date },
+  ): Promise<AdInsightRow[] | null> {
+    const since = range.from.toISOString().slice(0, 10);
+    const until = range.to.toISOString().slice(0, 10);
+    const key = `${organizationId}:${since}:${until}`;
+    const hit = this.insightsCache.get(key);
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.v;
+
+    const r = await this.row(organizationId);
+    if (!r || r.status !== 'active') return null;
+    const accts = this.parseAccts(r.ad_account_id);
+    if (accts.length === 0) return null;
+    const token = this.safeDecrypt(r.access_token_enc);
+    const proof = this.proof(token);
+
+    const out: AdInsightRow[] = [];
+    let anyOk = false;
+    for (const act of accts) {
+      try {
+        let url: string | null = `${GRAPH}/${act}/insights`;
+        let params: Record<string, unknown> | undefined = {
+          level: 'ad',
+          fields:
+            'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,inline_link_clicks',
+          time_range: JSON.stringify({ since, until }),
+          access_token: token,
+          limit: 500,
+          ...(proof ? { appsecret_proof: proof } : {}),
+        };
+        let guard = 0;
+        while (url && guard < 40) {
+          guard += 1;
+          const resp: any = await axios.get(url, { params, timeout: 25000 });
+          params = proof ? { appsecret_proof: proof } : undefined;
+          for (const d of resp.data?.data ?? []) {
+            out.push({
+              campaignId: String(d.campaign_id ?? ''),
+              campaignName: d.campaign_name ?? '(sem nome)',
+              adsetId: String(d.adset_id ?? ''),
+              adsetName: d.adset_name ?? '(sem nome)',
+              adId: String(d.ad_id ?? ''),
+              adName: d.ad_name ?? '(sem nome)',
+              spend: parseFloat(d.spend ?? '0') || 0,
+              impressions: parseInt(d.impressions ?? '0', 10) || 0,
+              clicks: parseInt(d.inline_link_clicks ?? '0', 10) || 0,
+            });
+          }
+          url = resp.data?.paging?.next ?? null;
+        }
+        anyOk = true;
+      } catch (err: any) {
+        const msg = err?.response?.data?.error?.message || err?.message || 'erro';
+        this.logger.warn(`Meta insights por anúncio falhou (org ${organizationId}, ${act}): ${msg}`);
+      }
+    }
+    if (!anyOk) return null;
+    this.insightsCache.set(key, { at: Date.now(), v: out });
+    return out;
+  }
+
   /** Cache ad_id → nomes (campanha/conjunto/anúncio). Nomes mudam pouco. */
   private readonly adCache = new Map<string, { at: number; v: ResolvedAd | null }>();
 
@@ -279,4 +355,16 @@ export interface ResolvedAd {
   adsetName: string | null;
   campaignId: string | null;
   campaignName: string | null;
+}
+
+export interface AdInsightRow {
+  campaignId: string;
+  campaignName: string;
+  adsetId: string;
+  adsetName: string;
+  adId: string;
+  adName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
 }

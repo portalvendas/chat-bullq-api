@@ -11,7 +11,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { OrgRole } from '@prisma/client';
 import { PipelinesService } from './pipelines.service';
+import { LeadTransferService } from './lead-transfer.service';
+import { LeadTransferDto } from './dto/lead-transfer.dto';
 import {
   CreateCardDto,
   CreatePipelineDto,
@@ -21,14 +24,53 @@ import {
   UpsertStageDto,
 } from './dto/pipeline.dto';
 import { JwtAuthGuard, OrgGuard, RolesGuard } from '../../common/guards';
-import { CurrentOrg, CurrentUser } from '../../common/decorators';
+import { CurrentOrg, CurrentUser, Roles } from '../../common/decorators';
 
 @ApiTags('Pipelines (Kanban)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, OrgGuard, RolesGuard)
 @Controller('pipelines')
 export class PipelinesController {
-  constructor(private readonly service: PipelinesService) {}
+  constructor(
+    private readonly service: PipelinesService,
+    private readonly leadTransfer: LeadTransferService,
+  ) {}
+
+  // ─── Transferência de leads entre vendedores (OWNER/ADMIN) ────────
+
+  @Get('lead-transfer/preview')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Prévia: leads abertos de um vendedor no período (opção: só os sem contato humano). fromUserId=__none__ = sem vendedor.',
+  })
+  leadTransferPreview(
+    @CurrentOrg('id') orgId: string,
+    @Query('fromUserId') fromUserId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('noHumanContact') noHumanContact?: string,
+    @Query('pipelineId') pipelineId?: string,
+  ) {
+    return this.leadTransfer.preview(orgId, {
+      fromUserId,
+      from,
+      to,
+      noHumanContact: noHumanContact === '1' || noHumanContact === 'true',
+      pipelineId: pipelineId || undefined,
+    });
+  }
+
+  @Post('lead-transfer')
+  @Roles(OrgRole.OWNER, OrgRole.ADMIN)
+  @ApiOperation({ summary: 'Transfere os leads selecionados (card + conversa) para outro vendedor' })
+  leadTransferRun(
+    @CurrentOrg('id') orgId: string,
+    @CurrentUser('id') actorId: string,
+    @Body() dto: LeadTransferDto,
+  ) {
+    return this.leadTransfer.transfer(orgId, actorId, dto);
+  }
 
   @Get()
   @ApiOperation({ summary: 'List pipelines for current org' })

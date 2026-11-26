@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { PipelinesController } from './pipelines.controller';
 import { PipelinesService } from './pipelines.service';
+import { LeadTransferService } from './lead-transfer.service';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import {
@@ -21,6 +22,7 @@ import { LeadDistributionModule } from '../lead-distribution/lead-distribution.m
   controllers: [PipelinesController],
   providers: [
     PipelinesService,
+    LeadTransferService,
     PipelineInactivityProcessor,
     PipelineInactivityCronService,
   ],

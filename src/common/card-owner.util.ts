@@ -65,6 +65,8 @@ export async function syncConversationsWithCard(
   card: { conversationId: string | null; contactId: string | null },
   userId: string | null | undefined,
   actorId?: string | null,
+  /** Origem gravada no histórico da conversa (metadata.source). */
+  source = 'card_owner_sync',
 ): Promise<number> {
   if (!userId || (!card.conversationId && !card.contactId)) return 0;
   try {
@@ -88,7 +90,7 @@ export async function syncConversationsWithCard(
             action: 'ASSIGNED',
             fromValue: cv.assignedToId,
             toValue: userId,
-            metadata: { source: 'card_owner_sync' },
+            metadata: { source },
           },
         })
         .catch(() => undefined);

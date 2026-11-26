@@ -179,6 +179,18 @@ export class PipelinesController {
 
   // ─── Cards ────────────────────────────────────
 
+  @Get('cards/lead-for-conversation/:conversationId')
+  @ApiOperation({
+    summary:
+      'Card do lead desta conversa (prioriza card aberto, inclusive o de LP/Lead Ads sem vínculo com a conversa). Usado no painel "Lead" do inbox.',
+  })
+  leadCardForConversation(
+    @Param('conversationId') conversationId: string,
+    @CurrentOrg('id') orgId: string,
+  ) {
+    return this.service.findLeadCardForConversation(conversationId, orgId);
+  }
+
   @Get('cards/by-conversation/:conversationId')
   @ApiOperation({
     summary:

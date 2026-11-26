@@ -1045,6 +1045,42 @@ export class PipelinesService {
    * UI da inbox pra mostrar/editar/remover a conversa de pipelines direto
    * do header da conversa (sem precisar abrir o kanban).
    */
+  /**
+   * Card que representa o LEAD desta conversa (painel "Lead" do inbox: origem,
+   * formulário e rastreamento). Card de LP/Lead Ads nasce SEM conversationId e
+   * o contato pode ter cards antigos (ex.: ganho de outra compra), então
+   * escolhe por prioridade: aberto ligado à conversa > aberto do contato >
+   * mais recente ligado à conversa > mais recente do contato.
+   * @example GET /pipelines/cards/lead-for-conversation/conv1 → { cardId: 'card9' }
+   */
+  async findLeadCardForConversation(
+    conversationId: string,
+    organizationId: string,
+  ): Promise<{ cardId: string | null }> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, organizationId },
+      select: { contactId: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    const cards = await this.prisma.card.findMany({
+      where: {
+        organizationId,
+        OR: [{ conversationId }, { contactId: conv.contactId }],
+      },
+      select: { id: true, status: true, conversationId: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    const linked = (c: { conversationId: string | null }) => c.conversationId === conversationId;
+    const open = (c: { status: string }) => c.status === 'OPEN';
+    const pick =
+      cards.find((c) => open(c) && linked(c)) ??
+      cards.find((c) => open(c)) ??
+      cards.find((c) => linked(c)) ??
+      cards[0];
+    return { cardId: pick?.id ?? null };
+  }
+
   async listCardsByConversation(
     conversationId: string,
     organizationId: string,

@@ -104,16 +104,7 @@ export class LeadAdsService {
         return;
       }
 
-      const { data } = await axios.get(
-        `https://graph.facebook.com/${this.apiVersion}/${change.leadgenId}`,
-        {
-          params: {
-            access_token: page.accessToken,
-            fields: 'field_data,form_id,ad_id,campaign_name,created_time',
-          },
-          timeout: 20000,
-        },
-      );
+      const data = await this.fetchLeadFromGraph(change.leadgenId, page.accessToken);
 
       const { created } = await this.createLead(page, data, {
         leadgenId: change.leadgenId,
@@ -146,7 +137,13 @@ export class LeadAdsService {
       field_data?: any[];
       form_id?: string;
       ad_id?: string;
+      ad_name?: string;
+      adset_id?: string;
+      adset_name?: string;
+      campaign_id?: string;
       campaign_name?: string;
+      platform?: string;
+      is_organic?: boolean;
     },
     ids: { leadgenId: string; formId?: string; adId?: string },
   ): Promise<{ created: boolean }> {
@@ -155,6 +152,7 @@ export class LeadAdsService {
     const phone = this.normalizePhone(fields.phone);
     const email = fields.email ?? null;
     const qual = this.qualifyFromForm(fields.raw);
+    const tracking = this.leadAdsTracking(lead, ids);
 
     const contact = await this.findOrCreateContact(page.organizationId, {
       name,
@@ -173,6 +171,7 @@ export class LeadAdsService {
         adId: lead?.ad_id ?? ids.adId,
         campaignName: lead?.campaign_name,
         fields: fields.raw,
+        ...(Object.keys(tracking).length ? { tracking } : {}),
         ...(qual
           ? {
               leadScore: qual.score,
@@ -194,6 +193,7 @@ export class LeadAdsService {
         leadgenId: ids.leadgenId,
         fields: fields.raw,
       });
+      await this.attachTrackingToOpenCard(page.organizationId, contact.id, tracking);
       if (name) {
         await this.fixOpenCardTitle(page.organizationId, contact.id, name);
       }
@@ -318,6 +318,91 @@ export class LeadAdsService {
       update: {},
       create: { contactId, tagId: tag.id },
     });
+  }
+
+  // ── Rastreamento do Lead Ads ─────────────────────────────────────────
+  // Formulário instantâneo não passa por site: não há UTM/gclid/fbclid/IP.
+  // O "rastreamento" equivalente são os dados do anúncio que a Meta devolve.
+
+  private static readonly LEAD_FIELDS_BASIC = 'field_data,form_id,ad_id,campaign_name,created_time';
+  private static readonly LEAD_FIELDS_RICH =
+    'field_data,form_id,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,platform,is_organic,created_time';
+  private static readonly LIST_FIELDS_BASIC = 'id,created_time,field_data,ad_id,campaign_name';
+  private static readonly LIST_FIELDS_RICH =
+    'id,created_time,field_data,form_id,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,platform,is_organic';
+
+  /** Lê o lead na Graph com os dados do anúncio; se o token não liberar, usa os básicos. */
+  private async fetchLeadFromGraph(leadgenId: string, accessToken: string): Promise<any> {
+    const get = (fields: string) =>
+      axios.get(`https://graph.facebook.com/${this.apiVersion}/${leadgenId}`, {
+        params: { access_token: accessToken, fields },
+        timeout: 20000,
+      });
+    try {
+      return (await get(LeadAdsService.LEAD_FIELDS_RICH)).data;
+    } catch (err: any) {
+      const msg = err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+      this.logger.warn(`Lead Ads: campos do anúncio indisponíveis (${msg}) — usando campos básicos`);
+      return (await get(LeadAdsService.LEAD_FIELDS_BASIC)).data;
+    }
+  }
+
+  /**
+   * Dados do anúncio no formato de rastreamento (painel "Lead" e card).
+   * @example → { platform: 'instagram', campaign_name: 'LeadAds Gaveta', adset_name: 'Mulheres 30+',
+   *              ad_name: 'Video 01', ad_id: '120…', form_id: '987…', leadgen_id: '555…', is_organic: 'não' }
+   */
+  private leadAdsTracking(
+    lead: any,
+    ids: { leadgenId: string; formId?: string; adId?: string },
+  ): Record<string, string> {
+    const plat = String(lead?.platform ?? '').toLowerCase();
+    const t: Record<string, unknown> = {
+      platform: plat === 'ig' ? 'instagram' : plat === 'fb' ? 'facebook' : plat || undefined,
+      campaign_name: lead?.campaign_name,
+      adset_name: lead?.adset_name,
+      ad_name: lead?.ad_name,
+      campaign_id: lead?.campaign_id,
+      adset_id: lead?.adset_id,
+      ad_id: lead?.ad_id ?? ids.adId,
+      form_id: lead?.form_id ?? ids.formId,
+      leadgen_id: ids.leadgenId,
+      is_organic:
+        typeof lead?.is_organic === 'boolean' ? (lead.is_organic ? 'sim' : 'não') : undefined,
+    };
+    return Object.fromEntries(
+      Object.entries(t)
+        .filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+        .map(([k, v]) => [k, String(v)]),
+    );
+  }
+
+  /** Lead que já tinha card aberto: grava o rastreamento do anúncio se o card não tiver nenhum. */
+  private async attachTrackingToOpenCard(
+    organizationId: string,
+    contactId: string,
+    tracking: Record<string, string>,
+  ): Promise<void> {
+    if (!Object.keys(tracking).length) return;
+    try {
+      const open = await this.prisma.card.findFirst({
+        where: { organizationId, contactId, status: 'OPEN' },
+        select: { id: true, metadata: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!open) return;
+      const meta = (open.metadata ?? {}) as Record<string, any>;
+      // Não sobrescreve rastreamento que o card já tem (ex.: veio da LP).
+      if (meta.tracking && Object.keys(meta.tracking).length) return;
+      await this.prisma.card.update({
+        where: { id: open.id },
+        data: { metadata: { ...meta, tracking } },
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Lead Ads: falha ao gravar rastreamento no card aberto (contato ${contactId}): ${err?.message ?? err}`,
+      );
+    }
   }
 
   /** Troca o título de um card aberto quando ele é só um e-mail e já temos o nome. */
@@ -446,6 +531,9 @@ export class LeadAdsService {
     let errors = 0;
     let after: string | undefined;
     const MAX_PAGES = 50; // teto de segurança (~5000 leads a 100/página)
+    // Campos do anúncio (campanha/conjunto/anúncio). Se o token não liberar,
+    // cai para os campos básicos e segue a importação.
+    let listFields = LeadAdsService.LIST_FIELDS_RICH;
 
     for (let p = 0; p < MAX_PAGES; p++) {
       let batch: any;
@@ -455,7 +543,7 @@ export class LeadAdsService {
           {
             params: {
               access_token: page.accessToken,
-              fields: 'id,created_time,field_data,ad_id,campaign_name',
+              fields: listFields,
               limit: 100,
               ...(after ? { after } : {}),
             },
@@ -466,6 +554,14 @@ export class LeadAdsService {
       } catch (err: any) {
         const msg =
           err?.response?.data?.error?.message ?? err?.message ?? 'erro';
+        if (listFields === LeadAdsService.LIST_FIELDS_RICH) {
+          this.logger.warn(
+            `Lead Ads import: campos do anúncio indisponíveis (${msg}) — usando campos básicos`,
+          );
+          listFields = LeadAdsService.LIST_FIELDS_BASIC;
+          p--;
+          continue;
+        }
         this.logger.warn(
           `Lead Ads import: falha ao listar leads do form ${formId}: ${msg}`,
         );

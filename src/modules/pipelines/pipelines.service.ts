@@ -17,6 +17,7 @@ import { SWITCHABLE_WHATSAPP_TYPES } from '../../common/constants/whatsapp.const
 import { brWhatsappPhone } from '../../common/phone.util';
 import { syncConversationsWithCard } from '../../common/card-owner.util';
 import { PrismaService } from '../../database/prisma.service';
+import { leadChannel } from '../../common/lead-channel.util';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CadencesService } from '../cadences/cadences.service';
 import { LeadDistributionService } from '../lead-distribution/lead-distribution.service';
@@ -208,6 +209,9 @@ export class PipelinesService {
               name: true,
               phone: true,
               avatarUrl: true,
+              // Só p/ derivar a FONTE do lead (tracking do contato); removido
+              // do payload antes de responder.
+              metadata: true,
               // Conversa mais recente do contato — pra abrir o chat direto da
               // CAPA do card, inclusive nos importados (que não têm conversa
               // própria). take:1 mantém o payload leve.
@@ -233,13 +237,40 @@ export class PipelinesService {
       }),
     ]);
 
-    const cardsByStage: Record<string, typeof cards> = {};
-    for (const s of stages) cardsByStage[s.id] = [];
-    for (const c of cards) {
-      (cardsByStage[c.stageId] ||= []).push(c);
-    }
+    // FONTE DO LEAD (origem/tráfego) por card — mesma leadChannel() do filtro
+    // por canal de Pedidos & Orçamentos: source do card + tracking (card vence
+    // o contato) + tipo do canal da conversa. O frontend filtra por ela.
+    const withSource = cards.map((c) => {
+      const { contact, ...rest } = c;
+      const { metadata: contactMeta, ...contactOut } = contact ?? ({} as any);
+      const km = (c.metadata ?? {}) as Record<string, any>;
+      const cm = (contactMeta ?? {}) as Record<string, any>;
+      const tracking = {
+        ...(cm.tracking && typeof cm.tracking === 'object' ? cm.tracking : {}),
+        ...(km.tracking && typeof km.tracking === 'object' ? km.tracking : {}),
+      };
+      const chan =
+        c.conversation?.channel?.type ?? contact?.conversations?.[0]?.channel?.type ?? null;
+      return {
+        ...rest,
+        contact: contact ? contactOut : null,
+        leadSource: leadChannel(km.source ?? null, tracking, chan ? String(chan) : null),
+      };
+    });
 
-    return { pipeline, stages, cards: cardsByStage };
+    const cardsByStage: Record<string, typeof withSource> = {};
+    for (const s of stages) cardsByStage[s.id] = [];
+    const sourceCount = new Map<string, number>();
+    for (const c of withSource) {
+      (cardsByStage[c.stageId] ||= []).push(c);
+      sourceCount.set(c.leadSource, (sourceCount.get(c.leadSource) ?? 0) + 1);
+    }
+    // Opções do filtro "Fonte do lead" com a contagem do período (mais usadas 1º).
+    const leadSources = [...sourceCount.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+    return { pipeline, stages, cards: cardsByStage, leadSources };
   }
 
   async createPipeline(organizationId: string, dto: CreatePipelineDto) {
